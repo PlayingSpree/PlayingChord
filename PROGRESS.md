@@ -9,8 +9,8 @@ Running summary of build progress against [PLAN.md](PLAN.md). Newest entry first
 | 0 — Scaffolding | ✅ Done (2026-07-15) |
 | 1 — Theory core | ✅ Done (2026-07-15) |
 | 2 — MIDI layer | ✅ Done (2026-07-15) — hardware key-press check pending |
-| 3 — Walking skeleton (Milestone A) | ⬜ Next |
-| 4 — Attempt lifecycle & hints | ⬜ |
+| 3 — Walking skeleton (Milestone A) | ✅ Done (2026-07-15) — hardware pass pending |
+| 4 — Attempt lifecycle & hints | ⬜ Next |
 | 5 — Presets & weighted generation | ⬜ |
 | 6 — Storage & stats (Milestone B) | ⬜ |
 | 7 — Session modes, goals & history | ⬜ |
@@ -19,6 +19,49 @@ Running summary of build progress against [PLAN.md](PLAN.md). Newest entry first
 | 10 — Polish, a11y & deploy (Milestone C) | ⬜ |
 
 ---
+
+## 2026-07-15 — Phase 3: Walking skeleton (Milestone A) ✅
+
+The first playable loop: hardcoded major-triads preset (`any` rule, name-only
+prompt), judged on real held-note changes, with 21 new tests (97 total) and a
+browser-driven end-to-end pass.
+
+**Modules:**
+
+- `practice/combos.ts` — `Combo` `(root, typeId, voicingId)` + `comboKey`;
+  `MAJOR_TRIADS_COMBOS` as the Phase 3 hardcoded pool (real presets: Phase 5)
+- `practice/generator.ts` — `pickCombo`: uniform random with no-immediate-
+  repeat (last `min(3, poolSize−1)`, §5); rng injectable. Weighted pick
+  replaces the uniform draw in Phase 5.
+- `practice/prompts.ts` — `Prompt` (§3.4) built from a combo; throws on
+  unsatisfiable combos (kept out of pools by §4 preset validation later)
+- `store/practiceStore.ts` — correct-path-only skeleton of the §6.2
+  lifecycle: `awaiting-release → armed → advancing`. Arms only when all keys
+  are released (held-over notes never judge the next prompt); judges every
+  held-set change; ✔ + reaction time (prompt-shown → correct, §7); auto-
+  advance after 800 ms with input ignored during the window. Full state
+  machine with miss/stall/hints/skip replaces this in Phase 4.
+- `components/PromptCard.tsx` — big chord name, voicing label (omitted for
+  `any`), fixed-height feedback line; `components/KeyboardView.tsx` — 3-octave
+  C3–C6 keyboard, held keys in color + dot marker (no overlays yet)
+- `App.tsx` — practice view replacing the Phase 2 debug view; wires
+  `midiStore.heldNotes` → `practiceStore.onHeldChange` (stores stay decoupled)
+
+**Verified in headless Edge (sim MIDI, QWERTY):** prompt renders; playing the
+triad flashes ✔ with reaction time and auto-advances; flash clears; held-over
+notes never judge the next prompt until release+replay; wrong clusters do
+nothing; keyboard chips track press/release; no immediate repeats across
+rounds. Screenshot matches the §7 sketch (name-first, keyboard bottom).
+
+**Notes / deviations:**
+
+- None from PLAN.md scope. Fixed a subtle generator bug found by tests:
+  `slice(-0)` returns the whole array, so a 1-combo pool excluded itself.
+- Milestone A's "sit at the piano" check still needs the user at real
+  hardware (same pending item as Phase 2's key-press check).
+
+**Next:** Phase 4 — attempt lifecycle & hints: the full §6.2 state machine in
+`practice/` (miss/stall/retry/skip), §6.4 progressive hints, settings.
 
 ## 2026-07-15 — Phase 2: MIDI layer ✅
 

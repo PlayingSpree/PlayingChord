@@ -1,14 +1,16 @@
 import { useEffect } from 'react'
-import { midiStore, useMidi } from './store/midiStore'
+import { midiStore } from './store/midiStore'
+import { practiceStore } from './store/practiceStore'
 import { MidiGate } from './components/MidiGate'
 import { DevicePicker } from './components/DevicePicker'
+import { PromptCard } from './components/PromptCard'
+import { KeyboardView } from './components/KeyboardView'
 import {
   SimulatedMidiSource,
   WebMidiSource,
   attachQwertyKeys,
   type MidiSource,
 } from './midi'
-import { formatSpelling, pitchClass, spellRoot } from './theory'
 
 function createSource(): MidiSource {
   const wantSim =
@@ -27,56 +29,46 @@ function createSource(): MidiSource {
 export default function App() {
   useEffect(() => {
     void midiStore.getState().initialize(createSource())
+    // Every held-set change is judged (§6.2); the stores stay decoupled —
+    // practice knows nothing about MIDI, only about held-note sets.
+    return midiStore.subscribe((state, prev) => {
+      if (state.heldNotes !== prev.heldNotes) {
+        practiceStore.getState().onHeldChange(state.heldNotes)
+      }
+    })
   }, [])
 
   return (
     <MidiGate>
-      <MidiDebugView />
+      <PracticeView />
     </MidiGate>
   )
 }
 
-// Phase 2 scaffolding view — replaced by the practice screen in Phase 3.
-function MidiDebugView() {
-  const heldNotes = useMidi((s) => s.heldNotes)
-  const notes = [...heldNotes].sort((a, b) => a - b)
+// Phase 3 walking skeleton: hardcoded major-triads preset, name-only prompt.
+// Preset/mode pickers, stats, and goals join the top bar in later phases (§7).
+function PracticeView() {
+  useEffect(() => {
+    practiceStore.getState().start()
+  }, [])
 
   return (
-    <main className="min-h-screen bg-slate-900 p-8 text-slate-100">
-      <div className="mx-auto max-w-2xl">
-        <header className="flex items-center justify-between gap-4">
-          <h1 className="text-2xl font-bold tracking-tight">
-            PlayingChord{' '}
-            <span className="font-normal text-slate-400">MIDI debug</span>
-          </h1>
+    <main className="flex min-h-screen flex-col bg-slate-900 text-slate-100">
+      <header className="flex items-center justify-between gap-4 border-b border-slate-800 px-6 py-3">
+        <h1 className="text-lg font-bold tracking-tight">PlayingChord</h1>
+        <div className="flex items-center gap-4">
+          <span className="text-sm text-slate-400">Major triads</span>
           <DevicePicker />
-        </header>
+        </div>
+      </header>
 
-        <section className="mt-10">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">
-            Held notes
-          </h2>
-          <div className="mt-3 flex min-h-16 flex-wrap items-start gap-2">
-            {notes.length === 0 ? (
-              <p className="text-slate-500">Play something…</p>
-            ) : (
-              notes.map((note) => (
-                <span
-                  key={note}
-                  className="rounded-lg bg-emerald-700 px-3 py-2 font-mono text-lg"
-                >
-                  {noteLabel(note)}{' '}
-                  <span className="text-emerald-300">({note})</span>
-                </span>
-              ))
-            )}
-          </div>
-        </section>
+      <div className="flex flex-1 items-center justify-center px-6 py-8">
+        <PromptCard />
       </div>
+
+      <footer className="px-4 pb-8">
+        <KeyboardView />
+      </footer>
     </main>
   )
-}
-
-function noteLabel(midi: number): string {
-  return `${formatSpelling(spellRoot(pitchClass(midi)))}${Math.floor(midi / 12) - 1}`
 }
