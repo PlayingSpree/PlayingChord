@@ -1,0 +1,3 @@
+# Docs are hand-formatted; don't churn them.
+*.md
+dist/
