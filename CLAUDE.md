@@ -25,6 +25,7 @@ physical MIDI keyboard — there is deliberately no mouse/QWERTY fallback.
 
 ```sh
 npm run dev                        # dev server (http://localhost:5173)
+#   …?midi=sim                     # dev-only simulated MIDI, played via QWERTY (A=C4…)
 npm test                           # all tests, single run
 npm test -- src/theory/foo.test.ts # single test file
 npm test -- -t "name"              # tests matching name

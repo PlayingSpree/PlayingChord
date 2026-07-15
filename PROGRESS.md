@@ -8,8 +8,8 @@ Running summary of build progress against [PLAN.md](PLAN.md). Newest entry first
 |-------|--------|
 | 0 — Scaffolding | ✅ Done (2026-07-15) |
 | 1 — Theory core | ✅ Done (2026-07-15) |
-| 2 — MIDI layer | ⬜ Next |
-| 3 — Walking skeleton (Milestone A) | ⬜ |
+| 2 — MIDI layer | ✅ Done (2026-07-15) — hardware key-press check pending |
+| 3 — Walking skeleton (Milestone A) | ⬜ Next |
 | 4 — Attempt lifecycle & hints | ⬜ |
 | 5 — Presets & weighted generation | ⬜ |
 | 6 — Storage & stats (Milestone B) | ⬜ |
@@ -19,6 +19,47 @@ Running summary of build progress against [PLAN.md](PLAN.md). Newest entry first
 | 10 — Polish, a11y & deploy (Milestone C) | ⬜ |
 
 ---
+
+## 2026-07-15 — Phase 2: MIDI layer ✅
+
+`src/midi/` + the MIDI Zustand store, with 21 new tests (76 total) and a
+browser-driven verification pass.
+
+**Modules:**
+
+- `midi/types.ts` — `MidiSource` contract (init/devices/setActiveDevice/
+  subscribe); note events only flow for the active device
+- `midi/webMidiSource.ts` — Web MIDI implementation; handlers attached to all
+  inputs, filtered by active id (unplug/replug replaces `MIDIInput` instances)
+- `midi/simulatedMidiSource.ts` — programmatic source for tests/dev;
+  `midi/devKeyboard.ts` — dev-only QWERTY playing (`?midi=sim`, A=C4…P=D♯5)
+- `midi/parseMessage.ts` — raw message → note event (any channel; vel-0
+  note-on = note-off; CC/pitch-bend/aftertouch ignored)
+- `store/midiStore.ts` — support status, device list, active device, held-note
+  set. Auto-select on hot-plug: remembered id → remembered *name* (ids are
+  unstable across sessions) → first device. Held notes cleared on any device
+  switch. Last device in a plain localStorage key (migrates in Phase 6).
+- `components/MidiGate.tsx` — blocking screens (§2 unsupported, denied,
+  §6.1 connect-a-keyboard w/ hot-plug resume); `components/DevicePicker.tsx`
+- `App.tsx` — throwaway MIDI debug view (device + held-note chips),
+  replaced in Phase 3
+
+**Verified in headless Edge (playwright-core, system channel):** sim-mode
+chord press/release renders correct chips (C4/E4/G4), unmapped keys ignored;
+unsupported and denied blocking screens render; real Web MIDI path enumerated
+and auto-selected an actual device ("SMC-PADPocket-Bt"). Recipe persisted in
+`.claude/skills/verify/SKILL.md`.
+
+**Notes / deviations:**
+
+- Chromium/Edge now gates Web MIDI behind the sysex-level permission — in
+  Playwright, `grantPermissions(['midi'])` alone still rejects; need
+  `['midi', 'midi-sysex']`. Real browsers just show one prompt.
+- Physical key-press check (done-when criterion) still needs the user at the
+  hardware; everything else about hot-plug/reconciliation is unit-tested.
+
+**Next:** Phase 3 — walking skeleton (Milestone A): hardcoded major-triads
+preset, name prompt, correct-path judging, arm-on-release, auto-advance.
 
 ## 2026-07-15 — Phase 1: Theory core ✅
 

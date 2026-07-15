@@ -1,2 +1,2 @@
-// Zustand app state: settings, session (DESIGN.md §8).
-export {}
+// Zustand app state (DESIGN.md §8).
+export * from './midiStore'
