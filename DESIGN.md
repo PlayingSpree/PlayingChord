@@ -4,16 +4,19 @@ A web app for practicing piano chords with a MIDI keyboard. The app shows a rand
 from a chosen preset, the user plays it on their connected MIDI keyboard, and the app
 validates the input and moves on to the next chord.
 
-Status: **Draft v4** — requirements refined with the user on 2026-07-15 (session modes,
-prompt emphasis, judging model, hint policy, goals/streaks, sound policy, extended-chord
-stance, no-device behavior). Both previously open questions are resolved (see
-[§9](#9-resolved-questions)). Build sequencing (what gets implemented first) is
-intentionally left outside this document.
+Status: **Draft v5** — session modes reworked with the user on 2026-07-16: two modes,
+**Learn** (example voicing visible, untimed) and **Practice** (voicing hidden), with the
+former timed/review modes folded into Practice-mode settings. Draft v4 (2026-07-15)
+refined prompt emphasis, judging model, hint policy, goals/streaks, sound policy,
+extended-chord stance, and no-device behavior. Both previously open questions are
+resolved (see [§9](#9-resolved-questions)). Build sequencing (what gets implemented
+first) is intentionally left outside this document.
 
 **Key decisions:**
 - Stack: React + TypeScript + Vite + Zustand, client-side only (no accounts/server).
-- The **chord name is the prompt**; grand-staff notation (VexFlow) is an optional
-  reference showing one *example* voicing. Staff-off is a first-class way to use the app.
+- The **chord name is the prompt**; grand-staff notation (VexFlow) shows one *example*
+  voicing in Learn mode. Staff-off stays first-class — the keyboard highlight carries
+  Learn mode without notation.
 - Chords are matched against a **voicing rule**: a composable spec (bass-note constraint,
   span, doubling policy). Matching is always rule-based — any voicing satisfying the rule
   counts, never only the notes drawn on the staff.
@@ -21,8 +24,11 @@ intentionally left outside this document.
   rule; a miss latches only when the attempt can no longer succeed or stalls (§6.2).
 - On a wrong attempt: **retry until correct**, with **progressive hints** — early misses
   only mark the wrong played keys; the expected keys are revealed from the 3rd miss.
-- **Session modes**: endless (default), timed (with end-of-session summary), and an
-  explicit worst-chords **review mode** — plus subtle miss-weighting in normal practice.
+- **Session modes**: **Learn** (example voicing shown from the start, untimed,
+  stats-neutral) and **Practice** (default: voicing hidden, endless). Practice-mode
+  settings: an optional **session timer** (with end-of-session summary) and a
+  **worst chords only** toggle (replacing the old review mode) — plus subtle
+  miss-weighting always.
 - **Goals & streaks**: a daily practice-*time* goal with streak tracking, persisted
   locally alongside the existing stats history.
 - Sound: **correct chime only** — misses are always visual-only.
@@ -41,14 +47,15 @@ intentionally left outside this document.
 - Support the full **voicing** spectrum: any voicing, root position, specific inversions,
   closed/open position, and user-defined custom voicing rules — all built from the same
   composable model (see §3.3).
-- Prompt with the chord **name** front and center; optionally render one example voicing
-  on a **grand staff** as reference.
+- Prompt with the chord **name** front and center; in Learn mode, show one example
+  voicing (keyboard highlight + grand staff) to copy.
 - Give feedback that doesn't rely on color alone (shape/icon cues), revealed
   progressively so recall is exercised before the answer is shown.
-- Bias chord selection toward recently-missed chords (weighted repetition), offer an
-  explicit review mode for the worst chords, and persist stats across sessions.
-- Support **endless** and **timed** practice sessions, with a summary at the end of timed
+- Bias chord selection toward recently-missed chords (weighted repetition), offer a
+  worst-chords-only Practice setting for explicit review, and persist stats across
   sessions.
+- Practice sessions are endless by default; an optional session timer ends the session
+  with a summary.
 - Track a **daily practice-time goal and streak** to encourage regular practice.
 
 ### Non-goals
@@ -181,14 +188,16 @@ interface Prompt {
                           // shown separately (e.g. "2nd inversion"), never folded into
                           // a misleading slash-chord name.
   example: number[];      // one concrete voicing satisfying the rule (MIDI notes),
-                          // deterministic per prompt — drawn on the staff (if enabled)
-                          // and used for the hint reveal (§6.4). Illustrative only:
-                          // matching is against the rule, never against these notes.
+                          // deterministic per prompt — shown in Learn mode (keyboard
+                          // highlight + staff) and used for the hint reveal (§6.4).
+                          // Illustrative only: matching is against the rule, never
+                          // against these notes.
 }
 ```
 
 `realizeVoicing(chord, rule) → number[]` (in `theory/`) picks a playable example near
-middle C. The **name is the prompt**; the staff is optional reference showing `example`.
+middle C. The **name is the prompt**; `example` is Learn mode's answer display and the
+hint reveal — never the match target.
 
 ### 3.5 Spelling (for notation)
 
@@ -255,8 +264,11 @@ or machines.
 - **No immediate repeat**: the last `min(3, poolSize − 1)` combos are excluded, so small
   custom pools (≤ 3 combos) still generate.
 - A subtle indicator marks prompts chosen because of recent misses (§7).
-- **Review mode** (§7) inverts the emphasis: it draws only from the selected preset's
-  worst combos instead of gently biasing the normal stream.
+- **Worst chords only** (a Practice-mode setting, §7) inverts the emphasis: it draws
+  only from the selected preset's worst combos instead of gently biasing the normal
+  stream.
+- Only Practice-mode attempts are recorded: Learn mode feeds neither the per-combo stats
+  nor the weighting (§7), though its active time still counts toward the daily goal.
 
 ---
 
@@ -329,6 +341,10 @@ Misses on the same prompt escalate the hint level — recall first, answer later
 - **Miss 3+:** the expected keys — the prompt's `example` voicing (§3.4) — are overlaid
   on the keyboard (color + icon) and highlighted on the staff if it's shown.
 
+The escalation above describes **Practice mode**. In **Learn mode** the example is
+visible from the start (the miss-3 reveal is effectively always on); wrong-key marking
+still applies.
+
 All overlays use color **and** a shape/icon distinction, never color alone.
 
 ---
@@ -341,9 +357,9 @@ All overlays use color **and** a shape/icon distinction, never color alone.
 ├────────────────────────────────────────────────────┤
 │              D min7 — 2nd inversion                 │  ← prompt: NAME is primary
 │         🔥 Practicing: missed 3x recently           │  ← weighting indicator (when applicable)
-│          𝄞  ♩♩♩♩ (grand staff, optional)            │  ← example voicing, reference only
+│          𝄞  ♩♩♩♩ (grand staff, Learn mode)          │  ← example voicing, Learn mode
 │                                                     │
-│          ✔ Correct!  (1.2s)      [Skip →]   ⏱ 3:12 │  ← feedback line; timer in timed mode
+│          ✔ Correct!  (1.2s)      [Skip →]   ⏱ 3:12 │  ← feedback line; timer if set
 ├────────────────────────────────────────────────────┤
 │  🎹 on-screen keyboard (~3 octaves)                 │  ← live held keys; miss overlays
 │                                                     │     escalate per hint stage (§6.4)
@@ -351,14 +367,21 @@ All overlays use color **and** a shape/icon distinction, never color alone.
 ```
 
 - **Session modes** (top-bar picker):
-  - **Endless** (default): chords until you stop.
-  - **Timed**: pick a duration (5 / 10 / 15 min or custom), practice, then an
-    end-of-session summary (prompts played, accuracy, slowest/worst chords).
-  - **Review**: drills the selected preset's worst combos (§5); endless until stopped.
+  - **Learn**: the prompt's `example` voicing is shown from the start — highlighted on
+    the on-screen keyboard and drawn on the staff (§3.4) — for the user to copy (any
+    voicing satisfying the rule still counts). Untimed. Attempts are excluded from
+    stats and weighting (§5); active minutes still count toward the daily goal.
+  - **Practice** (default): the voicing is hidden — recall from the name, hints
+    escalate per §6.4. Endless unless the timer is set. Practice-mode settings (shown
+    with the picker when Practice is active):
+    - **Timer**: off (default) or 5 / 10 / 15 min / custom — countdown in the UI, then
+      an end-of-session summary (prompts played, accuracy, slowest/worst chords).
+    - **Worst chords only**: drills the selected preset's worst combos (§5).
 - **Prompt area**: chord name large and readable from a distance; the voicing being
-  drilled as a text label (omitted for the `any` rule); optionally the `example` voicing
-  on a grand staff (§3.4) — staff-off (name-only) is a first-class mode via settings.
-  A subtle indicator appears when the prompt was chosen due to recent misses (§5).
+  drilled as a text label (omitted for the `any` rule); in Learn mode the `example`
+  voicing on a grand staff (§3.4) — a staff on/off setting keeps name+keyboard-only
+  Learn first-class for users who don't read notation. A subtle indicator appears when
+  the prompt was chosen due to recent misses (§5).
 - **Keyboard visual**: shows currently held notes live; after misses, overlays escalate
   per the hint stages (§6.4), always color + shape/icon.
 - **Feedback**: correct flash + reaction time + optional chime, auto-advance (default
@@ -369,8 +392,8 @@ All overlays use color **and** a shape/icon distinction, never color alone.
   compactly in the top bar; detailed in History.
 - **Stats panel** (live, session): prompts, first-try accuracy, average time-to-correct,
   worst chords. Definitions: *accuracy* = prompts answered correctly on the first
-  attempt ÷ prompts (skips excluded); *time-to-correct* = prompt shown → correct match,
-  retries included.
+  attempt ÷ prompts (skips and Learn-mode prompts excluded); *time-to-correct* = prompt
+  shown → correct match, retries included.
 - **History tab** (separate view, top bar): persisted trends across all sessions —
   accuracy over time, time-to-correct trend, most-improved/worst chords, streak calendar
   and goal history. Reachable independently of the practice screen.
@@ -380,8 +403,9 @@ All overlays use color **and** a shape/icon distinction, never color alone.
 - **Preset editor** (settings): create/edit/delete presets (pool + voicing refs, §4)
   with rule-compatibility validation; import/export as JSON.
 - **Settings**: preset editor, voicing builder, doubling toggle, strict-extra-notes
-  toggle, staff on/off, correct-chime on/off, judgment delay, auto-advance delay, timed
-  durations, daily goal minutes.
+  toggle, staff on/off (Learn mode), correct-chime on/off, judgment delay, auto-advance
+  delay, daily goal minutes. (The timer and worst-chords-only controls are Practice-mode
+  settings living next to the mode picker, not in the settings panel.)
 
 ---
 
@@ -393,7 +417,8 @@ src/
   theory/         # chord types, interval math, naming, spelling (§3.5), voicing rules,
                   #   matcher, realizeVoicing (pure, unit-tested)
   practice/       # session engine: attempt lifecycle (§6.2), prompt generation, weighted
-                  #   selection, session modes (endless/timed/review), hint staging
+                  #   selection, session modes (Learn/Practice + timer/worst-chords),
+                  #   hint staging
   storage/        # localStorage persistence: presets, custom voicing rules, per-combo
                   #   stats history, daily practice totals + goal/streak state
                   #   (versioned schema, import/export)

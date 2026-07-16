@@ -20,6 +20,31 @@ Running summary of build progress against [PLAN.md](PLAN.md). Newest entry first
 
 ---
 
+## 2026-07-16 — Design revision: Learn/Practice session modes (DESIGN.md v5)
+
+Before starting Phase 7, session modes were redefined with the user. The old
+endless/timed/review trio becomes two modes:
+
+- **Learn** — the prompt's example voicing is visible from the start (keyboard
+  highlight in Phase 7; grand staff joins in Phase 8), untimed, and
+  stats-neutral: attempts feed neither accuracy nor weighting (like skips),
+  but active minutes still count toward the daily goal.
+- **Practice** (default) — voicing hidden, recall-based, endless by default.
+  The former timed and review modes are now Practice-mode settings: an
+  optional **session timer** (countdown + end-of-session summary) and a
+  **worst chords only** toggle.
+
+The two-mode split and settings-on-Practice shape are the user's; the
+sub-decisions follow recommended defaults (flagged for veto): matching stays
+rule-based in Learn mode (any voicing satisfying the rule counts), per-prompt
+play stays retry-until-correct (no per-prompt clock), hint escalation
+describes Practice (Learn's reveal is always-on, wrong-key marks still
+shown), and the staff on/off setting now scopes to Learn mode.
+
+Updated: DESIGN.md (v5 — key decisions, §1, §3.4, §5, §6.4, §7, §8) and
+PLAN.md (overview table, Phases 7–8). No code changes; Phase 7 implements
+this shape. The Phase 6 entry's "Next" line below predates this revision.
+
 ## 2026-07-16 — Phase 6: Storage & stats (Milestone B) ✅
 
 Versioned localStorage persistence (§8) with per-combo and daily stat

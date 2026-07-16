@@ -24,7 +24,7 @@ explicitly a first-class way to use the app.
 | 4 | Attempt lifecycle & hints | 3 | Full §6.2/§6.4 behavior |
 | 5 | Presets & weighted generation | 1 | All built-in presets drillable |
 | 6 | Storage & stats | 4, 5 | **B: stats persist across reloads** |
-| 7 | Session modes, goals & history | 6 | Timed sessions, streaks, History tab |
+| 7 | Session modes, goals & history | 6 | Learn/Practice modes, streaks, History tab |
 | 8 | Notation & audio | 3 | Grand staff + correct chime |
 | 9 | Editors & import/export | 5, 6 | Custom presets/voicings round-trip |
 | 10 | Polish, a11y & deploy | all | **C: shipped static site** |
@@ -167,9 +167,13 @@ both up-weighted in generation and listed under "worst chords".
 
 Goal: §7's modes, goals/streaks, and the History tab.
 
-- Mode picker: **endless** (default), **timed** (5/10/15/custom, countdown in UI,
-  end-of-session summary: prompts, accuracy, slowest/worst chords), **review**
-  (draws only from the selected preset's worst combos, endless until stopped).
+- Mode picker: **Learn** (example voicing highlighted on the on-screen keyboard from
+  the start — the staff joins in Phase 8; untimed; attempts excluded from stats and
+  weighting, active minutes still count) and **Practice** (default: voicing hidden,
+  hints per §6.4). Practice-mode settings next to the picker: **timer**
+  (off/5/10/15/custom, countdown in UI, end-of-session summary: prompts, accuracy,
+  slowest/worst chords) and **worst chords only** (draws only from the selected
+  preset's worst combos).
 - Active-minutes tracking (define "active" as e.g. attempts occurring within a rolling
   idle window — document the chosen rule in code) feeding the daily goal (default
   10 min, configurable) and streak (consecutive local-timezone days meeting goal).
@@ -178,17 +182,19 @@ Goal: §7's modes, goals/streaks, and the History tab.
   streak calendar + goal history. Reachable from the top bar independent of practice.
 - Goal/streak day-rollover logic is pure and unit-tested (timezone, DST, gap days).
 
-**Done when:** a timed session produces a summary; practicing past the goal increments
-the streak; History renders trends from persisted daily/combo records.
+**Done when:** Learn mode shows the example keys and records no stats; a timed Practice
+session produces a summary; practicing past the goal increments the streak; History
+renders trends from persisted daily/combo records.
 
 ## Phase 8 — Notation & audio
 
 Goal: the two optional feedback channels — kept late deliberately since name-only /
 silent practice is first-class (§3.4, §9).
 
-- VexFlow grand-staff component rendering the prompt's `example` voicing using the
-  Phase 1 spelling module; staff on/off setting; hint stage 3 also highlights expected
-  notes on the staff when shown (§6.4).
+- VexFlow grand-staff component rendering the prompt's `example` voicing in Learn mode,
+  using the Phase 1 spelling module; staff on/off setting (Learn's keyboard highlight
+  stays regardless); hint stage 3 also highlights expected notes on the staff when
+  shown (§6.4).
 - `audio/` Web Audio wrapper: correct chime only, on/off toggle, default on. No miss
   sound exists (§9). Instantiate the AudioContext on first user gesture (browser
   autoplay policy).
