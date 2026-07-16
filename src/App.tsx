@@ -5,6 +5,7 @@ import { MidiGate } from './components/MidiGate'
 import { DevicePicker } from './components/DevicePicker'
 import { PromptCard } from './components/PromptCard'
 import { KeyboardView } from './components/KeyboardView'
+import { SettingsPanel } from './components/SettingsPanel'
 import {
   SimulatedMidiSource,
   WebMidiSource,
@@ -45,8 +46,8 @@ export default function App() {
   )
 }
 
-// Phase 3 walking skeleton: hardcoded major-triads preset, name-only prompt.
-// Preset/mode pickers, stats, and goals join the top bar in later phases (§7).
+// Hardcoded major-triads preset until Phase 5; name-only prompt. Preset/mode
+// pickers, stats, and goals join the top bar in later phases (§7).
 function PracticeView() {
   useEffect(() => {
     practiceStore.getState().start()
@@ -59,6 +60,7 @@ function PracticeView() {
         <div className="flex items-center gap-4">
           <span className="text-sm text-slate-400">Major triads</span>
           <DevicePicker />
+          <SettingsPanel />
         </div>
       </header>
 

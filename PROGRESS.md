@@ -10,8 +10,8 @@ Running summary of build progress against [PLAN.md](PLAN.md). Newest entry first
 | 1 — Theory core | ✅ Done (2026-07-15) |
 | 2 — MIDI layer | ✅ Done (2026-07-15) — hardware key-press check pending |
 | 3 — Walking skeleton (Milestone A) | ✅ Done (2026-07-15) — hardware pass pending |
-| 4 — Attempt lifecycle & hints | ⬜ Next |
-| 5 — Presets & weighted generation | ⬜ |
+| 4 — Attempt lifecycle & hints | ✅ Done (2026-07-16) — stall-feel tuning on hardware pending |
+| 5 — Presets & weighted generation | ⬜ Next |
 | 6 — Storage & stats (Milestone B) | ⬜ |
 | 7 — Session modes, goals & history | ⬜ |
 | 8 — Notation & audio | ⬜ |
@@ -19,6 +19,69 @@ Running summary of build progress against [PLAN.md](PLAN.md). Newest entry first
 | 10 — Polish, a11y & deploy (Milestone C) | ⬜ |
 
 ---
+
+## 2026-07-16 — Phase 4: Attempt lifecycle & progressive hints ✅
+
+The full §6.2 state machine and §6.4 hint escalation, with 50 new tests
+(147 total) and a 12-check browser-driven pass.
+
+**Modules:**
+
+- `practice/lifecycle.ts` — `AttemptLifecycle`, the explicit §6.2 machine
+  (`idle → awaiting-release → armed → missed/advancing`), pure TS with
+  injected `settings()/now()/onState/onAdvance` host. Misses latch via
+  definitive-unsatisfiability (immediate) or the stall timer (full-sized,
+  unchanged, non-matching held set); any held-set change restarts the stall
+  clock; sets smaller than the chord never stall. Release-all before judgment
+  abandons silently (no hint-stage advance); release-all after a miss re-arms
+  the same prompt. Skip advances without judging.
+- `practice/hints.ts` — `computeHint` (§6.4): misses 1–2 mark wrong held keys,
+  or name the failed constraint as text when every key is a chord tone
+  ("Bass must be the 3rd", "Missing the 5th", "Span too narrow", "Octave
+  doubling not allowed" — ordered so guidance is never misleading: doubling
+  before missing tones before bass before span); miss 3+ reveals the prompt's
+  `example` voicing.
+- `practice/settings.ts` — `PracticeSettings` (the two §6.3 matcher toggles +
+  judgment delay 500 ms + auto-advance 800 ms) with `sanitizeSettings`
+  (defaults for junk, delays clamped to 0–10 000 ms).
+- `store/settingsStore.ts` — settings + `update()`, persisted to a plain
+  `playingchord:settings` localStorage key (migrates in Phase 6).
+- `store/practiceStore.ts` — rewritten as a thin adapter: picks prompts,
+  forwards held-set changes, mirrors machine state; all judging logic now
+  lives in `practice/`.
+- UI: `PromptCard` gains the ✘ feedback/hint line (fixed-height, color always
+  paired with the ✔/✘ icon) and the Skip button; `KeyboardView` gains the
+  overlays — wrong keys rose + ✕, revealed keys sky + hollow ring, held stays
+  emerald + filled dot (shape + color everywhere, §6.4); new `SettingsPanel`
+  popover in the header for the four Phase 4 settings.
+
+**Tests of note:** `lifecycle.test.ts` covers every §6.2 transition — held-over
+notes, self-correction abandon (including a pending-stall cancel), stall on
+wrong inversion, stall-clock restart, notes-during-advance-window ignored,
+skip-cancels-stall, hint escalation 1→2→3, live settings reads, reaction time
+spanning retries. `hints.test.ts` pins each constraint text and the
+strict-off/doubling-off interactions.
+
+**Verified in headless Edge (sim MIDI, QWERTY):** wrong key → immediate ✘ with
+the key marked ✕; hint persists through release and retry; correct on retry →
+✔ + auto-advance; 3 misses → example voicing ringed on the keyboard, cleared
+on correct; skip advances instantly; stalled all-chord-tone attempt shows
+"Missing the 5th"; settings edits persist to localStorage. Screenshots match
+the §7 sketch.
+
+**Notes / deviations:**
+
+- PLAN.md only required settings to be in-store; added the minimal header
+  settings panel anyway since stall-feel tuning (Risks) needs a reachable knob
+  at the piano.
+- Interpretation: hints persist while re-arming/retrying (not just during the
+  latched miss) and clear on correct/advance; wrong-key marks stay on the
+  marked notes through the retry as "don't press these" guidance.
+- Stall-timer feel (500 ms default) still needs real-hardware validation —
+  same pending hardware session as Phases 2–3.
+
+**Next:** Phase 5 — presets & weighted generation: `ChordPool` expansion, all
+7 built-in presets + picker, weighted pick over an in-memory stats stub.
 
 ## 2026-07-15 — Phase 3: Walking skeleton (Milestone A) ✅
 

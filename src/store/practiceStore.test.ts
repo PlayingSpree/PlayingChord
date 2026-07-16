@@ -1,11 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { chordPitchClasses } from '../theory'
-import { comboKey, MAJOR_TRIADS_COMBOS } from '../practice'
-import { AUTO_ADVANCE_MS, createPracticeStore } from './practiceStore'
+import {
+  comboKey,
+  DEFAULT_PRACTICE_SETTINGS,
+  MAJOR_TRIADS_COMBOS,
+} from '../practice'
+import { createPracticeStore } from './practiceStore'
 import type { Combo, Prompt } from '../practice'
 
+const ADVANCE = DEFAULT_PRACTICE_SETTINGS.autoAdvanceMs
+const STALL = DEFAULT_PRACTICE_SETTINGS.judgmentDelayMs
+
 function setup(deps: Parameters<typeof createPracticeStore>[0] = {}) {
-  const store = createPracticeStore(deps)
+  const store = createPracticeStore({
+    settings: () => DEFAULT_PRACTICE_SETTINGS, // independent of localStorage
+    ...deps,
+  })
   let held = new Set<number>()
   const press = (...notes: number[]) => {
     held = new Set([...held, ...notes])
@@ -57,7 +67,7 @@ describe('practiceStore — arming (§6.2 step 1)', () => {
     expect(store.getState().phase).toBe('advancing')
 
     // Still holding the correct chord when the next prompt appears…
-    vi.advanceTimersByTime(AUTO_ADVANCE_MS)
+    vi.advanceTimersByTime(ADVANCE)
     expect(store.getState().prompt).not.toBe(first)
     expect(store.getState().phase).toBe('awaiting-release')
 
@@ -85,7 +95,7 @@ describe('practiceStore — correct path', () => {
     expect(store.getState().phase).toBe('advancing')
     expect(store.getState().reactionMs).toBe(1200)
 
-    vi.advanceTimersByTime(AUTO_ADVANCE_MS - 1)
+    vi.advanceTimersByTime(ADVANCE - 1)
     expect(store.getState().prompt).toBe(prompt)
     vi.advanceTimersByTime(1)
     expect(store.getState().prompt).not.toBe(prompt)
@@ -106,15 +116,6 @@ describe('practiceStore — correct path', () => {
     expect(store.getState().phase).toBe('advancing')
   })
 
-  it('wrong input does nothing (correct-path only in Phase 3)', () => {
-    const { store, press, releaseAll } = setup()
-    press(61, 62, 63) // a cluster that is no major triad
-    expect(store.getState().phase).toBe('armed')
-    expect(store.getState().reactionMs).toBeNull()
-    releaseAll()
-    expect(store.getState().phase).toBe('armed')
-  })
-
   it('notes during the advance window are ignored', () => {
     const { store, press, releaseAll } = setup()
     const first = store.getState().prompt!
@@ -126,7 +127,7 @@ describe('practiceStore — correct path', () => {
     expect(store.getState().phase).toBe('advancing')
     releaseAll()
 
-    vi.advanceTimersByTime(AUTO_ADVANCE_MS)
+    vi.advanceTimersByTime(ADVANCE)
     expect(store.getState().phase).toBe('armed') // empty hands → armed directly
   })
 
@@ -134,8 +135,62 @@ describe('practiceStore — correct path', () => {
     const { store, press, releaseAll } = setup()
     press(...correctNotes(store.getState().prompt!))
     releaseAll()
-    vi.advanceTimersByTime(AUTO_ADVANCE_MS)
+    vi.advanceTimersByTime(ADVANCE)
     expect(store.getState().phase).toBe('armed')
+  })
+})
+
+describe('practiceStore — miss & retry (§6.2 steps 2–3)', () => {
+  it('latches a definitive miss with a hint and retries to correct', () => {
+    const { store, press, releaseAll } = setup()
+    const prompt = store.getState().prompt!
+
+    press(61, 62, 63) // chromatic cluster — no major triad contains all three
+    expect(store.getState().phase).toBe('missed')
+    expect(store.getState().missCount).toBe(1)
+    expect(store.getState().hint?.kind).toBe('wrong-keys')
+
+    releaseAll()
+    expect(store.getState().phase).toBe('armed')
+    press(...correctNotes(prompt))
+    expect(store.getState().phase).toBe('advancing')
+    expect(store.getState().prompt).toBe(prompt) // same prompt survived the miss
+  })
+
+  it('misses stalled wrong attempts after the judgment delay', () => {
+    const pool: Combo[] = [
+      { root: 0, typeId: 'maj', voicingId: 'first-inversion' },
+    ]
+    const { store, press } = setup({ pool })
+
+    press(60, 64, 67) // root position in an inversion drill
+    expect(store.getState().phase).toBe('armed')
+    vi.advanceTimersByTime(STALL)
+    expect(store.getState().phase).toBe('missed')
+    expect(store.getState().hint).toEqual({
+      kind: 'constraint',
+      text: 'Bass must be the 3rd',
+    })
+  })
+})
+
+describe('practiceStore — skip (§6.2 step 4)', () => {
+  it('advances to a new prompt immediately', () => {
+    const { store } = setup()
+    const first = store.getState().prompt!
+    store.getState().skip()
+    expect(store.getState().prompt).not.toBe(first)
+    expect(store.getState().phase).toBe('armed')
+    expect(store.getState().missCount).toBe(0)
+  })
+
+  it('clears any hint from the skipped prompt', () => {
+    const { store, press, releaseAll } = setup()
+    press(61, 62, 63)
+    expect(store.getState().hint).not.toBeNull()
+    releaseAll()
+    store.getState().skip()
+    expect(store.getState().hint).toBeNull()
   })
 })
 
@@ -157,7 +212,7 @@ describe('practiceStore — generation', () => {
 
       press(...correctNotes(prompt))
       releaseAll()
-      vi.advanceTimersByTime(AUTO_ADVANCE_MS)
+      vi.advanceTimersByTime(ADVANCE)
     }
   })
 })
