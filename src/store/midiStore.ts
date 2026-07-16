@@ -6,45 +6,24 @@ import type {
   MidiSource,
   MidiSupport,
 } from '../midi'
+import { appStorage } from '../storage'
 
 // Remembers the last used device (DESIGN.md §6.1). Device ids can be
 // unstable across sessions on some OSes, so matching falls back to the
-// device name. Plain localStorage key for now; migrates into the versioned
-// storage schema in Phase 6.
+// device name. Persisted in the versioned schema (§8) — the Phase 2 plain
+// key migrates on first load.
 export interface DeviceMemory {
   load(): MidiDeviceInfo | null
   save(device: MidiDeviceInfo): void
 }
 
-const STORAGE_KEY = 'playingchord:lastMidiDevice'
-
-function isDeviceInfo(value: unknown): value is MidiDeviceInfo {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as MidiDeviceInfo).id === 'string' &&
-    typeof (value as MidiDeviceInfo).name === 'string'
-  )
-}
-
-export const localStorageDeviceMemory: DeviceMemory = {
-  load() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY)
-      if (!raw) return null
-      const parsed: unknown = JSON.parse(raw)
-      return isDeviceInfo(parsed) ? parsed : null
-    } catch {
-      return null
-    }
-  },
-  save(device) {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(device))
-    } catch {
-      // Private-mode or quota failures just lose the convenience.
-    }
-  },
+export const persistedDeviceMemory: DeviceMemory = {
+  load: () => appStorage.state.lastMidiDevice,
+  save: (device) =>
+    appStorage.update((state) => ({
+      ...state,
+      lastMidiDevice: { id: device.id, name: device.name },
+    })),
 }
 
 export interface MidiStoreState {
@@ -58,9 +37,7 @@ export interface MidiStoreState {
   selectDevice(id: string): void
 }
 
-export function createMidiStore(
-  memory: DeviceMemory = localStorageDeviceMemory,
-) {
+export function createMidiStore(memory: DeviceMemory = persistedDeviceMemory) {
   let source: MidiSource | null = null
   let started = false
 

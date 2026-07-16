@@ -7,6 +7,7 @@ import { PresetPicker } from './components/PresetPicker'
 import { PromptCard } from './components/PromptCard'
 import { KeyboardView } from './components/KeyboardView'
 import { SettingsPanel } from './components/SettingsPanel'
+import { StatsBar } from './components/StatsBar'
 import {
   SimulatedMidiSource,
   WebMidiSource,
@@ -47,7 +48,7 @@ export default function App() {
   )
 }
 
-// Mode picker, stats bar, and goals join the top bar in later phases (§7).
+// Mode picker and goals join the top bar in Phase 7 (§7).
 function PracticeView() {
   useEffect(() => {
     practiceStore.getState().start()
@@ -68,8 +69,11 @@ function PracticeView() {
         <PromptCard />
       </div>
 
-      <footer className="px-4 pb-8">
-        <KeyboardView />
+      <footer className="pb-8">
+        <StatsBar />
+        <div className="px-4 pt-2">
+          <KeyboardView />
+        </div>
       </footer>
     </main>
   )

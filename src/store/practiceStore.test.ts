@@ -3,7 +3,7 @@ import { chordPitchClasses, type PitchClass } from '../theory'
 import {
   comboKey,
   DEFAULT_PRACTICE_SETTINGS,
-  InMemoryRecentStats,
+  InMemoryComboStats,
   type ChordPool,
   type Preset,
   type Prompt,
@@ -36,6 +36,7 @@ function setup(deps: Parameters<typeof createPracticeStore>[0] = {}) {
   const store = createPracticeStore({
     settings: () => DEFAULT_PRACTICE_SETTINGS, // independent of localStorage
     memory: memoryStub(),
+    stats: new InMemoryComboStats(), // never the shared appStorage singleton
     ...deps,
   })
   let held = new Set<number>()
@@ -257,7 +258,7 @@ describe('practiceStore — outcome recording (§5/§7)', () => {
   })
 
   it('records a first-try success', () => {
-    const stats = new InMemoryRecentStats()
+    const stats = new InMemoryComboStats()
     const s = setup({ presets: onePreset, stats })
     const prompt = s.store.getState().prompt!
     playCorrectAndAdvance(s, prompt)
@@ -268,7 +269,7 @@ describe('practiceStore — outcome recording (§5/§7)', () => {
   })
 
   it('records a missed-then-corrected prompt as a miss', () => {
-    const stats = new InMemoryRecentStats()
+    const stats = new InMemoryComboStats()
     const s = setup({ presets: onePreset, stats })
     const prompt = s.store.getState().prompt!
 
@@ -284,7 +285,7 @@ describe('practiceStore — outcome recording (§5/§7)', () => {
   })
 
   it('records nothing for a skip, even after a miss (§6.2 step 4)', () => {
-    const stats = new InMemoryRecentStats()
+    const stats = new InMemoryComboStats()
     const s = setup({ presets: onePreset, stats })
     const prompt = s.store.getState().prompt!
 
@@ -296,7 +297,7 @@ describe('practiceStore — outcome recording (§5/§7)', () => {
   })
 
   it('shows the 🔥 indicator when a recently-missed combo comes up again', () => {
-    const stats = new InMemoryRecentStats()
+    const stats = new InMemoryComboStats()
     const s = setup({ presets: onePreset, stats })
     const prompt = s.store.getState().prompt!
     expect(s.store.getState().missedRecently).toBeNull()
@@ -307,6 +308,88 @@ describe('practiceStore — outcome recording (§5/§7)', () => {
 
     // Same (only) combo again — now flagged as recently missed.
     expect(s.store.getState().missedRecently).toBe(1)
+  })
+})
+
+describe('practiceStore — session stats & worst chords (§7)', () => {
+  const onePreset = presetsOf({
+    kind: 'explicit',
+    chords: [{ root: 0, typeId: 'maj' }],
+  })
+
+  it('tallies prompts, first-try successes and time-to-correct', () => {
+    const s = setup({ presets: onePreset })
+
+    vi.advanceTimersByTime(1000)
+    playCorrectAndAdvance(s, s.store.getState().prompt!) // first-try, 1000 ms
+
+    const second = s.store.getState().prompt!
+    s.press(61, 62, 63) // miss…
+    s.releaseAll()
+    vi.advanceTimersByTime(2000)
+    playCorrectAndAdvance(s, second) // …then correct after 2000 ms total
+
+    expect(s.store.getState().session).toEqual({
+      prompts: 2,
+      firstTrySuccesses: 1,
+      totalTimeToCorrectMs: 3000,
+    })
+  })
+
+  it('skips leave the session tallies untouched', () => {
+    const s = setup({ presets: onePreset })
+    s.store.getState().skip()
+    s.press(61, 62, 63) // even a missed-then-skipped prompt stays out
+    s.releaseAll()
+    s.store.getState().skip()
+    expect(s.store.getState().session.prompts).toBe(0)
+  })
+
+  it('lists missed combos under worst chords with lifetime accuracy', () => {
+    const s = setup({ presets: onePreset })
+    expect(s.store.getState().worstChords).toEqual([])
+
+    const prompt = s.store.getState().prompt!
+    s.press(61, 62, 63)
+    s.releaseAll()
+    playCorrectAndAdvance(s, prompt)
+
+    expect(s.store.getState().worstChords).toEqual([
+      { key: '0:maj:any', label: 'C maj', accuracy: 0 },
+    ])
+  })
+
+  it('surfaces pre-seeded (persisted) stats before anything is played', () => {
+    // Simulates a reload: the stats source already holds yesterday's misses
+    // (Milestone B — the persisted implementation is tested in storage/).
+    const stats = new InMemoryComboStats()
+    stats.record('0:maj:any', 'missed', 4000)
+    stats.record('0:maj:any', 'first-try', 1000)
+
+    const s = setup({ presets: onePreset, stats })
+    expect(s.store.getState().worstChords).toEqual([
+      { key: '0:maj:any', label: 'C maj', accuracy: 0.5 },
+    ])
+    expect(s.store.getState().missedRecently).toBe(1) // up-weighting visible
+  })
+
+  it('scopes worst chords to the active preset and includes voicing labels', () => {
+    const stats = new InMemoryComboStats()
+    stats.record('0:maj:first-inversion', 'missed', 4000)
+    stats.record('5:min7:any', 'missed', 4000) // not in this preset
+
+    const inversions = presetsOf(
+      { kind: 'explicit', chords: [{ root: 0, typeId: 'maj' }] },
+      ['first-inversion'],
+    )
+    const s = setup({ presets: inversions, stats })
+    expect(s.store.getState().worstChords).toEqual([
+      {
+        key: '0:maj:first-inversion',
+        label: 'C maj — 1st Inversion',
+        accuracy: 0,
+      },
+    ])
   })
 })
 
@@ -357,7 +440,7 @@ describe('practiceStore — preset selection (§4)', () => {
   })
 
   it('a completed prompt awaiting auto-advance still counts when switching', () => {
-    const stats = new InMemoryRecentStats()
+    const stats = new InMemoryComboStats()
     const s = setup({ stats })
     const prompt = s.store.getState().prompt!
     s.press(...correctNotes(prompt))

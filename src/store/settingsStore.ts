@@ -1,37 +1,18 @@
 import { createStore } from 'zustand/vanilla'
 import { useStore } from 'zustand'
-import {
-  DEFAULT_PRACTICE_SETTINGS,
-  sanitizeSettings,
-  type PracticeSettings,
-} from '../practice'
+import { sanitizeSettings, type PracticeSettings } from '../practice'
+import { appStorage } from '../storage'
 
-// Practice settings (DESIGN.md §6.2/§6.3): plain localStorage key for now,
-// like the MIDI device memory; migrates into the Phase 6 versioned schema.
+// Practice settings (DESIGN.md §6.2/§6.3), persisted in the versioned
+// schema (§8) — the Phase 4 plain key migrates on first load.
 export interface SettingsMemory {
   load(): PracticeSettings
   save(settings: PracticeSettings): void
 }
 
-const STORAGE_KEY = 'playingchord:settings'
-
-export const localStorageSettingsMemory: SettingsMemory = {
-  load() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY)
-      if (!raw) return DEFAULT_PRACTICE_SETTINGS
-      return sanitizeSettings(JSON.parse(raw))
-    } catch {
-      return DEFAULT_PRACTICE_SETTINGS
-    }
-  },
-  save(settings) {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
-    } catch {
-      // Private-mode or quota failures just lose the persistence.
-    }
-  },
+export const persistedSettingsMemory: SettingsMemory = {
+  load: () => appStorage.state.settings, // sanitized during load/migration
+  save: (settings) => appStorage.update((state) => ({ ...state, settings })),
 }
 
 export interface SettingsStoreState {
@@ -40,7 +21,7 @@ export interface SettingsStoreState {
 }
 
 export function createSettingsStore(
-  memory: SettingsMemory = localStorageSettingsMemory,
+  memory: SettingsMemory = persistedSettingsMemory,
 ) {
   return createStore<SettingsStoreState>()((set, get) => ({
     settings: memory.load(),

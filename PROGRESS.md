@@ -12,13 +12,89 @@ Running summary of build progress against [PLAN.md](PLAN.md). Newest entry first
 | 3 — Walking skeleton (Milestone A) | ✅ Done (2026-07-15) — hardware pass pending |
 | 4 — Attempt lifecycle & hints | ✅ Done (2026-07-16) — stall-feel tuning on hardware pending |
 | 5 — Presets & weighted generation | ✅ Done (2026-07-16) |
-| 6 — Storage & stats (Milestone B) | ⬜ Next |
-| 7 — Session modes, goals & history | ⬜ |
+| 6 — Storage & stats (Milestone B) | ✅ Done (2026-07-16) |
+| 7 — Session modes, goals & history | ⬜ Next |
 | 8 — Notation & audio | ⬜ |
 | 9 — Editors & import/export | ⬜ |
 | 10 — Polish, a11y & deploy (Milestone C) | ⬜ |
 
 ---
+
+## 2026-07-16 — Phase 6: Storage & stats (Milestone B) ✅
+
+Versioned localStorage persistence (§8) with per-combo and daily stat
+records wired into the §5 weighting, plus the live §7 stats bar. 41 new
+tests (237 total) and a 16-check browser-driven pass.
+
+**Modules:**
+
+- `storage/schema.ts` — `PersistedStateV1` (version, settings, last device,
+  preset selection, `comboStats`, `dailyRecords`), `defaultState`, and
+  per-slice sanitizers that coerce junk persisted data (garbled stat records
+  are dropped whole — losing one combo only resets its weighting).
+  `localDateKey` keys daily records by the user's local clock.
+- `storage/migrate.ts` — the migration hook from the first persisted byte:
+  version chain (v1 today), legacy Phase 2–5 plain keys
+  (`playingchord:settings`/`lastMidiDevice`/`preset`) folded into a fresh v1
+  on first load; unknown *newer* versions reset to defaults (downgrade of a
+  static site — documented in code).
+- `storage/appStorage.ts` — `AppStorage` over an injected `KeyValueStore`:
+  loads+migrates once, serves reads from memory, writes through on update.
+  Legacy keys are only removed after the versioned write succeeds.
+- `storage/localStorageAdapter.ts` — the only file touching `localStorage`
+  (all failures degrade to in-memory operation); exports the `appStorage`
+  singleton the stores build their memory adapters on.
+- `storage/persistedStats.ts` — `PersistedComboStats`, the persisted
+  `ComboStatsSource`; each recorded outcome also ticks today's daily record
+  (prompts, first-try successes; `activeMinutes` stays 0 until Phase 7).
+- `practice/stats.ts` — the Phase 5 stub grew into the real record model:
+  `ComboStatRecord` (attempts, first-try successes, recent-outcome window,
+  time-to-correct samples capped at 20), pure `applyOutcome`/
+  `recentHistoryOf`, `InMemoryComboStats` (tests), and `rankWorstCombos` —
+  §7 "worst chords" ranked by recent-miss rate, then lifetime miss rate,
+  then attempts; never-missed combos don't qualify. `comboLabel` (in
+  `prompts.ts`) renders combo rows ("C maj — 1st Inversion").
+- `store/practiceStore.ts` — records time-to-correct with each outcome,
+  tracks session tallies (prompts / first-try / total time; skips excluded),
+  and exposes `worstChords` for the active preset from persisted records.
+  Settings/device/preset memories in all three stores are now
+  appStorage-backed.
+- UI: `StatsBar` between prompt and keyboard — session prompts, first-try
+  accuracy, avg time-to-correct, and worst-chord chips with lifetime
+  accuracy.
+
+**Tests of note:** schema sanitizers (junk fields, impossible counts, window
+caps, date-key self-healing); migration (legacy folding incl. partial junk,
+newer-version reset, versioned-state-wins-over-legacy); `AppStorage` (legacy
+keys kept when the versioned write fails, reload round-trip); Milestone B at
+unit level (misses recorded through one storage instance drive weighting +
+worst-chords through a fresh one); store-level session tallies (skips
+untouched), worst-chords scoping to the active preset, pre-seeded stats
+surfacing before anything is played.
+
+**Verified in headless Edge (sim MIDI, QWERTY):** legacy plain keys migrate
+into `playingchord:state` v1 (autoAdvance 900 kept, preset restored, legacy
+keys removed); stats bar runs — → 1/100% → 2/50% with the missed combo
+chipped at 0%; after miss-everything diatonic rounds + reload, session
+tallies reset while worst chips persist, per-combo records and today's
+daily record (9 prompts / 1 first-try) are in localStorage, and a
+previously-missed combo reappears with the 🔥 indicator — Milestone B.
+
+**Notes / deviations:**
+
+- §7 calls the stats panel "live, session" but Milestone B requires worst
+  chords to survive a reload — so worst-chords read the *persisted* records
+  (scoped to the active preset, which review mode reuses in Phase 7) while
+  prompts/accuracy/avg-time stay session-scoped. Session = one app load.
+- Daily records are persisted from v1 but `activeMinutes` is always 0 —
+  the active-minutes rule is Phase 7's; persisting the field now avoids a
+  migration then.
+- The practice-store test harness injects `InMemoryComboStats` by default so
+  tests never share the module-level `appStorage` singleton.
+
+**Next:** Phase 7 — session modes, goals & history: endless/timed/review
+modes, active-minutes rule + daily goal/streak, History tab over the
+persisted daily/combo records.
 
 ## 2026-07-16 — Phase 5: Presets & weighted generation ✅
 

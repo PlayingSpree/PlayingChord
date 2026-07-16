@@ -46,3 +46,13 @@ export function createPrompt(
     example,
   }
 }
+
+// Compact display label for a combo outside a live prompt (stats bar, the
+// Phase 7 review lists): chord name plus the voicing name — omitted for the
+// `any` rule, same as the prompt area (§7).
+export function comboLabel(combo: Combo, rootSpelling?: NoteSpelling): string {
+  const chord: Chord = { root: combo.root, type: getChordType(combo.typeId) }
+  const name = chordDisplayName(chord, rootSpelling ?? spellRoot(combo.root))
+  if (combo.voicingId === 'any') return name
+  return `${name} — ${getBuiltInVoicingRule(combo.voicingId).name}`
+}

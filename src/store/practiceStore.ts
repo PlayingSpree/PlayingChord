@@ -4,26 +4,30 @@ import {
   AttemptLifecycle,
   builtInPresets,
   comboKey,
+  comboLabel,
   createPrompt,
   DEFAULT_DIATONIC_KEY,
   expandPreset,
-  InMemoryRecentStats,
   pickWeightedCombo,
+  rankWorstCombos,
   RECENT_WINDOW,
   type AttemptPhase,
   type Combo,
+  type ComboStatsSource,
   type ExpandedPreset,
   type Hint,
   type PracticeSettings,
   type Preset,
   type Prompt,
+  type PromptOutcome,
   type Rng,
 } from '../practice'
 import type { PitchClass } from '../theory'
+import { appStorage, PersistedComboStats } from '../storage'
 import { settingsStore } from './settingsStore'
 
-// Selected preset + diatonic key, remembered like the MIDI device: a plain
-// localStorage key that migrates into the Phase 6 versioned schema.
+// Selected preset + diatonic key, remembered like the MIDI device — in the
+// versioned schema (§8); the Phase 5 plain key migrates on first load.
 export interface PresetSelection {
   presetId: string
   diatonicKey: PitchClass
@@ -34,24 +38,10 @@ export interface PresetMemory {
   save(selection: PresetSelection): void
 }
 
-const STORAGE_KEY = 'playingchord:preset'
-
-export const localStoragePresetMemory: PresetMemory = {
-  load() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY)
-      return raw ? (JSON.parse(raw) as Partial<PresetSelection>) : null
-    } catch {
-      return null
-    }
-  },
-  save(selection) {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(selection))
-    } catch {
-      // Private-mode or quota failures just lose the persistence.
-    }
-  },
+export const persistedPresetMemory: PresetMemory = {
+  load: () => appStorage.state.presetSelection,
+  save: (selection) =>
+    appStorage.update((state) => ({ ...state, presetSelection: selection })),
 }
 
 function sanitizeDiatonicKey(value: unknown): PitchClass {
@@ -63,10 +53,33 @@ function sanitizeDiatonicKey(value: unknown): PitchClass {
     : DEFAULT_DIATONIC_KEY
 }
 
+// Live session tallies for the §7 stats bar, reset on reload (a "session"
+// is one app load). Skips never count; time-to-correct includes retries.
+export interface SessionStats {
+  prompts: number
+  firstTrySuccesses: number
+  totalTimeToCorrectMs: number
+}
+
+const FRESH_SESSION: SessionStats = {
+  prompts: 0,
+  firstTrySuccesses: 0,
+  totalTimeToCorrectMs: 0,
+}
+
+// A §7 "worst chords" row, ready for display.
+export interface WorstChordEntry {
+  key: string
+  label: string
+  // Lifetime first-try accuracy (§7: first-try successes ÷ prompts).
+  accuracy: number
+}
+
 // Thin adapter over the pure practice engine: picks weighted prompts from
 // the selected preset, feeds held-set changes into the §6.2 machine, mirrors
-// machine state out for the UI, and records prompt outcomes into the stats
-// stub (§7: skips excluded; miss = any miss before the eventual correct).
+// machine state out for the UI, and records prompt outcomes into the
+// persisted stats (§7: skips excluded; miss = any miss before the eventual
+// correct).
 export interface PracticeStoreState {
   presets: readonly Preset[]
   presetId: string
@@ -80,6 +93,10 @@ export interface PracticeStoreState {
   // Recent misses of the current prompt's combo — drives the 🔥 "Practicing"
   // indicator (§5/§7); null when there are none.
   missedRecently: number | null
+  session: SessionStats
+  // Worst combos of the current preset from the *persisted* records, so the
+  // list survives reloads (Milestone B) unlike the session tallies.
+  worstChords: readonly WorstChordEntry[]
   start(): void
   onHeldChange(held: ReadonlySet<number>): void
   skip(): void
@@ -89,7 +106,7 @@ export interface PracticeStoreState {
 
 export interface PracticeStoreDeps {
   presets?: (diatonicKey: PitchClass) => readonly Preset[]
-  stats?: InMemoryRecentStats
+  stats?: ComboStatsSource
   memory?: PresetMemory
   rng?: Rng
   now?: () => number
@@ -98,8 +115,8 @@ export interface PracticeStoreDeps {
 
 export function createPracticeStore({
   presets = builtInPresets,
-  stats = new InMemoryRecentStats(),
-  memory = localStoragePresetMemory,
+  stats = new PersistedComboStats(appStorage),
+  memory = persistedPresetMemory,
   rng = Math.random,
   now = Date.now,
   settings = () => settingsStore.getState().settings,
@@ -126,6 +143,14 @@ export function createPracticeStore({
 
     let expansion: ExpandedPreset = resolve(initialId, initialKey).expansion
 
+    // The §7 worst-chords list for the current pool, from persisted records.
+    const worstChords = (): WorstChordEntry[] =>
+      rankWorstCombos(expansion.combos, stats).map(({ combo, record }) => ({
+        key: comboKey(combo),
+        label: comboLabel(combo, expansion.rootSpellings.get(combo.root)),
+        accuracy: record.firstTrySuccesses / record.attempts,
+      }))
+
     const nextPrompt = () => {
       const combo = pickWeightedCombo(expansion.combos, recentKeys, stats, rng)
       currentCombo = combo
@@ -136,7 +161,11 @@ export function createPracticeStore({
         expansion.rootSpellings.get(combo.root),
       )
       const misses = stats.recentHistory(comboKey(combo))?.misses ?? 0
-      set({ prompt, missedRecently: misses > 0 ? misses : null })
+      set({
+        prompt,
+        missedRecently: misses > 0 ? misses : null,
+        worstChords: worstChords(),
+      })
       machine.promptShown(prompt)
     }
 
@@ -144,10 +173,19 @@ export function createPracticeStore({
     // from any other phase and stays out of stats and weighting (§6.2 step 4).
     const recordOutcome = () => {
       if (currentCombo === null || machine.state.phase !== 'advancing') return
-      stats.record(
-        comboKey(currentCombo),
-        machine.state.missCount > 0 ? 'missed' : 'first-try',
-      )
+      const outcome: PromptOutcome =
+        machine.state.missCount > 0 ? 'missed' : 'first-try'
+      const timeToCorrectMs = machine.state.reactionMs ?? 0
+      stats.record(comboKey(currentCombo), outcome, timeToCorrectMs)
+      set((state) => ({
+        session: {
+          prompts: state.session.prompts + 1,
+          firstTrySuccesses:
+            state.session.firstTrySuccesses + (outcome === 'first-try' ? 1 : 0),
+          totalTimeToCorrectMs:
+            state.session.totalTimeToCorrectMs + timeToCorrectMs,
+        },
+      }))
     }
 
     const machine = new AttemptLifecycle({
@@ -182,6 +220,8 @@ export function createPracticeStore({
       missCount: 0,
       hint: null,
       missedRecently: null,
+      session: FRESH_SESSION,
+      worstChords: [],
 
       start() {
         if (get().prompt !== null) return // React StrictMode mounts effects twice
