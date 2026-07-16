@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_PRACTICE_SETTINGS,
+  MAX_DAILY_GOAL_MINUTES,
   MAX_DELAY_MS,
   sanitizeSettings,
 } from './settings'
@@ -47,12 +48,27 @@ describe('sanitizeSettings', () => {
     )
   })
 
+  it('clamps the daily goal to at least a minute and rounds it', () => {
+    expect(sanitizeSettings({ dailyGoalMinutes: 0 }).dailyGoalMinutes).toBe(1)
+    expect(sanitizeSettings({ dailyGoalMinutes: -3 }).dailyGoalMinutes).toBe(1)
+    expect(sanitizeSettings({ dailyGoalMinutes: 12.6 }).dailyGoalMinutes).toBe(
+      13,
+    )
+    expect(sanitizeSettings({ dailyGoalMinutes: 1e6 }).dailyGoalMinutes).toBe(
+      MAX_DAILY_GOAL_MINUTES,
+    )
+    expect(sanitizeSettings({ dailyGoalMinutes: '10' }).dailyGoalMinutes).toBe(
+      DEFAULT_PRACTICE_SETTINGS.dailyGoalMinutes,
+    )
+  })
+
   it('round-trips already-valid settings unchanged', () => {
     const valid = {
       allowOctaveDoubling: false,
       strictExtraNotes: false,
       judgmentDelayMs: 750,
       autoAdvanceMs: 1200,
+      dailyGoalMinutes: 20,
     }
     expect(sanitizeSettings(valid)).toEqual(valid)
   })

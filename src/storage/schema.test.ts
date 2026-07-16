@@ -92,6 +92,7 @@ describe('sanitizeDailyRecords', () => {
     activeMinutes: 12.5,
     prompts: 30,
     firstTrySuccesses: 24,
+    timeToCorrectMs: 45_000,
   }
 
   it('keeps valid records keyed by their own date', () => {
@@ -107,6 +108,16 @@ describe('sanitizeDailyRecords', () => {
         c: { ...valid, activeMinutes: -1 },
       }),
     ).toEqual({})
+  })
+
+  it('defaults a missing or junk time-to-correct sum to 0 (early-v1 states)', () => {
+    const { timeToCorrectMs: _dropped, ...earlyV1 } = valid
+    expect(sanitizeDailyRecords({ a: earlyV1 })).toEqual({
+      '2026-07-16': { ...valid, timeToCorrectMs: 0 },
+    })
+    expect(
+      sanitizeDailyRecords({ a: { ...valid, timeToCorrectMs: -3 } }),
+    ).toEqual({ '2026-07-16': { ...valid, timeToCorrectMs: 0 } })
   })
 })
 

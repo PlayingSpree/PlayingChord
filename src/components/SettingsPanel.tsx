@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { useSettings } from '../store/settingsStore'
-import { MAX_DELAY_MS } from '../practice'
+import { practiceStore } from '../store/practiceStore'
+import { MAX_DAILY_GOAL_MINUTES, MAX_DELAY_MS } from '../practice'
 
-// Minimal settings popover for the Phase 4 knobs (DESIGN.md §6.2/§6.3):
-// matcher toggles + the two delays. The full settings screen (presets,
-// voicing builder, staff, chime, goals) lands in Phase 9.
+// Minimal settings popover (DESIGN.md §6.2/§6.3, §7): matcher toggles, the
+// two delays, and the daily goal minutes. The full settings screen (presets,
+// voicing builder, staff, chime) lands in Phase 9.
 export function SettingsPanel() {
   const [open, setOpen] = useState(false)
   const settings = useSettings((s) => s.settings)
@@ -48,6 +49,18 @@ export function SettingsPanel() {
               value={settings.autoAdvanceMs}
               onChange={(v) => update({ autoAdvanceMs: v })}
             />
+            <NumberField
+              label="Daily goal (minutes)"
+              value={settings.dailyGoalMinutes}
+              min={1}
+              max={MAX_DAILY_GOAL_MINUTES}
+              step={5}
+              onChange={(v) => {
+                update({ dailyGoalMinutes: v })
+                // Streak/goal state is derived against the current goal.
+                practiceStore.getState().refreshGoal()
+              }}
+            />
           </div>
         </div>
       )}
@@ -77,13 +90,27 @@ function Toggle({
   )
 }
 
-function DelayField({
+function DelayField(props: {
+  label: string
+  value: number
+  onChange: (value: number) => void
+}) {
+  return <NumberField {...props} min={0} max={MAX_DELAY_MS} step={50} />
+}
+
+function NumberField({
   label,
   value,
+  min,
+  max,
+  step,
   onChange,
 }: {
   label: string
   value: number
+  min: number
+  max: number
+  step: number
   onChange: (value: number) => void
 }) {
   return (
@@ -91,9 +118,9 @@ function DelayField({
       {label}
       <input
         type="number"
-        min={0}
-        max={MAX_DELAY_MS}
-        step={50}
+        min={min}
+        max={max}
+        step={step}
         value={value}
         onChange={(e) => {
           // Ignore transient empty/invalid input; the store sanitizes anyway.

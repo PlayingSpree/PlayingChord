@@ -8,6 +8,7 @@ import {
   type Preset,
   type Prompt,
 } from '../practice'
+import { InMemoryDailyActivity } from '../storage'
 import { createPracticeStore, type PresetMemory } from './practiceStore'
 
 const ADVANCE = DEFAULT_PRACTICE_SETTINGS.autoAdvanceMs
@@ -37,6 +38,7 @@ function setup(deps: Parameters<typeof createPracticeStore>[0] = {}) {
     settings: () => DEFAULT_PRACTICE_SETTINGS, // independent of localStorage
     memory: memoryStub(),
     stats: new InMemoryComboStats(), // never the shared appStorage singleton
+    activity: new InMemoryDailyActivity(),
     ...deps,
   })
   let held = new Set<number>()
@@ -479,5 +481,321 @@ describe('practiceStore — preset selection (§4)', () => {
     const gMajorPcs = new Set([7, 9, 11, 0, 2, 4, 6])
     expect(gMajorPcs.has(store.getState().prompt!.chord.root)).toBe(true)
     expect(store.getState().diatonicKey).toBe(7)
+  })
+})
+
+describe('practiceStore — Learn mode (§7)', () => {
+  const onePreset = presetsOf({
+    kind: 'explicit',
+    chords: [{ root: 0, typeId: 'maj' }],
+  })
+
+  it('completed prompts feed neither stats nor session tallies', () => {
+    const stats = new InMemoryComboStats()
+    const s = setup({ presets: onePreset, stats })
+    s.store.getState().setMode('learn')
+
+    const prompt = s.store.getState().prompt!
+    s.press(61, 62, 63) // even a miss…
+    s.releaseAll()
+    playCorrectAndAdvance(s, prompt) // …then correct
+
+    expect(stats.get('0:maj:any')).toBeNull()
+    expect(s.store.getState().session.prompts).toBe(0)
+    expect(s.store.getState().worstChords).toEqual([])
+    expect(s.store.getState().prompt).not.toBe(prompt) // still advances
+  })
+
+  it('a pending ✔ earned in Practice still counts when switching to Learn', () => {
+    const stats = new InMemoryComboStats()
+    const s = setup({ presets: onePreset, stats })
+    s.press(...correctNotes(s.store.getState().prompt!))
+    expect(s.store.getState().phase).toBe('advancing')
+
+    s.store.getState().setMode('learn')
+    expect(stats.get('0:maj:any')?.attempts).toBe(1)
+  })
+
+  it('a pending ✔ earned in Learn is dropped when switching to Practice', () => {
+    const stats = new InMemoryComboStats()
+    const s = setup({ presets: onePreset, stats })
+    s.store.getState().setMode('learn')
+    s.releaseAll()
+    s.press(...correctNotes(s.store.getState().prompt!))
+    expect(s.store.getState().phase).toBe('advancing')
+
+    s.store.getState().setMode('practice')
+    expect(stats.get('0:maj:any')).toBeNull()
+    expect(s.store.getState().session.prompts).toBe(0)
+  })
+
+  it('switching modes deals a fresh prompt', () => {
+    const s = setup()
+    const before = s.store.getState().prompt
+    s.store.getState().setMode('learn')
+    expect(s.store.getState().prompt).not.toBe(before)
+    expect(s.store.getState().mode).toBe('learn')
+  })
+
+  it('switching to Learn cancels a running timer without a summary', () => {
+    const s = setup()
+    s.store.getState().startTimer(5)
+    expect(s.store.getState().timerEndsAt).not.toBeNull()
+
+    s.store.getState().setMode('learn')
+    expect(s.store.getState().timerEndsAt).toBeNull()
+    expect(s.store.getState().timerMinutes).toBeNull()
+    vi.advanceTimersByTime(5 * 60_000)
+    expect(s.store.getState().summary).toBeNull() // dead timer never fires
+  })
+
+  it('starting a timer in Learn mode is a no-op (Learn is untimed)', () => {
+    const s = setup()
+    s.store.getState().setMode('learn')
+    s.store.getState().startTimer(5)
+    expect(s.store.getState().timerEndsAt).toBeNull()
+  })
+})
+
+describe('practiceStore — worst chords only (§5/§7)', () => {
+  const sixRoots = presetsOf({
+    kind: 'product',
+    roots: [0, 1, 2, 3, 4, 5],
+    chordTypes: ['maj'],
+  })
+
+  it('draws only from the preset combos missed somewhere', () => {
+    const stats = new InMemoryComboStats()
+    stats.record('0:maj:any', 'missed', 4000)
+    stats.record('3:maj:any', 'missed', 4000)
+    stats.record('1:maj:any', 'first-try', 1000) // clean — never drawn
+
+    const s = setup({ presets: sixRoots, stats })
+    s.store.getState().setWorstOnly(true)
+    for (let i = 0; i < 20; i++) {
+      expect([0, 3]).toContain(s.store.getState().prompt!.chord.root)
+      s.store.getState().skip()
+    }
+  })
+
+  it('falls back to the whole pool while nothing qualifies', () => {
+    const s = setup({ presets: sixRoots })
+    s.store.getState().setWorstOnly(true)
+    expect(s.store.getState().prompt).not.toBeNull()
+    expect(s.store.getState().worstOnly).toBe(true)
+  })
+
+  it('Learn mode ignores the toggle', () => {
+    const stats = new InMemoryComboStats()
+    stats.record('0:maj:any', 'missed', 4000)
+    const s = setup({ presets: sixRoots, stats })
+    s.store.getState().setWorstOnly(true)
+    s.store.getState().setMode('learn')
+
+    const seen = new Set<number>()
+    for (let i = 0; i < 30; i++) {
+      seen.add(s.store.getState().prompt!.chord.root)
+      s.store.getState().skip()
+    }
+    expect(seen.size).toBeGreaterThan(1) // not pinned to the one missed combo
+  })
+})
+
+describe('practiceStore — session timer & summary (§7)', () => {
+  const onePreset = presetsOf({
+    kind: 'explicit',
+    chords: [{ root: 0, typeId: 'maj' }],
+  })
+
+  it('starting a timer begins a fresh session', () => {
+    const s = setup({ presets: onePreset })
+    playCorrectAndAdvance(s, s.store.getState().prompt!)
+    expect(s.store.getState().session.prompts).toBe(1)
+
+    s.store.getState().startTimer(5)
+    expect(s.store.getState().session.prompts).toBe(0)
+    expect(s.store.getState().timerMinutes).toBe(5)
+    expect(s.store.getState().timerEndsAt).toBe(Date.now() + 5 * 60_000)
+  })
+
+  it('presents a summary of the timed window when time runs out', () => {
+    const s = setup({ presets: onePreset })
+    s.store.getState().startTimer(5)
+
+    vi.advanceTimersByTime(1000)
+    playCorrectAndAdvance(s, s.store.getState().prompt!) // first-try, 1000 ms
+    const second = s.store.getState().prompt!
+    s.press(61, 62, 63) // miss…
+    s.releaseAll()
+    playCorrectAndAdvance(s, second) // …corrected
+
+    vi.advanceTimersByTime(5 * 60_000)
+    const state = s.store.getState()
+    expect(state.summary).toMatchObject({
+      prompts: 2,
+      firstTrySuccesses: 1,
+    })
+    expect(state.summary!.worst.map((e) => e.key)).toEqual(['0:maj:any'])
+    expect(state.summary!.slowest).toHaveLength(1)
+    expect(state.prompt).toBeNull()
+    expect(state.phase).toBe('idle')
+    expect(state.timerMinutes).toBeNull()
+  })
+
+  it('a ✔ still waiting out its advance window counts at expiry', () => {
+    const stats = new InMemoryComboStats()
+    const s = setup({ presets: onePreset, stats })
+    s.store.getState().startTimer(1)
+
+    vi.advanceTimersByTime(59_900)
+    s.press(...correctNotes(s.store.getState().prompt!))
+    expect(s.store.getState().phase).toBe('advancing')
+
+    vi.advanceTimersByTime(100) // timer fires before the advance window ends
+    expect(s.store.getState().summary!.prompts).toBe(1)
+    expect(stats.get('0:maj:any')?.attempts).toBe(1)
+    // The dead advance timer must not deal a prompt over the summary.
+    vi.advanceTimersByTime(ADVANCE)
+    expect(s.store.getState().prompt).toBeNull()
+    s.releaseAll()
+  })
+
+  it('input is ignored while the summary is open', () => {
+    const s = setup({ presets: onePreset })
+    s.store.getState().startTimer(1)
+    vi.advanceTimersByTime(60_000)
+    expect(s.store.getState().summary).not.toBeNull()
+
+    s.press(60, 64, 67)
+    expect(s.store.getState().phase).toBe('idle')
+    s.store.getState().skip()
+    expect(s.store.getState().prompt).toBeNull()
+    s.releaseAll()
+  })
+
+  it('dismissing the summary resumes endless practice as a fresh session', () => {
+    const s = setup({ presets: onePreset })
+    s.store.getState().startTimer(1)
+    playCorrectAndAdvance(s, s.store.getState().prompt!)
+    vi.advanceTimersByTime(60_000)
+
+    s.store.getState().dismissSummary()
+    const state = s.store.getState()
+    expect(state.summary).toBeNull()
+    expect(state.prompt).not.toBeNull()
+    expect(state.phase).toBe('armed')
+    expect(state.session.prompts).toBe(0)
+    expect(state.timerEndsAt).toBeNull()
+  })
+
+  it('cancelling the timer returns to endless with no summary', () => {
+    const s = setup({ presets: onePreset })
+    s.store.getState().startTimer(5)
+    playCorrectAndAdvance(s, s.store.getState().prompt!)
+
+    s.store.getState().cancelTimer()
+    expect(s.store.getState().timerEndsAt).toBeNull()
+    expect(s.store.getState().session.prompts).toBe(1) // session continues
+
+    vi.advanceTimersByTime(5 * 60_000)
+    expect(s.store.getState().summary).toBeNull()
+  })
+
+  it('rejects junk durations', () => {
+    const s = setup({ presets: onePreset })
+    s.store.getState().startTimer(0)
+    s.store.getState().startTimer(-5)
+    s.store.getState().startTimer(NaN)
+    expect(s.store.getState().timerEndsAt).toBeNull()
+  })
+})
+
+describe('practiceStore — active minutes & goal (§7)', () => {
+  it('accrues active time from held-note events into the daily record', () => {
+    const activity = new InMemoryDailyActivity()
+    const s = setup({ activity })
+
+    s.press(60) // first event — nothing credited yet
+    vi.advanceTimersByTime(3000)
+    s.release(60) // +3 s buffered (below the 5 s flush threshold)
+    expect(activity.todayMinutes()).toBe(0)
+
+    vi.advanceTimersByTime(3000)
+    s.press(62) // +3 s → 6 s ≥ threshold → flushed
+    expect(activity.todayMinutes()).toBeCloseTo(0.1, 5)
+    expect(s.store.getState().goal.todayMinutes).toBeCloseTo(0.1, 5)
+    s.releaseAll()
+  })
+
+  it('gaps longer than the idle window earn nothing', () => {
+    const activity = new InMemoryDailyActivity()
+    const s = setup({ activity })
+
+    s.press(60)
+    vi.advanceTimersByTime(31_000) // walked away
+    s.release(60)
+    vi.advanceTimersByTime(6000)
+    s.press(60)
+    expect(activity.todayMinutes()).toBeCloseTo(0.1, 5) // only the 6 s counted
+    s.releaseAll()
+  })
+
+  it('Learn mode still accrues active time (§5)', () => {
+    const activity = new InMemoryDailyActivity()
+    const s = setup({ activity })
+    s.store.getState().setMode('learn')
+
+    s.press(60)
+    vi.advanceTimersByTime(6000)
+    s.release(60)
+    expect(activity.todayMinutes()).toBeCloseTo(0.1, 5)
+  })
+
+  it('exposes persisted goal progress and streak at startup', () => {
+    const activity = new InMemoryDailyActivity()
+    activity.addMinutes(12) // ≥ the default 10-minute goal
+    const s = setup({ activity })
+    expect(s.store.getState().goal).toEqual({ todayMinutes: 12, streak: 1 })
+  })
+})
+
+describe('practiceStore — pause/resume (Phase 7 History nav)', () => {
+  const onePreset = presetsOf({
+    kind: 'explicit',
+    chords: [{ root: 0, typeId: 'maj' }],
+  })
+
+  it('pause drops the prompt and start deals a fresh one', () => {
+    const s = setup()
+    expect(s.store.getState().prompt).not.toBeNull()
+    s.store.getState().pause()
+    expect(s.store.getState().prompt).toBeNull()
+    expect(s.store.getState().phase).toBe('idle')
+
+    s.store.getState().start()
+    expect(s.store.getState().prompt).not.toBeNull()
+    expect(s.store.getState().phase).toBe('armed')
+  })
+
+  it('a ✔ waiting out its advance window still counts when pausing', () => {
+    const stats = new InMemoryComboStats()
+    const s = setup({ presets: onePreset, stats })
+    s.press(...correctNotes(s.store.getState().prompt!))
+
+    s.store.getState().pause()
+    expect(stats.get('0:maj:any')?.attempts).toBe(1)
+    vi.advanceTimersByTime(ADVANCE) // dead advance timer must not re-prompt
+    expect(s.store.getState().prompt).toBeNull()
+    s.releaseAll()
+  })
+
+  it('start never deals a prompt over an open summary', () => {
+    const s = setup({ presets: onePreset })
+    s.store.getState().startTimer(1)
+    vi.advanceTimersByTime(60_000)
+    expect(s.store.getState().summary).not.toBeNull()
+
+    s.store.getState().start()
+    expect(s.store.getState().prompt).toBeNull()
   })
 })

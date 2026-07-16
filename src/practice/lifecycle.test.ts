@@ -351,3 +351,53 @@ describe('lifecycle — next prompt resets per-prompt state', () => {
     ])
   })
 })
+
+describe('lifecycle — stop (Phase 7: leaving the practice flow)', () => {
+  it('resets to idle, clears hint state, and kills the advance timer', () => {
+    const { machine, advances, press, releaseAll } = setup()
+    machine.promptShown(prompt(0, 'maj', 'any'))
+    press(61, 62, 63) // latch a miss + hint
+    expect(machine.state.phase).toBe('missed')
+
+    releaseAll()
+    press(60, 64, 67) // correct — advance timer pending
+    machine.stop()
+    expect(machine.state).toEqual({
+      phase: 'idle',
+      reactionMs: null,
+      missCount: 0,
+      hint: null,
+    })
+
+    vi.advanceTimersByTime(ADVANCE)
+    expect(advances).toEqual([]) // the pending advance never fires
+  })
+
+  it('kills a pending stall timer', () => {
+    const { machine, press } = setup()
+    machine.promptShown(prompt(0, 'maj', 'first-inversion'))
+    press(60, 64, 67) // root position — stall clock running
+    machine.stop()
+    vi.advanceTimersByTime(STALL)
+    expect(machine.state.phase).toBe('idle') // no late miss latched
+  })
+
+  it('still tracks held keys so the next prompt arms correctly', () => {
+    const { machine, press, releaseAll } = setup()
+    machine.promptShown(prompt(0, 'maj', 'any'))
+    press(60)
+    machine.stop()
+    machine.promptShown(prompt(2, 'maj', 'any'))
+    expect(machine.state.phase).toBe('awaiting-release')
+    releaseAll()
+    expect(machine.state.phase).toBe('armed')
+  })
+
+  it('ignores held changes while stopped', () => {
+    const { machine, press } = setup()
+    machine.promptShown(prompt(0, 'maj', 'any'))
+    machine.stop()
+    press(60, 64, 67) // would be correct — but nothing is judging
+    expect(machine.state.phase).toBe('idle')
+  })
+})

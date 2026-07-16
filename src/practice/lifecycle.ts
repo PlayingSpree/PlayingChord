@@ -95,6 +95,20 @@ export class AttemptLifecycle {
     }
   }
 
+  // Halt without advancing — the practice flow is leaving (History view
+  // opened, session timer expired). All timers die; held keys are still
+  // tracked so the next promptShown() arms correctly.
+  stop(): void {
+    this.clearStall()
+    this.clearAdvance()
+    this.prompt = null
+    this.phase = 'idle'
+    this.reactionMs = null
+    this.missCount = 0
+    this.hint = null
+    this.emit()
+  }
+
   // §6.2 step 4: advance without judging. Nothing is recorded, so skips stay
   // out of accuracy stats and miss weighting when Phase 6 adds them.
   skip(): void {

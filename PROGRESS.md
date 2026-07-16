@@ -13,12 +13,103 @@ Running summary of build progress against [PLAN.md](PLAN.md). Newest entry first
 | 4 — Attempt lifecycle & hints | ✅ Done (2026-07-16) — stall-feel tuning on hardware pending |
 | 5 — Presets & weighted generation | ✅ Done (2026-07-16) |
 | 6 — Storage & stats (Milestone B) | ✅ Done (2026-07-16) |
-| 7 — Session modes, goals & history | ⬜ Next |
-| 8 — Notation & audio | ⬜ |
+| 7 — Session modes, goals & history | ✅ Done (2026-07-16) |
+| 8 — Notation & audio | ⬜ Next |
 | 9 — Editors & import/export | ⬜ |
 | 10 — Polish, a11y & deploy (Milestone C) | ⬜ |
 
 ---
+
+## 2026-07-16 — Phase 7: Session modes, goals & history ✅
+
+The v5 §7 session layer: Learn/Practice modes, the Practice-mode session
+timer with end-of-session summary, worst-chords-only drilling, active
+minutes → daily goal/streak, and the History tab. 61 new tests (298 total)
+and a 23-check browser-driven pass.
+
+**Modules:**
+
+- `practice/session.ts` — `SessionMode`, timer presets/sanitizer, and
+  `summarizeSession` over per-prompt `SessionEvent`s: the §7 summary
+  (prompts, first-try, slowest by avg time, worst by session accuracy —
+  "worst" requires a miss, same stance as `rankWorstCombos`).
+- `practice/activeTime.ts` — `ActiveTimeTracker`, the documented §7
+  active-minutes rule: time accrues between held-note events ≤ 30 s apart;
+  longer gaps contribute nothing. Counts any playing — Learn mode and
+  noodling included (§5: Learn is stats-neutral but its time counts).
+- `practice/stats.ts` — `rankMostImproved` (History): combos whose full
+  recent window beats their lifetime miss rate, min 5 attempts.
+  `rankWorstCombos` doubles as the worst-only drill pool (no limit).
+- `practice/lifecycle.ts` — `stop()`: halt without advancing (History nav,
+  timer expiry); kills stall/advance timers, keeps tracking held keys.
+- `practice/combos.ts` — `parseComboKey`, validated against the built-in
+  type/voicing tables so stale persisted keys can't crash History.
+- `storage/goals.ts` — pure streak logic over daily records: noon-anchored
+  date-key arithmetic (DST-safe), `computeStreak` (an unmet *today* doesn't
+  break a yesterday-ending chain), `computeBestStreak`, `lastDateKeys`.
+  Streaks are always derived against the *current* goal, never stored.
+- `storage/persistedStats.ts` — daily records also accumulate
+  `timeToCorrectMs` (History's per-day average; added within schema v1 —
+  the sanitizer defaults it, so early-v1 states need no migration) and
+  `PersistedDailyActivity`/`InMemoryDailyActivity` for active minutes.
+- `practice/settings.ts` — `dailyGoalMinutes` (default 10, clamp 1–1440)
+  rides `PracticeSettings`, so persistence/sanitizing came free.
+- `store/practiceStore.ts` — mode state (Learn records nothing: combo
+  stats, daily prompts, session tallies and summary log all skip; a pending
+  ✔ counts under the *outgoing* mode's rules on switch), worst-only pick
+  pool (falls back to the full pool while nothing qualifies), timer
+  lifecycle (start resets the session; expiry records a pending ✔, stops
+  the machine, freezes input behind the summary; dismiss starts fresh),
+  active-time buffering (flushed at ≥ 5 s into the daily record + reactive
+  goal/streak state), and `pause()` for the History view.
+- UI: `ModeBar` (segmented Learn/Practice + timer select with custom
+  minutes + worst-only toggle, disabled until something is missed),
+  `GoalChip` (🔥 streak + today/goal), countdown chip beside Skip (§7
+  sketch), `SessionSummaryModal`, `HistoryView` (stat row, 12-week goal
+  calendar, 30-day accuracy/time column charts, most-improved/worst
+  lists), Learn reveal on `KeyboardView` (same overlay as hint stage 3),
+  daily-goal field in the settings panel, practice/history view switch.
+
+**Tests of note:** streak rollover (DST spring/fall keys, leap year, gap
+days, goal-change re-evaluation), active-time window edges (exact 30 s
+counts, 30.001 s doesn't, clock skew), summary ranking, Learn-mode
+neutrality incl. pending-✔ semantics both directions, worst-only pinning +
+empty-pool fallback + Learn ignoring it, timer expiry racing an advance
+window, input frozen during summary, store pause/resume, lifecycle stop.
+
+**Verified in headless Edge (sim MIDI, QWERTY, 23 checks):** Practice
+default with goal chip at 0/10; worst-only disabled until a miss then pins
+generation to the missed combo; Learn hides the timer, shows the example
+voicing before input, and completes prompts without touching comboStats,
+daily prompts, or session tallies; 5-min timer counts down in the prompt
+area and (fake clock) ends in a summary — 2 prompts, 50%, slowest/worst
+lists — whose dismissal starts a fresh session; ~10 simulated active
+minutes flip the chip to "✓ 10/10 min" with streak 1; History shows the
+streak, worst chords, day columns and the goal-met calendar day; goal
+progress survives a reload. Screenshots match the §7 sketch.
+
+**Notes / deviations:**
+
+- A "session" is still one app load, except starting a timer (or dismissing
+  its summary) begins a fresh one — the §7 summary describes exactly the
+  timed window, so the stats bar resets with it.
+- Mode, worst-only and timer are deliberately not persisted: Practice is
+  the designed default and Learn/review are per-sitting choices.
+- Active time keeps accruing while the History view is open (playing is
+  practicing, judged or not); prompts pause there via `pause()`.
+- Switching mode/worst-only deals a fresh prompt immediately (a Learn
+  reveal must not be answerable for Practice credit); switching to Learn
+  silently cancels a running timer (Learn is untimed) — no summary.
+- History's trend charts follow the dataviz-skill procedure: single-series
+  day columns (mark colors validated against the slate-950 surface), days
+  without prompts render as gaps rather than zeros, native tooltips per day.
+- PLAN.md suggested attempt-based "active"; held-note events were chosen
+  instead (finer, and Learn/free play legitimately count). Documented in
+  `activeTime.ts`.
+
+**Next:** Phase 8 — notation & audio: VexFlow grand staff for Learn mode
+(spelling module already carries `rootSpelling`), staff on/off setting,
+Web Audio correct chime with on/off toggle.
 
 ## 2026-07-16 — Design revision: Learn/Practice session modes (DESIGN.md v5)
 

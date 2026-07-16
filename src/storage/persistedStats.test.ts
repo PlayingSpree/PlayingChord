@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { comboWeight, rankWorstCombos, type Combo } from '../practice'
 import { AppStorage, type KeyValueStore } from './appStorage'
-import { applyDailyPrompt, PersistedComboStats } from './persistedStats'
+import {
+  applyDailyPrompt,
+  InMemoryDailyActivity,
+  PersistedComboStats,
+  PersistedDailyActivity,
+} from './persistedStats'
 
 function fakeKV(): KeyValueStore {
   const data = new Map<string, string>()
@@ -22,22 +27,27 @@ const COMBO: Combo = { root: 0, typeId: 'maj', voicingId: 'any' }
 
 describe('applyDailyPrompt (§8 daily record)', () => {
   it('opens a fresh day at zero active minutes', () => {
-    expect(applyDailyPrompt(undefined, '2026-07-16', 'first-try')).toEqual({
+    expect(
+      applyDailyPrompt(undefined, '2026-07-16', 'first-try', 1500),
+    ).toEqual({
       date: '2026-07-16',
       activeMinutes: 0,
       prompts: 1,
       firstTrySuccesses: 1,
+      timeToCorrectMs: 1500,
     })
   })
 
-  it('accumulates prompts and first-try successes', () => {
+  it('accumulates prompts, first-try successes and time-to-correct', () => {
     const day = applyDailyPrompt(
-      applyDailyPrompt(undefined, '2026-07-16', 'first-try'),
+      applyDailyPrompt(undefined, '2026-07-16', 'first-try', 1000),
       '2026-07-16',
       'missed',
+      4000,
     )
     expect(day.prompts).toBe(2)
     expect(day.firstTrySuccesses).toBe(1)
+    expect(day.timeToCorrectMs).toBe(5000)
   })
 })
 
@@ -61,6 +71,7 @@ describe('PersistedComboStats', () => {
       activeMinutes: 0,
       prompts: 2,
       firstTrySuccesses: 1,
+      timeToCorrectMs: 5500,
     })
   })
 
@@ -89,5 +100,67 @@ describe('PersistedComboStats', () => {
     expect(after.recentHistory(KEY)).toEqual({ misses: 2, total: 2 })
     expect(comboWeight(after.recentHistory(KEY))).toBeGreaterThan(1)
     expect(rankWorstCombos([COMBO], after).map((w) => w.combo)).toEqual([COMBO])
+  })
+})
+
+describe('PersistedDailyActivity (§7 active minutes)', () => {
+  it('accrues minutes onto today, alongside prompt ticks', () => {
+    const storage = new AppStorage(fakeKV())
+    const stats = new PersistedComboStats(storage, () => '2026-07-16')
+    const activity = new PersistedDailyActivity(storage, () => '2026-07-16')
+
+    stats.record(KEY, 'first-try', 1000)
+    activity.addMinutes(0.5)
+    activity.addMinutes(2)
+
+    expect(activity.todayMinutes()).toBe(2.5)
+    expect(storage.state.dailyRecords['2026-07-16']).toMatchObject({
+      activeMinutes: 2.5,
+      prompts: 1,
+    })
+  })
+
+  it('opens a day that has activity but no prompts yet', () => {
+    const storage = new AppStorage(fakeKV())
+    const activity = new PersistedDailyActivity(storage, () => '2026-07-16')
+    activity.addMinutes(1)
+    expect(storage.state.dailyRecords['2026-07-16']).toEqual({
+      date: '2026-07-16',
+      activeMinutes: 1,
+      prompts: 0,
+      firstTrySuccesses: 0,
+      timeToCorrectMs: 0,
+    })
+  })
+
+  it('ignores non-positive and junk amounts', () => {
+    const storage = new AppStorage(fakeKV())
+    const activity = new PersistedDailyActivity(storage, () => '2026-07-16')
+    activity.addMinutes(0)
+    activity.addMinutes(-5)
+    activity.addMinutes(NaN)
+    expect(storage.state.dailyRecords['2026-07-16']).toBeUndefined()
+  })
+
+  it('splits across the day rollover and survives a reload', () => {
+    const kv = fakeKV()
+    let today = '2026-07-16'
+    const activity = new PersistedDailyActivity(new AppStorage(kv), () => today)
+    activity.addMinutes(3)
+    today = '2026-07-17'
+    activity.addMinutes(4)
+    expect(activity.todayMinutes()).toBe(4)
+
+    const reloaded = new PersistedDailyActivity(new AppStorage(kv), () => today)
+    expect(reloaded.records()['2026-07-16']?.activeMinutes).toBe(3)
+    expect(reloaded.todayMinutes()).toBe(4)
+  })
+
+  it('the in-memory double behaves the same', () => {
+    const activity = new InMemoryDailyActivity(() => '2026-07-16')
+    activity.addMinutes(1.5)
+    activity.addMinutes(-1)
+    expect(activity.todayMinutes()).toBe(1.5)
+    expect(activity.records()['2026-07-16']?.prompts).toBe(0)
   })
 })

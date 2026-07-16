@@ -118,6 +118,9 @@ export interface WorstCombo {
 // weighting), then lifetime first-try miss rate, then attempts (more
 // evidence ranks worse), then key for determinism. Combos never practiced or
 // never missed don't qualify — "worst" implies a miss somewhere.
+// A pool for the §7 "worst chords only" Practice setting: every combo in
+// the preset that qualifies as "worst" (missed somewhere), in worst-first
+// order — the display list is the limit-3 head of the same ranking.
 export function rankWorstCombos(
   pool: readonly Combo[],
   stats: ComboStatsSource,
@@ -140,4 +143,43 @@ export function rankWorstCombos(
       comboKey(a.combo).localeCompare(comboKey(b.combo)),
   )
   return scored.slice(0, limit).map(({ combo, record }) => ({ combo, record }))
+}
+
+// How many attempts a combo needs before "improvement" means anything —
+// a single lucky recent window on 2 attempts isn't a trend.
+export const IMPROVED_MIN_ATTEMPTS = 5
+
+export interface ImprovedCombo {
+  combo: Combo
+  record: ComboStatRecord
+  // Lifetime miss rate minus recent-window miss rate, in (0, 1]: how much
+  // better the recent window is than the combo's overall history.
+  improvement: number
+}
+
+// The §7 History "most improved" chords: combos whose recent window beats
+// their lifetime miss rate. Requires a full-enough history (attempts and a
+// populated recent window) so fresh combos can't rank.
+export function rankMostImproved(
+  pool: readonly Combo[],
+  stats: ComboStatsSource,
+  limit = WORST_CHORDS_LIMIT,
+): ImprovedCombo[] {
+  const scored = pool.flatMap((combo) => {
+    const record = stats.get(comboKey(combo))
+    if (record === null || record.attempts < IMPROVED_MIN_ATTEMPTS) return []
+    const recent = recentHistoryOf(record)
+    if (recent === null || recent.total < RECENT_OUTCOME_WINDOW) return []
+    const lifetimeMissRate = 1 - record.firstTrySuccesses / record.attempts
+    const improvement = lifetimeMissRate - recent.misses / recent.total
+    if (improvement <= 0) return []
+    return [{ combo, record, improvement }]
+  })
+  scored.sort(
+    (a, b) =>
+      b.improvement - a.improvement ||
+      b.record.attempts - a.record.attempts ||
+      comboKey(a.combo).localeCompare(comboKey(b.combo)),
+  )
+  return scored.slice(0, limit)
 }

@@ -10,6 +10,8 @@ export interface PracticeSettings extends MatchSettings {
   judgmentDelayMs: number
   // How long the ✔ flash stays before the next prompt (§6.2).
   autoAdvanceMs: number
+  // Daily active-practice goal (§7), in minutes.
+  dailyGoalMinutes: number
 }
 
 export const DEFAULT_PRACTICE_SETTINGS: PracticeSettings = {
@@ -17,9 +19,11 @@ export const DEFAULT_PRACTICE_SETTINGS: PracticeSettings = {
   strictExtraNotes: true,
   judgmentDelayMs: 500,
   autoAdvanceMs: 800,
+  dailyGoalMinutes: 10,
 }
 
 export const MAX_DELAY_MS = 10_000
+export const MAX_DAILY_GOAL_MINUTES = 1_440 // one full day
 
 function asBoolean(value: unknown, fallback: boolean): boolean {
   return typeof value === 'boolean' ? value : fallback
@@ -28,6 +32,11 @@ function asBoolean(value: unknown, fallback: boolean): boolean {
 function asDelayMs(value: unknown, fallback: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
   return Math.round(Math.min(Math.max(value, 0), MAX_DELAY_MS))
+}
+
+function asGoalMinutes(value: unknown, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
+  return Math.round(Math.min(Math.max(value, 1), MAX_DAILY_GOAL_MINUTES))
 }
 
 // Coerces unknown data (hand-edited localStorage, stale schema, wild UI
@@ -50,5 +59,9 @@ export function sanitizeSettings(value: unknown): PracticeSettings {
     ),
     judgmentDelayMs: asDelayMs(raw.judgmentDelayMs, defaults.judgmentDelayMs),
     autoAdvanceMs: asDelayMs(raw.autoAdvanceMs, defaults.autoAdvanceMs),
+    dailyGoalMinutes: asGoalMinutes(
+      raw.dailyGoalMinutes,
+      defaults.dailyGoalMinutes,
+    ),
   }
 }

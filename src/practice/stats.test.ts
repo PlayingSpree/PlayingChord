@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 import type { Combo } from './combos'
 import {
   applyOutcome,
+  IMPROVED_MIN_ATTEMPTS,
   InMemoryComboStats,
   NO_HISTORY,
+  rankMostImproved,
   rankWorstCombos,
   recentHistoryOf,
   RECENT_OUTCOME_WINDOW,
@@ -149,5 +151,57 @@ describe('rankWorstCombos (§7 worst chords)', () => {
     const stats = new InMemoryComboStats()
     stats.record('9:min7:any', 'missed', 5000)
     expect(rankWorstCombos(pool, stats)).toEqual([])
+  })
+})
+
+describe('rankMostImproved (§7 History)', () => {
+  const combo = (root: number): Combo => ({
+    root: root as Combo['root'],
+    typeId: 'maj',
+    voicingId: 'any',
+  })
+  const key = (root: number) => `${root}:maj:any`
+  const pool = [combo(0), combo(1), combo(2)]
+
+  // Miss-heavy past, then a full recent window with the given misses.
+  const seed = (
+    stats: InMemoryComboStats,
+    root: number,
+    recentMisses: number,
+  ) => {
+    for (let i = 0; i < IMPROVED_MIN_ATTEMPTS; i++) {
+      stats.record(key(root), 'missed', 5000)
+    }
+    for (let i = 0; i < RECENT_OUTCOME_WINDOW; i++) {
+      const missed = i < recentMisses
+      stats.record(key(root), missed ? 'missed' : 'first-try', 1000)
+    }
+  }
+
+  it('ranks combos whose recent window beats their lifetime miss rate', () => {
+    const stats = new InMemoryComboStats()
+    seed(stats, 0, 0) // fully clean now — most improved
+    seed(stats, 1, 2) // partly improved
+    seed(stats, 2, RECENT_OUTCOME_WINDOW) // still missing everything
+    const ranked = rankMostImproved(pool, stats)
+    expect(ranked.map((r) => r.combo.root)).toEqual([0, 1])
+    expect(ranked[0]!.improvement).toBeGreaterThan(ranked[1]!.improvement)
+  })
+
+  it('needs enough attempts and a full recent window', () => {
+    const stats = new InMemoryComboStats()
+    // 3 attempts: a lucky short history is not a trend.
+    stats.record(key(0), 'missed', 5000)
+    stats.record(key(0), 'first-try', 1000)
+    stats.record(key(0), 'first-try', 1000)
+    expect(rankMostImproved(pool, stats)).toEqual([])
+  })
+
+  it('never ranks clean or unpracticed combos', () => {
+    const stats = new InMemoryComboStats()
+    for (let i = 0; i < IMPROVED_MIN_ATTEMPTS + RECENT_OUTCOME_WINDOW; i++) {
+      stats.record(key(0), 'first-try', 1000) // clean: nothing to improve on
+    }
+    expect(rankMostImproved(pool, stats)).toEqual([])
   })
 })

@@ -37,6 +37,11 @@ export interface DailyRecord {
   activeMinutes: number
   prompts: number
   firstTrySuccesses: number
+  // Summed per-prompt time-to-correct for the day — the §7 History trend
+  // needs a per-day average, which the per-combo sample windows can't give.
+  // Added within v1: absent in early-v1 states, so it defaults rather than
+  // invalidating the record.
+  timeToCorrectMs: number
 }
 
 export interface PersistedStateV1 {
@@ -164,8 +169,22 @@ export function sanitizeDailyRecords(
     ) {
       continue
     }
+    // Absent in early-v1 states (see DailyRecord); a bad value zeroes only
+    // this metric instead of dropping the whole day.
+    const timeToCorrectMs =
+      typeof record.timeToCorrectMs === 'number' &&
+      Number.isFinite(record.timeToCorrectMs) &&
+      record.timeToCorrectMs >= 0
+        ? record.timeToCorrectMs
+        : 0
     // The record's own date is canonical — a mismatched map key self-heals.
-    records[date] = { date, activeMinutes, prompts, firstTrySuccesses }
+    records[date] = {
+      date,
+      activeMinutes,
+      prompts,
+      firstTrySuccesses,
+      timeToCorrectMs,
+    }
   }
   return records
 }

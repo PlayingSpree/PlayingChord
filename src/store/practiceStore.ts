@@ -1,6 +1,7 @@
 import { createStore } from 'zustand/vanilla'
 import { useStore } from 'zustand'
 import {
+  ActiveTimeTracker,
   AttemptLifecycle,
   builtInPresets,
   comboKey,
@@ -11,6 +12,8 @@ import {
   pickWeightedCombo,
   rankWorstCombos,
   RECENT_WINDOW,
+  sanitizeTimerMinutes,
+  summarizeSession,
   type AttemptPhase,
   type Combo,
   type ComboStatsSource,
@@ -21,9 +24,19 @@ import {
   type Prompt,
   type PromptOutcome,
   type Rng,
+  type SessionEvent,
+  type SessionMode,
+  type SessionSummary,
 } from '../practice'
 import type { PitchClass } from '../theory'
-import { appStorage, PersistedComboStats } from '../storage'
+import {
+  appStorage,
+  computeStreak,
+  localDateKey,
+  PersistedComboStats,
+  PersistedDailyActivity,
+  type DailyActivitySource,
+} from '../storage'
 import { settingsStore } from './settingsStore'
 
 // Selected preset + diatonic key, remembered like the MIDI device — in the
@@ -53,8 +66,10 @@ function sanitizeDiatonicKey(value: unknown): PitchClass {
     : DEFAULT_DIATONIC_KEY
 }
 
-// Live session tallies for the §7 stats bar, reset on reload (a "session"
-// is one app load). Skips never count; time-to-correct includes retries.
+// Live session tallies for the §7 stats bar. A "session" is one app load —
+// until a session timer starts or its summary is dismissed, both of which
+// begin a fresh one. Skips and Learn-mode prompts never count (§7);
+// time-to-correct includes retries.
 export interface SessionStats {
   prompts: number
   firstTrySuccesses: number
@@ -75,11 +90,24 @@ export interface WorstChordEntry {
   accuracy: number
 }
 
+// Today's progress toward the §7 daily goal, mirrored into reactive state
+// whenever buffered active time flushes (appStorage itself isn't reactive).
+export interface GoalProgress {
+  todayMinutes: number
+  streak: number
+}
+
+// Buffered active time is persisted once this much accrues — every held-note
+// change would rewrite the whole state blob for single-digit ms gains.
+export const ACTIVE_FLUSH_MS = 5_000
+
 // Thin adapter over the pure practice engine: picks weighted prompts from
 // the selected preset, feeds held-set changes into the §6.2 machine, mirrors
 // machine state out for the UI, and records prompt outcomes into the
 // persisted stats (§7: skips excluded; miss = any miss before the eventual
-// correct).
+// correct). Phase 7 adds the §7 session layer: Learn/Practice modes, the
+// session timer with its end-of-session summary, worst-chords-only drilling,
+// and active-minutes → daily goal/streak tracking.
 export interface PracticeStoreState {
   presets: readonly Preset[]
   presetId: string
@@ -93,20 +121,39 @@ export interface PracticeStoreState {
   // Recent misses of the current prompt's combo — drives the 🔥 "Practicing"
   // indicator (§5/§7); null when there are none.
   missedRecently: number | null
+  mode: SessionMode
+  // Practice-mode settings (§7): they live beside the mode picker, not in
+  // the settings panel, and reset with the app load.
+  worstOnly: boolean
+  timerMinutes: number | null // running timer's duration; null = off
+  timerEndsAt: number | null // epoch ms, for the countdown display
+  summary: SessionSummary | null
   session: SessionStats
   // Worst combos of the current preset from the *persisted* records, so the
   // list survives reloads (Milestone B) unlike the session tallies.
   worstChords: readonly WorstChordEntry[]
+  goal: GoalProgress
   start(): void
   onHeldChange(held: ReadonlySet<number>): void
   skip(): void
   setPreset(id: string): void
   setDiatonicKey(key: PitchClass): void
+  setMode(mode: SessionMode): void
+  setWorstOnly(on: boolean): void
+  startTimer(minutes: number): void
+  cancelTimer(): void
+  dismissSummary(): void
+  // Leaving the practice view (History tab): halt judging and drop the
+  // prompt so start() deals a fresh one on return.
+  pause(): void
+  // Re-derive goal/streak state (e.g. after the goal setting changes).
+  refreshGoal(): void
 }
 
 export interface PracticeStoreDeps {
   presets?: (diatonicKey: PitchClass) => readonly Preset[]
   stats?: ComboStatsSource
+  activity?: DailyActivitySource
   memory?: PresetMemory
   rng?: Rng
   now?: () => number
@@ -116,6 +163,7 @@ export interface PracticeStoreDeps {
 export function createPracticeStore({
   presets = builtInPresets,
   stats = new PersistedComboStats(appStorage),
+  activity = new PersistedDailyActivity(appStorage),
   memory = persistedPresetMemory,
   rng = Math.random,
   now = Date.now,
@@ -123,6 +171,10 @@ export function createPracticeStore({
 }: PracticeStoreDeps = {}) {
   let recentKeys: string[] = []
   let currentCombo: Combo | null = null
+  let sessionEvents: SessionEvent[] = []
+  let pendingActiveMs = 0
+  let timerHandle: ReturnType<typeof setTimeout> | null = null
+  const activeTime = new ActiveTimeTracker()
 
   const remembered = memory.load()
   const initialKey = sanitizeDiatonicKey(remembered?.diatonicKey)
@@ -132,6 +184,15 @@ export function createPracticeStore({
   const initialId = initialPresets.some((p) => p.id === remembered?.presetId)
     ? (remembered?.presetId ?? fallback.id)
     : fallback.id
+
+  const currentGoal = (): GoalProgress => ({
+    todayMinutes: activity.todayMinutes(),
+    streak: computeStreak(
+      activity.records(),
+      settings().dailyGoalMinutes,
+      localDateKey(new Date(now())),
+    ),
+  })
 
   return createStore<PracticeStoreState>()((set, get) => {
     const resolve = (presetId: string, diatonicKey: PitchClass) => {
@@ -151,8 +212,24 @@ export function createPracticeStore({
         accuracy: record.firstTrySuccesses / record.attempts,
       }))
 
+    // "Worst chords only" (§5/§7) narrows generation to the preset's
+    // qualifying combos; an empty ranking (nothing missed yet — possible
+    // right after a preset switch) falls back to the whole pool.
+    const pickPool = (): readonly Combo[] => {
+      const state = get()
+      if (state.mode === 'practice' && state.worstOnly) {
+        const worst = rankWorstCombos(
+          expansion.combos,
+          stats,
+          expansion.combos.length,
+        )
+        if (worst.length > 0) return worst.map((w) => w.combo)
+      }
+      return expansion.combos
+    }
+
     const nextPrompt = () => {
-      const combo = pickWeightedCombo(expansion.combos, recentKeys, stats, rng)
+      const combo = pickWeightedCombo(pickPool(), recentKeys, stats, rng)
       currentCombo = combo
       recentKeys.push(comboKey(combo))
       if (recentKeys.length > RECENT_WINDOW) recentKeys.shift()
@@ -171,12 +248,25 @@ export function createPracticeStore({
 
     // A prompt only completes through the 'advancing' phase — skip advances
     // from any other phase and stays out of stats and weighting (§6.2 step 4).
+    // Learn-mode prompts complete but feed nothing either (§5): not the
+    // per-combo records, not the session tallies or summary log.
     const recordOutcome = () => {
       if (currentCombo === null || machine.state.phase !== 'advancing') return
+      if (get().mode === 'learn') return
       const outcome: PromptOutcome =
         machine.state.missCount > 0 ? 'missed' : 'first-try'
       const timeToCorrectMs = machine.state.reactionMs ?? 0
-      stats.record(comboKey(currentCombo), outcome, timeToCorrectMs)
+      const key = comboKey(currentCombo)
+      stats.record(key, outcome, timeToCorrectMs)
+      sessionEvents.push({
+        key,
+        label: comboLabel(
+          currentCombo,
+          expansion.rootSpellings.get(currentCombo.root),
+        ),
+        outcome,
+        timeToCorrectMs,
+      })
       set((state) => ({
         session: {
           prompts: state.session.prompts + 1,
@@ -197,6 +287,52 @@ export function createPracticeStore({
         nextPrompt()
       },
     })
+
+    // Active minutes (§7): every held-note change is an interaction event
+    // for the ActiveTimeTracker rule — including Learn mode and free play,
+    // which count toward the goal even though they record no stats (§5).
+    const publishGoal = () => set({ goal: currentGoal() })
+
+    const flushActivity = () => {
+      if (pendingActiveMs > 0) {
+        activity.addMinutes(pendingActiveMs / 60_000)
+        pendingActiveMs = 0
+      }
+      publishGoal()
+    }
+
+    const touchActivity = () => {
+      pendingActiveMs += activeTime.touch(now())
+      if (pendingActiveMs >= ACTIVE_FLUSH_MS) flushActivity()
+    }
+
+    const resetSession = () => {
+      sessionEvents = []
+      set({ session: FRESH_SESSION })
+    }
+
+    const clearTimer = () => {
+      if (timerHandle !== null) {
+        clearTimeout(timerHandle)
+        timerHandle = null
+      }
+      set({ timerMinutes: null, timerEndsAt: null })
+    }
+
+    // The session timer ran out (§7): freeze practice and present the
+    // summary. A ✔ still waiting out its advance window counts first.
+    const timerExpired = () => {
+      timerHandle = null
+      recordOutcome()
+      machine.stop()
+      flushActivity()
+      set({
+        prompt: null,
+        timerMinutes: null,
+        timerEndsAt: null,
+        summary: summarizeSession(sessionEvents),
+      })
+    }
 
     const applySelection = (presetId: string, diatonicKey: PitchClass) => {
       // A correct prompt still waiting out its advance timer counts; the
@@ -220,15 +356,24 @@ export function createPracticeStore({
       missCount: 0,
       hint: null,
       missedRecently: null,
+      mode: 'practice',
+      worstOnly: false,
+      timerMinutes: null,
+      timerEndsAt: null,
+      summary: null,
       session: FRESH_SESSION,
       worstChords: [],
+      goal: currentGoal(),
 
       start() {
-        if (get().prompt !== null) return // React StrictMode mounts effects twice
+        // React StrictMode mounts effects twice; a paused store re-prompts,
+        // but never over an open summary.
+        if (get().prompt !== null || get().summary !== null) return
         nextPrompt()
       },
 
       onHeldChange(held: ReadonlySet<number>) {
+        touchActivity()
         machine.heldChange(held)
       },
 
@@ -254,6 +399,65 @@ export function createPracticeStore({
           memory.save({ presetId: get().presetId, diatonicKey: sanitized })
           set({ diatonicKey: sanitized, presets: presets(sanitized) })
         }
+      },
+
+      setMode(mode: SessionMode) {
+        if (mode === get().mode) return
+        // A pending ✔ counts under the outgoing mode's rules (recordOutcome
+        // still sees the old mode); the current prompt is replaced so a
+        // Learn reveal can't be answered for Practice credit.
+        recordOutcome()
+        clearTimer() // Learn is untimed (§7); leaving ends a timer silently
+        set({ mode })
+        nextPrompt()
+      },
+
+      setWorstOnly(on: boolean) {
+        if (on === get().worstOnly) return
+        recordOutcome()
+        set({ worstOnly: on })
+        nextPrompt()
+      },
+
+      startTimer(minutes: number) {
+        const sanitized = sanitizeTimerMinutes(minutes)
+        if (
+          sanitized === null ||
+          get().mode !== 'practice' ||
+          get().summary !== null
+        ) {
+          return
+        }
+        recordOutcome() // a pending ✔ belongs to the ending session
+        if (timerHandle !== null) clearTimeout(timerHandle)
+        resetSession() // the timed window is a fresh session (§7 summary)
+        const durationMs = sanitized * 60_000
+        timerHandle = setTimeout(timerExpired, durationMs)
+        set({ timerMinutes: sanitized, timerEndsAt: now() + durationMs })
+        nextPrompt()
+      },
+
+      cancelTimer() {
+        clearTimer() // back to endless; the session continues, no summary
+      },
+
+      dismissSummary() {
+        if (get().summary === null) return
+        resetSession() // endless practice resumes as a fresh session
+        set({ summary: null })
+        nextPrompt()
+      },
+
+      pause() {
+        if (get().prompt === null) return
+        recordOutcome() // a ✔ waiting out its advance window still counts
+        machine.stop()
+        flushActivity()
+        set({ prompt: null })
+      },
+
+      refreshGoal() {
+        publishGoal()
       },
     }
   })

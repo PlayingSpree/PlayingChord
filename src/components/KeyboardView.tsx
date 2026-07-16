@@ -39,9 +39,18 @@ function keyState(
 export function KeyboardView() {
   const heldNotes = useMidi((s) => s.heldNotes)
   const hint = usePractice((s) => s.hint)
+  const mode = usePractice((s) => s.mode)
+  const prompt = usePractice((s) => s.prompt)
 
   const wrong = hint?.kind === 'wrong-keys' ? new Set(hint.notes) : NO_NOTES
-  const expected = hint?.kind === 'reveal' ? new Set(hint.notes) : NO_NOTES
+  // Learn mode shows the example voicing from the start (§7) — the same
+  // overlay Practice earns at hint stage 3.
+  const expected =
+    hint?.kind === 'reveal'
+      ? new Set(hint.notes)
+      : mode === 'learn' && prompt !== null
+        ? new Set(prompt.example)
+        : NO_NOTES
   const state = (midi: number) => keyState(midi, heldNotes, wrong, expected)
 
   return (

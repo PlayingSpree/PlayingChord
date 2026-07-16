@@ -14,22 +14,29 @@ import {
 import type { AppStorage } from './appStorage'
 import { localDateKey, type DailyRecord } from './schema'
 
+function emptyDailyRecord(date: string): DailyRecord {
+  return {
+    date,
+    activeMinutes: 0,
+    prompts: 0,
+    firstTrySuccesses: 0,
+    timeToCorrectMs: 0,
+  }
+}
+
 export function applyDailyPrompt(
   record: DailyRecord | undefined,
   date: string,
   outcome: PromptOutcome,
+  timeToCorrectMs: number,
 ): DailyRecord {
-  const base = record ?? {
-    date,
-    activeMinutes: 0, // tracked from Phase 7 (goals/streaks)
-    prompts: 0,
-    firstTrySuccesses: 0,
-  }
+  const base = record ?? emptyDailyRecord(date)
   return {
     ...base,
     prompts: base.prompts + 1,
     firstTrySuccesses:
       base.firstTrySuccesses + (outcome === 'first-try' ? 1 : 0),
+    timeToCorrectMs: base.timeToCorrectMs + Math.max(0, timeToCorrectMs),
   }
 }
 
@@ -71,8 +78,86 @@ export class PersistedComboStats implements ComboStatsSource {
       },
       dailyRecords: {
         ...state.dailyRecords,
-        [date]: applyDailyPrompt(state.dailyRecords[date], date, outcome),
+        [date]: applyDailyPrompt(
+          state.dailyRecords[date],
+          date,
+          outcome,
+          timeToCorrectMs,
+        ),
       },
     }))
+  }
+}
+
+// Where the Phase 7 active-minutes tracking lands (§7 goals/streaks) and
+// what the goal chip / History read. Kept separate from ComboStatsSource:
+// activity accrues in Learn mode too, where combo stats never do (§5).
+export interface DailyActivitySource {
+  addMinutes(minutes: number): void
+  todayMinutes(): number
+  records(): Readonly<Record<string, DailyRecord>>
+}
+
+export class PersistedDailyActivity implements DailyActivitySource {
+  private readonly storage: AppStorage
+  private readonly today: () => string
+
+  constructor(
+    storage: AppStorage,
+    today: () => string = () => localDateKey(new Date()),
+  ) {
+    this.storage = storage
+    this.today = today
+  }
+
+  addMinutes(minutes: number): void {
+    if (!(minutes > 0)) return
+    const date = this.today()
+    this.storage.update((state) => {
+      const base = state.dailyRecords[date] ?? emptyDailyRecord(date)
+      return {
+        ...state,
+        dailyRecords: {
+          ...state.dailyRecords,
+          [date]: { ...base, activeMinutes: base.activeMinutes + minutes },
+        },
+      }
+    })
+  }
+
+  todayMinutes(): number {
+    return this.storage.state.dailyRecords[this.today()]?.activeMinutes ?? 0
+  }
+
+  records(): Readonly<Record<string, DailyRecord>> {
+    return this.storage.state.dailyRecords
+  }
+}
+
+// Test double for stores that shouldn't touch the appStorage singleton.
+export class InMemoryDailyActivity implements DailyActivitySource {
+  private readonly byDate: Record<string, DailyRecord> = {}
+  private readonly today: () => string
+
+  constructor(today: () => string = () => localDateKey(new Date())) {
+    this.today = today
+  }
+
+  addMinutes(minutes: number): void {
+    if (!(minutes > 0)) return
+    const date = this.today()
+    const base = this.byDate[date] ?? emptyDailyRecord(date)
+    this.byDate[date] = {
+      ...base,
+      activeMinutes: base.activeMinutes + minutes,
+    }
+  }
+
+  todayMinutes(): number {
+    return this.byDate[this.today()]?.activeMinutes ?? 0
+  }
+
+  records(): Readonly<Record<string, DailyRecord>> {
+    return this.byDate
   }
 }
