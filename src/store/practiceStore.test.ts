@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { chordPitchClasses, type PitchClass } from '../theory'
+import {
+  chordPitchClasses,
+  voicingLibrary,
+  type PitchClass,
+  type VoicingRule,
+} from '../theory'
 import {
   comboKey,
   DEFAULT_PRACTICE_SETTINGS,
@@ -797,5 +802,87 @@ describe('practiceStore — pause/resume (Phase 7 History nav)', () => {
 
     s.store.getState().start()
     expect(s.store.getState().prompt).toBeNull()
+  })
+})
+
+describe('practiceStore — custom library (Phase 9)', () => {
+  const wideRoot: VoicingRule = {
+    id: 'rule-wide',
+    name: 'Wide Root',
+    bass: { kind: 'chordTone', degree: 0 },
+    span: { min: 12 },
+    doubling: 'exact',
+  }
+  const customPreset: Preset = {
+    id: 'preset-custom',
+    name: 'Custom drill',
+    pool: { kind: 'product', roots: [0], chordTypes: ['maj'] },
+    voicingIds: ['rule-wide'],
+  }
+  const builtInLike: Preset = {
+    id: 'first',
+    name: 'First',
+    pool: { kind: 'explicit', chords: [{ root: 0, typeId: 'maj' }] },
+    voicingIds: ['any'],
+  }
+
+  it('drills a custom preset against its custom rule', () => {
+    const s = setup({
+      presets: () => [customPreset],
+      voicings: () => voicingLibrary([wideRoot]),
+    })
+    const prompt = s.store.getState().prompt!
+    expect(prompt.voicing).toEqual(wideRoot)
+    // The compact voicing violates the span-min-12 rule; the example is a
+    // rule-satisfying voicing by construction.
+    s.press(...correctNotes(prompt))
+    expect(s.store.getState().phase).not.toBe('advancing')
+    s.releaseAll()
+    s.press(...prompt.example)
+    expect(s.store.getState().phase).toBe('advancing')
+  })
+
+  it('falls back to the first preset when the active one disappears', () => {
+    let list = [builtInLike, customPreset]
+    const memory = memoryStub({ presetId: 'preset-custom', diatonicKey: 0 })
+    const s = setup({
+      presets: () => list,
+      voicings: () => voicingLibrary([wideRoot]),
+      memory,
+    })
+    expect(s.store.getState().presetId).toBe('preset-custom')
+
+    list = [builtInLike] // the custom preset was deleted
+    s.store.getState().refreshLibrary()
+    expect(s.store.getState().presetId).toBe('first')
+    expect(s.store.getState().prompt?.voicing.id).toBe('any')
+    expect(memory.saved.at(-1)).toEqual({ presetId: 'first', diatonicKey: 0 })
+  })
+
+  it('falls back when rule edits leave the active preset empty', () => {
+    let rules = [wideRoot]
+    const s = setup({
+      presets: () => [builtInLike, customPreset],
+      voicings: () => voicingLibrary(rules),
+      memory: memoryStub({ presetId: 'preset-custom', diatonicKey: 0 }),
+    })
+    expect(s.store.getState().presetId).toBe('preset-custom')
+
+    // The rule now demands a chord tone triads don't have — every combo of
+    // the custom preset becomes unsatisfiable.
+    rules = [{ ...wideRoot, bass: { kind: 'chordTone', degree: 3 } }]
+    s.store.getState().refreshLibrary()
+    expect(s.store.getState().presetId).toBe('first')
+  })
+
+  it('refreshLibrary while paused re-resolves without dealing a prompt', () => {
+    const s = setup({
+      presets: () => [builtInLike],
+      voicings: () => voicingLibrary([]),
+    })
+    s.store.getState().pause()
+    s.store.getState().refreshLibrary()
+    expect(s.store.getState().prompt).toBeNull()
+    expect(s.store.getState().phase).toBe('idle')
   })
 })

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { voicingLibrary } from '../theory'
 import { comboKey, parseComboKey, type Combo } from './combos'
 
 describe('parseComboKey', () => {
@@ -21,5 +22,20 @@ describe('parseComboKey', () => {
     expect(parseComboKey('x:maj:any')).toBeNull()
     expect(parseComboKey('0:notatype:any')).toBeNull()
     expect(parseComboKey('0:maj:notavoicing')).toBeNull()
+  })
+
+  it('resolves custom voicing rules through the library (Phase 9)', () => {
+    const lib = voicingLibrary([
+      {
+        id: 'rule-x1',
+        name: 'Custom',
+        bass: { kind: 'any' },
+        doubling: 'exact',
+      },
+    ])
+    const combo: Combo = { root: 5, typeId: 'maj7', voicingId: 'rule-x1' }
+    expect(parseComboKey(comboKey(combo), lib)).toEqual(combo)
+    // The same key is stale once the rule is gone (default library).
+    expect(parseComboKey(comboKey(combo))).toBeNull()
   })
 })

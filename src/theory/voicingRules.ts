@@ -68,3 +68,25 @@ export function getBuiltInVoicingRule(id: string): VoicingRule {
   if (!rule) throw new Error(`Unknown built-in voicing rule: ${id}`)
   return rule
 }
+
+// The shared rule library (§3.3): built-ins plus user-defined rules from the
+// Phase 9 voicing builder. Everything that resolves a voicingId — prompts,
+// combo labels, preset expansion — goes through one of these so custom rules
+// work everywhere built-ins do. Built-ins win an id collision; the storage
+// sanitizer rejects such rules, so this only guards hand-crafted input.
+export interface VoicingLibrary {
+  rules: readonly VoicingRule[] // built-ins first, then customs
+  get(id: string): VoicingRule | undefined
+}
+
+export function voicingLibrary(
+  custom: readonly VoicingRule[] = [],
+): VoicingLibrary {
+  const byId = new Map(BY_ID)
+  for (const rule of custom) {
+    if (!byId.has(rule.id)) byId.set(rule.id, rule)
+  }
+  return { rules: [...byId.values()], get: (id) => byId.get(id) }
+}
+
+export const BUILT_IN_VOICING_LIBRARY: VoicingLibrary = voicingLibrary()

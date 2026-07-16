@@ -14,11 +14,112 @@ Running summary of build progress against [PLAN.md](PLAN.md). Newest entry first
 | 5 — Presets & weighted generation | ✅ Done (2026-07-16) |
 | 6 — Storage & stats (Milestone B) | ✅ Done (2026-07-16) |
 | 7 — Session modes, goals & history | ✅ Done (2026-07-16) |
-| 8 — Notation & audio | ⬜ Next |
-| 9 — Editors & import/export | ⬜ |
-| 10 — Polish, a11y & deploy (Milestone C) | ⬜ |
+| 8 — Notation & audio | ⬜ Skipped for now (user call, 2026-07-16) |
+| 9 — Editors & import/export | ✅ Done (2026-07-16) |
+| 10 — Polish, a11y & deploy (Milestone C) | ⬜ Next |
 
 ---
+
+## 2026-07-16 — Phase 9: Editors & import/export ✅ (Phase 8 skipped)
+
+The §4/§7 custom-content layer: voicing builder, preset editor with
+rule-compatibility warnings, JSON import/export, and the full settings
+screen. Built directly after Phase 7 — **Phase 8 (notation & audio) was
+skipped on the user's instruction** and remains open. 33 new tests (331
+total) and a 25-check browser-driven pass including the phase milestone
+(export from one browser profile, import in a fresh one, drill identically).
+
+**Modules:**
+
+- `theory/voicingRules.ts` — `VoicingLibrary`/`voicingLibrary(custom)`: one
+  lookup over built-ins + user rules (built-ins win an id collision).
+  Everything that resolves a voicingId — `createPrompt`, `comboLabel`,
+  `parseComboKey`, `expandPreset` — now takes an optional library and
+  defaults to built-ins-only, so custom rules work everywhere without
+  touching matcher code (§3.3's promise).
+- `practice/presets.ts` — `expandPreset` drops combos whose rule is missing
+  or unsatisfiable (checked once per type × rule; root-independent). A saved
+  preset with some warned pairings still drills its playable part.
+- `practice/library.ts` — `newLibraryId` (prefixed + random so two profiles'
+  same-named content can't collide on import), `presetWarnings` (§4:
+  `missing-rule` / `unsatisfiable` / `cluster-only` — the Phase 1 note about
+  `closed` being technically satisfiable by 5+-tone chords became its own
+  warning kind), and the rule display helpers.
+- `storage/schema.ts` — `customVoicingRules` + `customPresets` slices with
+  sanitizers (garbled entries dropped whole; ids may never shadow built-ins;
+  names trimmed/capped at 60; span within 0–87 and non-contradictory; preset
+  voicing refs filtered to known rules, presets with none left dropped).
+  Added within v1 like `timeToCorrectMs` — no version bump, no migration.
+- `storage/importExport.ts` — `exportLibraryJson` (whole custom library — a
+  superset of "presets + the rules they depend on") and `planImport`:
+  validates kind/schema-version (newer → refused), sanitizes entries,
+  reports id collisions as §4 conflicts. **Local content always wins**;
+  identical incoming items are reported "already present", so re-import is
+  idempotent.
+- `store/libraryStore.ts` — persisted CRUD over both lists; save paths
+  re-sanitize; `deleteRule` refuses while a custom preset references the
+  rule (UI explains and lists the presets).
+- `store/practiceStore.ts` — `voicings` dep beside `presets` (the app
+  singleton folds `libraryStore` in; factory defaults stay pure built-ins so
+  tests are isolated), empty-expansion fallback to the first preset, and
+  `refreshLibrary()` — subscribed to every library change: re-resolves the
+  list/expansion, falls back (and re-remembers) if the active preset
+  vanished or lost all combos, redeals a live prompt so it can't reference
+  deleted content.
+- UI: `SettingsView` (a third top-level view beside practice/History)
+  consolidating the §7 settings screen — matcher toggles, delays, daily
+  goal, the two library sections with inline `VoicingBuilder`/`PresetEditor`
+  forms, and import/export (file download / picker + result report).
+  The Phase 4 `SettingsPanel` popover is gone. Editors validate live
+  (problems block save, §4 warnings don't — only a zero-combo preset can't
+  be saved). `HistoryView` resolves stat keys against the live library, so
+  custom-rule combos label correctly and stale keys still parse to null.
+
+**Tests of note:** library lookup + collision precedence; warning matrix
+(triad × bass-on-7th unsatisfiable, dom13 × closed cluster-only, missing
+rule reported once, dom13 × open silent); expansion filtering incl. the
+all-unsatisfiable → empty case; schema sanitizer edges (shadowed ids,
+contradictory spans, junk span fields kept non-fatal, refs to dropped rules
+filtered); import round-trip, newer-version refusal, conflict-vs-identical
+reporting, junk counting, preset-referencing-a-conflicting-rule stays valid;
+store CRUD persistence through a reloaded AppStorage, delete-rule guard;
+practice-store custom drilling (compact voicing misses a span-min rule, the
+example satisfies it), deleted/emptied active-preset fallback with memory
+re-save, paused refresh staying promptless; and the milestone as a unit
+test: export → fresh profile → import → identical expansion + working
+prompt.
+
+**Verified in headless Edge (sim MIDI, QWERTY, 25 checks):** settings
+screen renders all four sections with the consolidated knobs; builder
+composes bass/span/doubling with a live summary and saves into the library
+list; preset editor flags dom13 × Closed Position as cluster-only, counts
+drillable combos, and saves; the custom preset drills — root-position
+C-E-G stalls into "Bass must be…" while E-G-C5 flashes ✔; History labels
+the custom combo; library + stats persist across a reload; export downloads
+JSON; a **fresh browser profile** imports it (re-import reports "already
+present") and the imported preset judges identically — the Phase 9
+milestone at the browser surface.
+
+**Notes / deviations:**
+
+- Phase 8 skipped (user instruction), so the §7 settings screen omits the
+  staff and chime toggles — those land with their features. PLAN.md's
+  phase-overview note already allows this reordering (8 is independent).
+- The full settings screen *replaces* the Phase 4 popover; the stall-tuning
+  knobs remain reachable at the piano, one click deeper.
+- Import conflict policy (DESIGN.md §4 only says "reports conflicts"):
+  colliding ids are never applied — the local version wins, the report
+  names the conflicts. Export always bundles the whole custom library.
+- DESIGN.md §4 says the editor *warns* on incompatible pairings, so saving
+  warned presets is allowed; the safety net is expansion-time filtering
+  plus the practice store's empty-expansion fallback (crash-free even with
+  hand-edited storage).
+- All settings/editor field controls carry `aria-label`s (also groundwork
+  for the Phase 10 a11y pass).
+
+**Next:** Phase 8 (notation & audio — VexFlow Learn-mode staff + staff
+toggle, correct chime + toggle, both slotting into the settings screen) or
+Phase 10 (polish, a11y & deploy — Milestone C).
 
 ## 2026-07-16 — Phase 7: Session modes, goals & history ✅
 

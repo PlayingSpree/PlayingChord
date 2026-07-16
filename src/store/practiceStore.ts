@@ -28,7 +28,12 @@ import {
   type SessionMode,
   type SessionSummary,
 } from '../practice'
-import type { PitchClass } from '../theory'
+import {
+  BUILT_IN_VOICING_LIBRARY,
+  voicingLibrary,
+  type PitchClass,
+  type VoicingLibrary,
+} from '../theory'
 import {
   appStorage,
   computeStreak,
@@ -38,6 +43,7 @@ import {
   type DailyActivitySource,
 } from '../storage'
 import { settingsStore } from './settingsStore'
+import { libraryStore } from './libraryStore'
 
 // Selected preset + diatonic key, remembered like the MIDI device — in the
 // versioned schema (§8); the Phase 5 plain key migrates on first load.
@@ -148,10 +154,14 @@ export interface PracticeStoreState {
   pause(): void
   // Re-derive goal/streak state (e.g. after the goal setting changes).
   refreshGoal(): void
+  // Re-resolve presets/rules after the custom library changes (Phase 9):
+  // a deleted active preset falls back, an edited one re-expands.
+  refreshLibrary(): void
 }
 
 export interface PracticeStoreDeps {
   presets?: (diatonicKey: PitchClass) => readonly Preset[]
+  voicings?: () => VoicingLibrary
   stats?: ComboStatsSource
   activity?: DailyActivitySource
   memory?: PresetMemory
@@ -162,6 +172,7 @@ export interface PracticeStoreDeps {
 
 export function createPracticeStore({
   presets = builtInPresets,
+  voicings = () => BUILT_IN_VOICING_LIBRARY,
   stats = new PersistedComboStats(appStorage),
   activity = new PersistedDailyActivity(appStorage),
   memory = persistedPresetMemory,
@@ -197,9 +208,18 @@ export function createPracticeStore({
   return createStore<PracticeStoreState>()((set, get) => {
     const resolve = (presetId: string, diatonicKey: PitchClass) => {
       const list = presets(diatonicKey)
-      const preset = list.find((p) => p.id === presetId) ?? list[0]
-      if (!preset) throw new Error('No presets defined')
-      return { list, preset, expansion: expandPreset(preset) }
+      const first = list[0]
+      if (!first) throw new Error('No presets defined')
+      let preset = list.find((p) => p.id === presetId) ?? first
+      let expansion = expandPreset(preset, voicings())
+      // A custom preset can expand to nothing (its rules were edited under
+      // it, or persisted junk); fall back to the first preset — built-ins
+      // always have satisfiable combos.
+      if (expansion.combos.length === 0 && preset !== first) {
+        preset = first
+        expansion = expandPreset(preset, voicings())
+      }
+      return { list, preset, expansion }
     }
 
     let expansion: ExpandedPreset = resolve(initialId, initialKey).expansion
@@ -208,7 +228,11 @@ export function createPracticeStore({
     const worstChords = (): WorstChordEntry[] =>
       rankWorstCombos(expansion.combos, stats).map(({ combo, record }) => ({
         key: comboKey(combo),
-        label: comboLabel(combo, expansion.rootSpellings.get(combo.root)),
+        label: comboLabel(
+          combo,
+          expansion.rootSpellings.get(combo.root),
+          voicings(),
+        ),
         accuracy: record.firstTrySuccesses / record.attempts,
       }))
 
@@ -236,6 +260,7 @@ export function createPracticeStore({
       const prompt = createPrompt(
         combo,
         expansion.rootSpellings.get(combo.root),
+        voicings(),
       )
       const misses = stats.recentHistory(comboKey(combo))?.misses ?? 0
       set({
@@ -263,6 +288,7 @@ export function createPracticeStore({
         label: comboLabel(
           currentCombo,
           expansion.rootSpellings.get(currentCombo.root),
+          voicings(),
         ),
         outcome,
         timeToCorrectMs,
@@ -459,11 +485,46 @@ export function createPracticeStore({
       refreshGoal() {
         publishGoal()
       },
+
+      refreshLibrary() {
+        const current = get()
+        const {
+          list,
+          preset,
+          expansion: next,
+        } = resolve(current.presetId, current.diatonicKey)
+        expansion = next
+        if (preset.id !== current.presetId) {
+          // The active preset vanished (deleted, or now empty) — the
+          // resolver fell back; remember the fallback like any selection.
+          recentKeys = []
+          memory.save({ presetId: preset.id, diatonicKey: current.diatonicKey })
+        }
+        set({ presets: list, presetId: preset.id, worstChords: worstChords() })
+        // Paused (settings/History open) means no prompt to refresh; a live
+        // one is redealt so it can't reference deleted content.
+        if (get().prompt !== null) {
+          recordOutcome()
+          nextPrompt()
+        }
+      },
     }
   })
 }
 
-export const practiceStore = createPracticeStore()
+// The app singleton folds the Phase 9 custom library into generation; the
+// factory defaults stay built-ins-only so tests are isolated from the
+// shared appStorage singleton.
+export const practiceStore = createPracticeStore({
+  presets: (diatonicKey) => [
+    ...builtInPresets(diatonicKey),
+    ...libraryStore.getState().customPresets,
+  ],
+  voicings: () => voicingLibrary(libraryStore.getState().customRules),
+})
+
+// Library edits (create/edit/delete/import) re-resolve immediately.
+libraryStore.subscribe(() => practiceStore.getState().refreshLibrary())
 
 export function usePractice<T>(selector: (state: PracticeStoreState) => T): T {
   return useStore(practiceStore, selector)

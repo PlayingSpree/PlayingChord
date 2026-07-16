@@ -17,7 +17,9 @@ import {
   rankWorstCombos,
   type Combo,
 } from '../practice'
+import { voicingLibrary } from '../theory'
 import { useSettings } from '../store/settingsStore'
+import { useLibrary } from '../store/libraryStore'
 
 // The §7 History view: persisted trends across all sessions — accuracy and
 // time-to-correct per day, most-improved/worst chords over every recorded
@@ -47,8 +49,12 @@ function shortDate(key: string): string {
 
 export function HistoryView({ onBack }: { onBack: () => void }) {
   const goalMinutes = useSettings((s) => s.settings.dailyGoalMinutes)
+  // Stat keys may reference custom voicing rules (Phase 9) — resolve labels
+  // against the full library; keys for since-deleted rules parse to null.
+  const customRules = useLibrary((s) => s.customRules)
 
   const data = useMemo(() => {
+    const library = voicingLibrary(customRules)
     const { dailyRecords, comboStats } = appStorage.state
     const todayKey = localDateKey(new Date())
     const trendKeys = lastDateKeys(todayKey, TREND_DAYS)
@@ -79,7 +85,7 @@ export function HistoryView({ onBack }: { onBack: () => void }) {
     }
 
     const combos = Object.keys(comboStats)
-      .map(parseComboKey)
+      .map((key) => parseComboKey(key, library))
       .filter((combo): combo is Combo => combo !== null)
     const stats = new PersistedComboStats(appStorage)
 
@@ -97,17 +103,17 @@ export function HistoryView({ onBack }: { onBack: () => void }) {
       totalPrompts: allRecords.reduce((sum, r) => sum + r.prompts, 0),
       improved: rankMostImproved(combos, stats).map((entry) => ({
         key: `${entry.combo.root}:${entry.combo.typeId}:${entry.combo.voicingId}`,
-        label: comboLabel(entry.combo),
+        label: comboLabel(entry.combo, undefined, library),
         metric: `▲ ${Math.round(entry.improvement * 100)} pts`,
       })),
       worst: rankWorstCombos(combos, stats).map(({ combo, record }) => ({
         key: `${combo.root}:${combo.typeId}:${combo.voicingId}`,
-        label: comboLabel(combo),
+        label: comboLabel(combo, undefined, library),
         metric: `${Math.round((100 * record.firstTrySuccesses) / record.attempts)}% first-try`,
       })),
       empty: allRecords.length === 0 && combos.length === 0,
     }
-  }, [goalMinutes])
+  }, [goalMinutes, customRules])
 
   return (
     <main className="flex min-h-screen flex-col bg-slate-900 text-slate-100">

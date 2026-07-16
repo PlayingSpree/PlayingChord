@@ -1,11 +1,12 @@
 import {
+  BUILT_IN_VOICING_LIBRARY,
   chordDisplayName,
-  getBuiltInVoicingRule,
   getChordType,
   realizeVoicing,
   spellRoot,
   type Chord,
   type NoteSpelling,
+  type VoicingLibrary,
   type VoicingRule,
 } from '../theory'
 import type { Combo } from './combos'
@@ -26,13 +27,17 @@ export interface Prompt {
 export function createPrompt(
   combo: Combo,
   rootSpelling?: NoteSpelling,
+  voicings: VoicingLibrary = BUILT_IN_VOICING_LIBRARY,
 ): Prompt {
   const chord: Chord = { root: combo.root, type: getChordType(combo.typeId) }
-  const voicing = getBuiltInVoicingRule(combo.voicingId)
+  const voicing = voicings.get(combo.voicingId)
+  if (voicing === undefined) {
+    throw new Error(`Unknown voicing rule: ${combo.voicingId}`)
+  }
   const example = realizeVoicing(chord, voicing)
   if (example === null) {
-    // Unsatisfiable combos are kept out of pools by the Phase 5/9 preset
-    // validation (DESIGN.md §4); reaching this is a programming error.
+    // Unsatisfiable combos are filtered out during preset expansion
+    // (DESIGN.md §4); reaching this is a programming error.
     throw new Error(
       `Unsatisfiable combo: ${chordDisplayName(chord)} × ${voicing.id}`,
     )
@@ -50,9 +55,14 @@ export function createPrompt(
 // Compact display label for a combo outside a live prompt (stats bar, the
 // Phase 7 review lists): chord name plus the voicing name — omitted for the
 // `any` rule, same as the prompt area (§7).
-export function comboLabel(combo: Combo, rootSpelling?: NoteSpelling): string {
+export function comboLabel(
+  combo: Combo,
+  rootSpelling?: NoteSpelling,
+  voicings: VoicingLibrary = BUILT_IN_VOICING_LIBRARY,
+): string {
   const chord: Chord = { root: combo.root, type: getChordType(combo.typeId) }
   const name = chordDisplayName(chord, rootSpelling ?? spellRoot(combo.root))
   if (combo.voicingId === 'any') return name
-  return `${name} — ${getBuiltInVoicingRule(combo.voicingId).name}`
+  const voicingName = voicings.get(combo.voicingId)?.name ?? combo.voicingId
+  return `${name} — ${voicingName}`
 }

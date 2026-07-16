@@ -1,11 +1,15 @@
 import {
   ALL_PITCH_CLASSES,
+  BUILT_IN_VOICING_LIBRARY,
+  getChordType,
   MAJOR_SCALE_SEMITONES,
   pitchClass,
+  realizeVoicing,
   spellMajorScaleDegree,
   type ChordTypeId,
   type NoteSpelling,
   type PitchClass,
+  type VoicingLibrary,
 } from '../theory'
 import type { Combo } from './combos'
 
@@ -68,9 +72,32 @@ export interface ExpandedPreset {
   rootSpellings: ReadonlyMap<PitchClass, NoteSpelling>
 }
 
-export function expandPreset(preset: Preset): ExpandedPreset {
+export function expandPreset(
+  preset: Preset,
+  voicings: VoicingLibrary = BUILT_IN_VOICING_LIBRARY,
+): ExpandedPreset {
+  // Combos whose rule is missing (a deleted custom rule) or unsatisfiable
+  // (§4: e.g. a triad against a bass-on-the-7th rule) are dropped rather
+  // than crashing prompt creation — the preset editor warns about them, but
+  // a saved preset may still contain some. Satisfiability is root-
+  // independent, so it's checked once per (type × rule).
+  const satisfiable = new Map<string, boolean>()
+  const isSatisfiable = (typeId: ChordTypeId, voicingId: string): boolean => {
+    const cacheKey = `${typeId}:${voicingId}`
+    let ok = satisfiable.get(cacheKey)
+    if (ok === undefined) {
+      const rule = voicings.get(voicingId)
+      ok =
+        rule !== undefined &&
+        realizeVoicing({ root: 0, type: getChordType(typeId) }, rule) !== null
+      satisfiable.set(cacheKey, ok)
+    }
+    return ok
+  }
   const combos = poolChords(preset.pool).flatMap(({ root, typeId }) =>
-    preset.voicingIds.map((voicingId) => ({ root, typeId, voicingId })),
+    preset.voicingIds
+      .filter((voicingId) => isSatisfiable(typeId, voicingId))
+      .map((voicingId) => ({ root, typeId, voicingId })),
   )
   const rootSpellings = new Map<PitchClass, NoteSpelling>()
   const pool = preset.pool

@@ -4,6 +4,7 @@
 // Practice modes, timed-session summaries, active-time tracking).
 export * from './combos'
 export * from './presets'
+export * from './library'
 export * from './stats'
 export * from './generator'
 export * from './prompts'

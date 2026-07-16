@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { matches, pitchClass } from '../theory'
+import {
+  matches,
+  pitchClass,
+  voicingLibrary,
+  type VoicingRule,
+} from '../theory'
 import { comboKey } from './combos'
 import { createPrompt } from './prompts'
 import {
@@ -31,6 +36,36 @@ describe('pool expansion (§4/§5)', () => {
       typeId: 'min7',
       voicingId: 'root-position',
     })
+  })
+
+  it('drops combos whose rule is missing or unsatisfiable (Phase 9)', () => {
+    const bassOn7th: VoicingRule = {
+      id: 'rule-7th',
+      name: 'Bass on the 7th',
+      bass: { kind: 'chordTone', degree: 3 },
+      doubling: 'allowed',
+    }
+    const preset: Preset = {
+      id: 'test',
+      name: 'Test',
+      pool: { kind: 'product', roots: [0, 7], chordTypes: ['maj', 'maj7'] },
+      voicingIds: ['rule-7th', 'rule-gone'],
+    }
+    const { combos } = expandPreset(preset, voicingLibrary([bassOn7th]))
+    // Triads have no 4th tone and 'rule-gone' resolves to nothing — only
+    // maj7 × rule-7th survives, for both roots.
+    expect(combos).toEqual([
+      { root: 0, typeId: 'maj7', voicingId: 'rule-7th' },
+      { root: 7, typeId: 'maj7', voicingId: 'rule-7th' },
+    ])
+    // Nothing satisfiable at all → an empty expansion, not a crash.
+    const hopeless: Preset = {
+      ...preset,
+      pool: { kind: 'product', roots: [0], chordTypes: ['maj'] },
+    }
+    expect(expandPreset(hopeless, voicingLibrary([bassOn7th])).combos).toEqual(
+      [],
+    )
   })
 
   it('explicit pools expand exactly the listed chords', () => {

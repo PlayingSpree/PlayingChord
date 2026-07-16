@@ -6,7 +6,7 @@ import { DevicePicker } from './components/DevicePicker'
 import { PresetPicker } from './components/PresetPicker'
 import { PromptCard } from './components/PromptCard'
 import { KeyboardView } from './components/KeyboardView'
-import { SettingsPanel } from './components/SettingsPanel'
+import { SettingsView } from './components/SettingsView'
 import { StatsBar } from './components/StatsBar'
 import { ModeBar } from './components/ModeBar'
 import { GoalChip } from './components/GoalChip'
@@ -34,7 +34,9 @@ function createSource(): MidiSource {
 }
 
 export default function App() {
-  const [view, setView] = useState<'practice' | 'history'>('practice')
+  const [view, setView] = useState<'practice' | 'history' | 'settings'>(
+    'practice',
+  )
 
   useEffect(() => {
     void midiStore.getState().initialize(createSource())
@@ -51,15 +53,26 @@ export default function App() {
   return (
     <MidiGate>
       {view === 'practice' ? (
-        <PracticeView onHistory={() => setView('history')} />
-      ) : (
+        <PracticeView
+          onHistory={() => setView('history')}
+          onSettings={() => setView('settings')}
+        />
+      ) : view === 'history' ? (
         <HistoryView onBack={() => setView('practice')} />
+      ) : (
+        <SettingsView onBack={() => setView('practice')} />
       )}
     </MidiGate>
   )
 }
 
-function PracticeView({ onHistory }: { onHistory: () => void }) {
+function PracticeView({
+  onHistory,
+  onSettings,
+}: {
+  onHistory: () => void
+  onSettings: () => void
+}) {
   // Practice pauses while the History view is open (unmount) and deals a
   // fresh prompt on return.
   useEffect(() => {
@@ -83,7 +96,13 @@ function PracticeView({ onHistory }: { onHistory: () => void }) {
           >
             History
           </button>
-          <SettingsPanel />
+          <button
+            type="button"
+            onClick={onSettings}
+            className="rounded-md border border-slate-700 px-2.5 py-1 text-sm text-slate-300 transition-colors hover:border-slate-500 hover:text-slate-100"
+          >
+            ⚙ Settings
+          </button>
         </div>
       </header>
 

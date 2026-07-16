@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest'
 import {
   defaultState,
   localDateKey,
+  MAX_BASS_DEGREE,
+  MAX_LIBRARY_NAME_LENGTH,
   sanitizeComboStats,
+  sanitizeCustomPresets,
+  sanitizeCustomVoicingRules,
   sanitizeDailyRecords,
   sanitizeDevice,
   sanitizePresetSelection,
@@ -121,6 +125,152 @@ describe('sanitizeDailyRecords', () => {
   })
 })
 
+describe('sanitizeCustomVoicingRules (Phase 9, §4)', () => {
+  const valid = {
+    id: 'rule-abc123',
+    name: 'Wide root',
+    bass: { kind: 'chordTone', degree: 0 },
+    span: { min: 12 },
+    doubling: 'exact',
+  }
+
+  it('keeps valid rules and trims/caps names', () => {
+    expect(sanitizeCustomVoicingRules([valid])).toEqual([valid])
+    const [rule] = sanitizeCustomVoicingRules([
+      { ...valid, name: `  padded ${'x'.repeat(100)}` },
+    ])
+    expect(rule?.name.startsWith('padded')).toBe(true)
+    expect(rule?.name.length).toBe(MAX_LIBRARY_NAME_LENGTH)
+  })
+
+  it('drops garbled rules whole', () => {
+    expect(
+      sanitizeCustomVoicingRules([
+        { ...valid, id: '' },
+        { ...valid, name: '   ' },
+        { ...valid, bass: { kind: 'chordTone', degree: MAX_BASS_DEGREE + 1 } },
+        { ...valid, bass: { kind: 'lowest' } },
+        { ...valid, doubling: 'sometimes' },
+        { ...valid, span: { min: 20, max: 4 } }, // contradictory
+        'junk',
+      ]),
+    ).toEqual([])
+    expect(sanitizeCustomVoicingRules('junk')).toEqual([])
+  })
+
+  it('rejects built-in id shadowing and duplicate ids (first wins)', () => {
+    const rules = sanitizeCustomVoicingRules([
+      { ...valid, id: 'closed' },
+      valid,
+      { ...valid, name: 'Impostor' },
+    ])
+    expect(rules).toEqual([valid])
+  })
+
+  it('drops junk span fields without dropping the rule', () => {
+    const [rule] = sanitizeCustomVoicingRules([
+      { ...valid, span: { min: 'wide', max: 24 } },
+    ])
+    expect(rule?.span).toEqual({ max: 24 })
+    const [noSpan] = sanitizeCustomVoicingRules([
+      { ...valid, span: { min: null } },
+    ])
+    expect(noSpan?.span).toBeUndefined()
+  })
+})
+
+describe('sanitizeCustomPresets (Phase 9, §4)', () => {
+  const customRule = {
+    id: 'rule-abc123',
+    name: 'Wide root',
+    bass: { kind: 'any' as const },
+    doubling: 'exact' as const,
+  }
+  const valid = {
+    id: 'preset-abc123',
+    name: 'My drill',
+    pool: { kind: 'product', roots: [0, 5], chordTypes: ['maj', 'min7'] },
+    voicingIds: ['any', 'rule-abc123'],
+  }
+
+  it('keeps valid presets referencing built-in and custom rules', () => {
+    expect(sanitizeCustomPresets([valid], [customRule])).toEqual([valid])
+  })
+
+  it('filters unknown roots/types/voicing refs and drops empty results', () => {
+    const [preset] = sanitizeCustomPresets(
+      [
+        {
+          ...valid,
+          pool: {
+            kind: 'product',
+            roots: [0, 12, 'x'],
+            chordTypes: ['maj', 'nope'],
+          },
+          voicingIds: ['any', 'rule-gone'],
+        },
+      ],
+      [],
+    )
+    expect(preset?.pool).toEqual({
+      kind: 'product',
+      roots: [0],
+      chordTypes: ['maj'],
+    })
+    expect(preset?.voicingIds).toEqual(['any'])
+    // Nothing valid left in a slot → the preset is dropped whole.
+    expect(
+      sanitizeCustomPresets(
+        [
+          { ...valid, voicingIds: ['rule-gone'] },
+          {
+            ...valid,
+            pool: { kind: 'product', roots: [], chordTypes: ['maj'] },
+          },
+          { ...valid, pool: { kind: 'explicit', chords: [] } },
+        ],
+        [],
+      ),
+    ).toEqual([])
+  })
+
+  it('sanitizes explicit and diatonic pools', () => {
+    const [explicit] = sanitizeCustomPresets(
+      [
+        {
+          ...valid,
+          pool: {
+            kind: 'explicit',
+            chords: [
+              { root: 9, typeId: 'min' },
+              { root: 9, typeId: 'min' }, // dupe collapses
+              { root: 13, typeId: 'maj' }, // bad root dropped
+            ],
+          },
+          voicingIds: ['any'],
+        },
+      ],
+      [],
+    )
+    expect(explicit?.pool).toEqual({
+      kind: 'explicit',
+      chords: [{ root: 9, typeId: 'min' }],
+    })
+    expect(
+      sanitizeCustomPresets(
+        [{ ...valid, pool: { kind: 'diatonic', key: 12 } }],
+        [],
+      ),
+    ).toEqual([])
+  })
+
+  it('rejects built-in preset id shadowing', () => {
+    expect(
+      sanitizeCustomPresets([{ ...valid, id: 'major-triads' }], []),
+    ).toEqual([])
+  })
+})
+
 describe('sanitizeStateV1', () => {
   it('coerces a fully junk payload to defaults', () => {
     expect(
@@ -133,5 +283,37 @@ describe('sanitizeStateV1', () => {
         dailyRecords: 7,
       }),
     ).toEqual(defaultState())
+  })
+
+  it('defaults the Phase 9 library slices in early-v1 states', () => {
+    const state = sanitizeStateV1({ version: 1 })
+    expect(state.customVoicingRules).toEqual([])
+    expect(state.customPresets).toEqual([])
+  })
+
+  it('validates preset voicing refs against the sanitized custom rules', () => {
+    const state = sanitizeStateV1({
+      version: 1,
+      customVoicingRules: [
+        {
+          id: 'rule-ok',
+          name: 'OK',
+          bass: { kind: 'any' },
+          doubling: 'allowed',
+        },
+        { id: 'rule-bad', name: '', bass: { kind: 'any' }, doubling: 'exact' },
+      ],
+      customPresets: [
+        {
+          id: 'preset-a',
+          name: 'A',
+          pool: { kind: 'diatonic', key: 4 },
+          voicingIds: ['rule-ok', 'rule-bad'],
+        },
+      ],
+    })
+    expect(state.customVoicingRules.map((r) => r.id)).toEqual(['rule-ok'])
+    // The garbled rule was dropped, so the reference to it goes too.
+    expect(state.customPresets[0]?.voicingIds).toEqual(['rule-ok'])
   })
 })

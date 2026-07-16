@@ -2,3 +2,4 @@
 export * from './midiStore'
 export * from './practiceStore'
 export * from './settingsStore'
+export * from './libraryStore'
