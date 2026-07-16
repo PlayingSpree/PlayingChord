@@ -3,7 +3,9 @@ import {
   getBuiltInVoicingRule,
   getChordType,
   realizeVoicing,
+  spellRoot,
   type Chord,
+  type NoteSpelling,
   type VoicingRule,
 } from '../theory'
 import type { Combo } from './combos'
@@ -15,10 +17,16 @@ export interface Prompt {
   chord: Chord
   voicing: VoicingRule
   displayName: string
+  // How this prompt spells its root — diatonic presets spell from the key
+  // (§3.5); the Phase 8 staff derives chord-tone spellings from this.
+  rootSpelling: NoteSpelling
   example: number[]
 }
 
-export function createPrompt(combo: Combo): Prompt {
+export function createPrompt(
+  combo: Combo,
+  rootSpelling?: NoteSpelling,
+): Prompt {
   const chord: Chord = { root: combo.root, type: getChordType(combo.typeId) }
   const voicing = getBuiltInVoicingRule(combo.voicingId)
   const example = realizeVoicing(chord, voicing)
@@ -29,5 +37,12 @@ export function createPrompt(combo: Combo): Prompt {
       `Unsatisfiable combo: ${chordDisplayName(chord)} × ${voicing.id}`,
     )
   }
-  return { chord, voicing, displayName: chordDisplayName(chord), example }
+  const spelling = rootSpelling ?? spellRoot(combo.root)
+  return {
+    chord,
+    voicing,
+    displayName: chordDisplayName(chord, spelling),
+    rootSpelling: spelling,
+    example,
+  }
 }

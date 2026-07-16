@@ -3,6 +3,7 @@ import { midiStore } from './store/midiStore'
 import { practiceStore } from './store/practiceStore'
 import { MidiGate } from './components/MidiGate'
 import { DevicePicker } from './components/DevicePicker'
+import { PresetPicker } from './components/PresetPicker'
 import { PromptCard } from './components/PromptCard'
 import { KeyboardView } from './components/KeyboardView'
 import { SettingsPanel } from './components/SettingsPanel'
@@ -46,8 +47,7 @@ export default function App() {
   )
 }
 
-// Hardcoded major-triads preset until Phase 5; name-only prompt. Preset/mode
-// pickers, stats, and goals join the top bar in later phases (§7).
+// Mode picker, stats bar, and goals join the top bar in later phases (§7).
 function PracticeView() {
   useEffect(() => {
     practiceStore.getState().start()
@@ -58,7 +58,7 @@ function PracticeView() {
       <header className="flex items-center justify-between gap-4 border-b border-slate-800 px-6 py-3">
         <h1 className="text-lg font-bold tracking-tight">PlayingChord</h1>
         <div className="flex items-center gap-4">
-          <span className="text-sm text-slate-400">Major triads</span>
+          <PresetPicker />
           <DevicePicker />
           <SettingsPanel />
         </div>

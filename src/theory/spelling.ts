@@ -17,8 +17,8 @@ export interface NoteSpelling {
 }
 
 // Default root policy: C C♯ D E♭ E F F♯ G A♭ A B♭ B (conventional mixed
-// sharps/flats). Key-aware root spelling for the diatonic preset comes with
-// the preset work, not here.
+// sharps/flats). The diatonic preset spells roots from its key instead —
+// see spellMajorScaleDegree below.
 const ROOT_POLICY: readonly (readonly [Letter, number])[] = [
   ['C', 0],
   ['C', 1],
@@ -74,10 +74,66 @@ export function formatSpelling(spelling: NoteSpelling): string {
   return `${letter}${mark}`
 }
 
+// Major-key tonic policy: conventional key names preferring the smaller
+// signature — D♭ (5♭) over C♯ (7♯); F♯ kept over G♭ (6 accidentals either
+// way, matching the default root policy's sharp choice).
+const KEY_TONIC_POLICY: readonly (readonly [Letter, number])[] = [
+  ['C', 0],
+  ['D', -1],
+  ['D', 0],
+  ['E', -1],
+  ['E', 0],
+  ['F', 0],
+  ['F', 1],
+  ['G', 0],
+  ['A', -1],
+  ['A', 0],
+  ['B', -1],
+  ['B', 0],
+]
+
+export const MAJOR_SCALE_SEMITONES = [0, 2, 4, 5, 7, 9, 11] as const
+
+export function spellMajorKeyTonic(key: PitchClass): NoteSpelling {
+  const entry = KEY_TONIC_POLICY[pitchClass(key)]
+  if (!entry) throw new Error(`Invalid pitch class: ${key}`)
+  const [letter, accidental] = entry
+  return { letter, accidental, pc: pitchClass(key) }
+}
+
+// The diatonic root at a major-scale degree (0 = tonic … 6 = leading tone),
+// spelled from the key (§3.5): the 3rd degree of B major is D♯, never E♭.
+export function spellMajorScaleDegree(
+  key: PitchClass,
+  degreeIndex: number,
+): NoteSpelling {
+  const semitones = MAJOR_SCALE_SEMITONES[degreeIndex]
+  if (semitones === undefined) {
+    throw new Error(`Invalid major-scale degree index: ${degreeIndex}`)
+  }
+  const tonic = spellMajorKeyTonic(key)
+  const letterIndex = (LETTERS.indexOf(tonic.letter) + degreeIndex) % 7
+  const letter = LETTERS[letterIndex]
+  const naturalPc = LETTER_PCS[letterIndex]
+  if (letter === undefined || naturalPc === undefined) {
+    throw new Error(`Invalid letter index: ${letterIndex}`)
+  }
+  const pc = pitchClass(key + semitones)
+  return { letter, accidental: signedPcDelta(pc - naturalPc), pc }
+}
+
+export function keyDisplayName(key: PitchClass): string {
+  return `${formatSpelling(spellMajorKeyTonic(key))} major`
+}
+
 // Prompt display name (DESIGN.md §3.4): root + type id only — the voicing
 // being drilled is shown separately, never folded into a slash-chord name.
-export function chordDisplayName(chord: Chord): string {
-  return `${formatSpelling(spellRoot(chord.root))} ${chord.type.id}`
+// Diatonic prompts pass their key-derived root spelling (§3.5).
+export function chordDisplayName(
+  chord: Chord,
+  root: NoteSpelling = spellRoot(chord.root),
+): string {
+  return `${formatSpelling(root)} ${chord.type.id}`
 }
 
 // A concrete note on the staff. The octave follows the *letter*, not the

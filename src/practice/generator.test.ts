@@ -1,9 +1,21 @@
 import { describe, expect, it } from 'vitest'
-import { comboKey, MAJOR_TRIADS_COMBOS, type Combo } from './combos'
-import { pickCombo, RECENT_WINDOW } from './generator'
+import { ALL_PITCH_CLASSES } from '../theory'
+import { comboKey, type Combo } from './combos'
+import {
+  comboWeight,
+  MISS_WEIGHT_BOOST,
+  pickCombo,
+  pickWeightedCombo,
+  RECENT_WINDOW,
+} from './generator'
+import { type ComboRecentHistory, type RecentStatsSource } from './stats'
 
 function poolOf(size: number): Combo[] {
-  return MAJOR_TRIADS_COMBOS.slice(0, size).map((c) => ({ ...c }))
+  return ALL_PITCH_CLASSES.slice(0, size).map((root) => ({
+    root,
+    typeId: 'maj',
+    voicingId: 'any',
+  }))
 }
 
 // Deterministic rng cycling through the given values.
@@ -14,6 +26,19 @@ function fixedRng(...values: number[]) {
     i++
     return v ?? 0
   }
+}
+
+// Deterministic LCG for distribution tests.
+function seededRng(seed: number) {
+  let s = seed >>> 0
+  return () => {
+    s = (s * 1664525 + 1013904223) >>> 0
+    return s / 2 ** 32
+  }
+}
+
+function statsOf(byKey: Record<string, ComboRecentHistory>): RecentStatsSource {
+  return { recentHistory: (key) => byKey[key] ?? null }
 }
 
 describe('pickCombo — no immediate repeat (§5)', () => {
@@ -88,5 +113,73 @@ describe('pickCombo — uniform selection', () => {
 
   it('throws on an empty pool', () => {
     expect(() => pickCombo([], [])).toThrow()
+  })
+})
+
+describe('comboWeight (§5)', () => {
+  it('no history is the uniform baseline', () => {
+    expect(comboWeight(null)).toBe(1)
+  })
+
+  it('a clean recent record stays at baseline — success never down-weights', () => {
+    expect(comboWeight({ misses: 0, total: 5 })).toBe(1)
+  })
+
+  it('scales linearly with the recent-miss rate', () => {
+    expect(comboWeight({ misses: 5, total: 5 })).toBe(1 + MISS_WEIGHT_BOOST)
+    expect(comboWeight({ misses: 1, total: 2 })).toBe(1 + MISS_WEIGHT_BOOST / 2)
+  })
+})
+
+describe('pickWeightedCombo (§5)', () => {
+  it('behaves uniformly when nothing has history', () => {
+    const pool = poolOf(12)
+    const rngA = seededRng(42)
+    const rngB = seededRng(42)
+    for (let i = 0; i < 100; i++) {
+      expect(pickWeightedCombo(pool, [], statsOf({}), rngA)).toEqual(
+        pickCombo(pool, [], rngB),
+      )
+    }
+  })
+
+  it('picks a heavily-missed combo more often (synthetic history)', () => {
+    const pool = poolOf(4)
+    const missed = pool[0]!
+    // missed at 100% recent miss rate → weight 4; the other three → 1 each,
+    // so the expected share is 4/7 ≈ 0.571.
+    const stats = statsOf({ [comboKey(missed)]: { misses: 5, total: 5 } })
+    const rng = seededRng(7)
+    let hits = 0
+    const draws = 5000
+    for (let i = 0; i < draws; i++) {
+      if (
+        comboKey(pickWeightedCombo(pool, [], stats, rng)) === comboKey(missed)
+      )
+        hits++
+    }
+    expect(hits / draws).toBeGreaterThan(0.53)
+    expect(hits / draws).toBeLessThan(0.61)
+  })
+
+  it('still never repeats within the recent window, even when the missed combo is excluded', () => {
+    const pool = poolOf(5)
+    const missed = pool[0]!
+    const stats = statsOf({ [comboKey(missed)]: { misses: 5, total: 5 } })
+    const recent: string[] = []
+    const rng = seededRng(3)
+    for (let i = 0; i < 300; i++) {
+      const picked = pickWeightedCombo(pool, recent, stats, rng)
+      expect(recent.slice(-RECENT_WINDOW)).not.toContain(comboKey(picked))
+      recent.push(comboKey(picked))
+    }
+  })
+
+  it('rng of ~1 stays in range under weights', () => {
+    const pool = poolOf(4)
+    const stats = statsOf({ [comboKey(pool[0]!)]: { misses: 5, total: 5 } })
+    expect(pool).toContainEqual(
+      pickWeightedCombo(pool, [], stats, () => 0.9999999),
+    )
   })
 })

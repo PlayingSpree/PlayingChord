@@ -11,14 +11,83 @@ Running summary of build progress against [PLAN.md](PLAN.md). Newest entry first
 | 2 — MIDI layer | ✅ Done (2026-07-15) — hardware key-press check pending |
 | 3 — Walking skeleton (Milestone A) | ✅ Done (2026-07-15) — hardware pass pending |
 | 4 — Attempt lifecycle & hints | ✅ Done (2026-07-16) — stall-feel tuning on hardware pending |
-| 5 — Presets & weighted generation | ⬜ Next |
-| 6 — Storage & stats (Milestone B) | ⬜ |
+| 5 — Presets & weighted generation | ✅ Done (2026-07-16) |
+| 6 — Storage & stats (Milestone B) | ⬜ Next |
 | 7 — Session modes, goals & history | ⬜ |
 | 8 — Notation & audio | ⬜ |
 | 9 — Editors & import/export | ⬜ |
 | 10 — Polish, a11y & deploy (Milestone C) | ⬜ |
 
 ---
+
+## 2026-07-16 — Phase 5: Presets & weighted generation ✅
+
+All of §4/§5 except custom-preset editing (Phase 9): pool expansion, the 7
+built-in presets with pickers, and miss-weighted generation over an in-memory
+stats stub. 49 new tests (196 total) and a 16-check browser-driven pass.
+
+**Modules:**
+
+- `practice/presets.ts` — `ChordPool` (product / explicit / diatonic),
+  `Preset`, `poolChords`/`expandPreset` (pool × voicingIds → combos), and
+  `builtInPresets(diatonicKey)` returning all 7 §4 presets. Diatonic pools
+  derive I ii iii IV V vi vii° from the major key and carry per-root
+  `rootSpellings` so prompts spell from the key.
+- `theory/spelling.ts` — key-aware spelling (§3.5): `spellMajorKeyTonic`
+  (naming policy prefers the smaller signature: D♭ over C♯; F♯ kept, matching
+  the default policy), `spellMajorScaleDegree` (3rd degree of B major = D♯,
+  never E♭), `keyDisplayName`; `chordDisplayName` takes an optional root
+  spelling. `Prompt` now carries `rootSpelling` for the Phase 8 staff.
+- `practice/stats.ts` — `InMemoryRecentStats`, the Phase 5 stub: last 5
+  outcomes per combo (`first-try`/`missed`), fed by real session results;
+  Phase 6 swaps the backing store for persisted records behind the same
+  `RecentStatsSource` interface.
+- `practice/generator.ts` — `pickWeightedCombo` (§5): weight = 1 +
+  3 × recent-miss-rate; no history (or a clean record) stays at the uniform
+  baseline 1, so fresh presets behave uniform-random. No-immediate-repeat
+  unchanged; `pickCombo` is now the weighted pick with no history.
+- `store/practiceStore.ts` — preset/key selection state (`setPreset`,
+  `setDiatonicKey`), weighted generation, and outcome recording on advance
+  (skips never recorded, §6.2 step 4 — even after a miss). Selection persists
+  to a plain `playingchord:preset` key (migrates in Phase 6). Exposes
+  `missedRecently` for the indicator.
+- UI: `PresetPicker` (preset select + major-key select shown only for the
+  diatonic preset) replaces the hardcoded header label; `PromptCard` gains
+  the fixed-height amber "🔥 Practicing: missed N× recently" line (§7).
+
+**Tests of note:** built-in expansion counts (12/12/24/36/72/7/48) and
+every combo of every preset satisfiable across all 12 diatonic keys; diatonic
+spelling pinned for B major (D♯ min, A♯ dim) and D♭ major (G♭ maj); weighted
+distribution against synthetic history (seeded rng, 4× combo lands ~4/7 of
+draws); store-level outcome recording, indicator, preset switching (a correct
+prompt still awaiting auto-advance is recorded; its dead timer never
+double-advances), and junk-memory fallback.
+
+**Verified in headless Edge (sim MIDI, QWERTY):** preset picker lists all 7;
+seventh-chords prompt played end-to-end; diatonic key picker appears only for
+diatonic, defaults to C, and B major spells sharps throughout; missing every
+prompt then correcting makes reappearing combos show the 🔥 indicator (first
+encounters never do); inversion drills show the voicing label and Skip
+advances; preset + key survive a reload.
+
+**Notes / deviations:**
+
+- Inversion drills interpreted as maj+min triads × 12 roots ×
+  {1st, 2nd inversion} (48 combos) — DESIGN.md §4 says only "a triad/root
+  product".
+- Indicator threshold: shown whenever the combo has ≥ 1 miss in its recent
+  window (any up-weighting is flagged), with the count in the text.
+- PLAN.md doesn't ask for preset-selection persistence; added the plain-key
+  memory anyway (same pattern as device/settings) since re-picking a preset
+  every session at the piano would grate.
+- Preset↔rule compatibility *warnings* stay in Phase 9 with the editor; here
+  a test asserts every built-in combo realizes.
+- Removed Phase 3's `MAJOR_TRIADS_COMBOS`; the practice store's test seam is
+  now a `presets` factory instead of a raw combo pool.
+
+**Next:** Phase 6 — storage & stats (Milestone B): versioned localStorage
+schema + migration hook, persisted per-combo/daily records wired into the
+weighting, live session stats bar.
 
 ## 2026-07-16 — Phase 4: Attempt lifecycle & progressive hints ✅
 

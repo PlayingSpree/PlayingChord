@@ -3,7 +3,9 @@ import { getChordType, type Chord, type ChordTypeId } from './chordTypes'
 import {
   chordDisplayName,
   formatSpelling,
+  keyDisplayName,
   spellChord,
+  spellMajorScaleDegree,
   spellMidiNote,
   spellRoot,
   spellVoicing,
@@ -81,6 +83,58 @@ describe('chordDisplayName (§3.4)', () => {
   it('is root + type id only', () => {
     expect(chordDisplayName(chord(0, 'maj7'))).toBe('C maj7')
     expect(chordDisplayName(chord(3, 'min'))).toBe('E♭ min')
+  })
+
+  it('accepts a key-derived root spelling override (§3.5)', () => {
+    // iii of B major: the D♯ minor chord, not E♭ minor.
+    const dSharp = spellMajorScaleDegree(11, 2)
+    expect(chordDisplayName(chord(3, 'min'), dSharp)).toBe('D♯ min')
+  })
+})
+
+describe('major-key spelling for the diatonic preset (§3.5)', () => {
+  const scaleOf = (key: number) =>
+    Array.from({ length: 7 }, (_, degree) =>
+      formatSpelling(spellMajorScaleDegree(key, degree)),
+    )
+
+  it('names keys with the smaller signature: D♭ over C♯', () => {
+    const names = Array.from({ length: 12 }, (_, pc) => keyDisplayName(pc))
+    expect(names).toEqual([
+      'C major',
+      'D♭ major',
+      'D major',
+      'E♭ major',
+      'E major',
+      'F major',
+      'F♯ major',
+      'G major',
+      'A♭ major',
+      'A major',
+      'B♭ major',
+      'B major',
+    ])
+  })
+
+  it('B major uses sharps the default root policy would flat', () => {
+    expect(scaleOf(11)).toEqual(['B', 'C♯', 'D♯', 'E', 'F♯', 'G♯', 'A♯'])
+  })
+
+  it('D♭ major uses flats, including G♭ over the default F♯', () => {
+    expect(scaleOf(1)).toEqual(['D♭', 'E♭', 'F', 'G♭', 'A♭', 'B♭', 'C'])
+  })
+
+  it('F♯ major spells its leading tone E♯', () => {
+    expect(scaleOf(6)).toEqual(['F♯', 'G♯', 'A♯', 'B', 'C♯', 'D♯', 'E♯'])
+  })
+
+  it('C major is all naturals', () => {
+    expect(scaleOf(0)).toEqual(['C', 'D', 'E', 'F', 'G', 'A', 'B'])
+  })
+
+  it('rejects out-of-range degree indexes', () => {
+    expect(() => spellMajorScaleDegree(0, 7)).toThrow()
+    expect(() => spellMajorScaleDegree(0, -1)).toThrow()
   })
 })
 

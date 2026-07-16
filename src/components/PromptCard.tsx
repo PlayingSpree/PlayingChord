@@ -9,6 +9,7 @@ export function PromptCard() {
   const phase = usePractice((s) => s.phase)
   const reactionMs = usePractice((s) => s.reactionMs)
   const hint = usePractice((s) => s.hint)
+  const missedRecently = usePractice((s) => s.missedRecently)
   const skip = usePractice((s) => s.skip)
 
   if (!prompt) return null
@@ -21,6 +22,12 @@ export function PromptCard() {
       {prompt.voicing.id !== 'any' && (
         <p className="text-xl text-slate-400">{prompt.voicing.name}</p>
       )}
+      {/* Subtle §5 weighting indicator; fixed height so it never shifts the
+          layout between weighted and fresh prompts. */}
+      <p className="min-h-5 text-sm font-medium text-amber-400">
+        {missedRecently !== null &&
+          `🔥 Practicing: missed ${missedRecently}× recently`}
+      </p>
       {/* Fixed-height feedback line so ✔/✘ never shift the layout. Feedback
           always pairs color with an icon (§6.4); the hint stays visible
           through the retry, and misses are visual-only (§9). */}

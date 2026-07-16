@@ -1,19 +1,41 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { chordPitchClasses } from '../theory'
+import { chordPitchClasses, type PitchClass } from '../theory'
 import {
   comboKey,
   DEFAULT_PRACTICE_SETTINGS,
-  MAJOR_TRIADS_COMBOS,
+  InMemoryRecentStats,
+  type ChordPool,
+  type Preset,
+  type Prompt,
 } from '../practice'
-import { createPracticeStore } from './practiceStore'
-import type { Combo, Prompt } from '../practice'
+import { createPracticeStore, type PresetMemory } from './practiceStore'
 
 const ADVANCE = DEFAULT_PRACTICE_SETTINGS.autoAdvanceMs
 const STALL = DEFAULT_PRACTICE_SETTINGS.judgmentDelayMs
 
+// Single-preset harness replacing the Phase 3/4 `pool` dep.
+function presetsOf(
+  pool: ChordPool,
+  voicingIds: readonly string[] = ['any'],
+): () => readonly Preset[] {
+  return () => [{ id: 'test', name: 'Test', pool, voicingIds }]
+}
+
+function memoryStub(
+  initial: Partial<{ presetId: string; diatonicKey: PitchClass }> | null = null,
+): PresetMemory & { saved: unknown[] } {
+  const saved: unknown[] = []
+  return {
+    saved,
+    load: () => initial,
+    save: (selection) => saved.push(selection),
+  }
+}
+
 function setup(deps: Parameters<typeof createPracticeStore>[0] = {}) {
   const store = createPracticeStore({
     settings: () => DEFAULT_PRACTICE_SETTINGS, // independent of localStorage
+    memory: memoryStub(),
     ...deps,
   })
   let held = new Set<number>()
@@ -36,6 +58,20 @@ function setup(deps: Parameters<typeof createPracticeStore>[0] = {}) {
 // A correct voicing for the current prompt: compact chord tones above C4.
 function correctNotes(prompt: Prompt): number[] {
   return chordPitchClasses(prompt.chord).map((pc) => 60 + pc)
+}
+
+function promptComboKey(prompt: Prompt): string {
+  return comboKey({
+    root: prompt.chord.root,
+    typeId: prompt.chord.type.id,
+    voicingId: prompt.voicing.id,
+  })
+}
+
+const playCorrectAndAdvance = (s: ReturnType<typeof setup>, prompt: Prompt) => {
+  s.press(...correctNotes(prompt))
+  s.releaseAll()
+  vi.advanceTimersByTime(ADVANCE)
 }
 
 beforeEach(() => {
@@ -158,10 +194,11 @@ describe('practiceStore — miss & retry (§6.2 steps 2–3)', () => {
   })
 
   it('misses stalled wrong attempts after the judgment delay', () => {
-    const pool: Combo[] = [
-      { root: 0, typeId: 'maj', voicingId: 'first-inversion' },
-    ]
-    const { store, press } = setup({ pool })
+    const presets = presetsOf(
+      { kind: 'explicit', chords: [{ root: 0, typeId: 'maj' }] },
+      ['first-inversion'],
+    )
+    const { store, press } = setup({ presets })
 
     press(60, 64, 67) // root position in an inversion drill
     expect(store.getState().phase).toBe('armed')
@@ -196,23 +233,168 @@ describe('practiceStore — skip (§6.2 step 4)', () => {
 
 describe('practiceStore — generation', () => {
   it('never repeats a prompt within the recent window', () => {
-    const pool: Combo[] = MAJOR_TRIADS_COMBOS.slice(0, 6).map((c) => ({ ...c }))
-    const { store, press, releaseAll } = setup({ pool })
+    const presets = presetsOf({
+      kind: 'product',
+      roots: [0, 1, 2, 3, 4, 5],
+      chordTypes: ['maj'],
+    })
+    const s = setup({ presets })
     const seen: string[] = []
 
     for (let i = 0; i < 50; i++) {
-      const prompt = store.getState().prompt!
-      const key = comboKey({
-        root: prompt.chord.root,
-        typeId: prompt.chord.type.id,
-        voicingId: prompt.voicing.id,
-      })
-      expect(seen.slice(-3)).not.toContain(key)
-      seen.push(key)
-
-      press(...correctNotes(prompt))
-      releaseAll()
-      vi.advanceTimersByTime(ADVANCE)
+      const prompt = s.store.getState().prompt!
+      expect(seen.slice(-3)).not.toContain(promptComboKey(prompt))
+      seen.push(promptComboKey(prompt))
+      playCorrectAndAdvance(s, prompt)
     }
+  })
+})
+
+describe('practiceStore — outcome recording (§5/§7)', () => {
+  const onePreset = presetsOf({
+    kind: 'explicit',
+    chords: [{ root: 0, typeId: 'maj' }],
+  })
+
+  it('records a first-try success', () => {
+    const stats = new InMemoryRecentStats()
+    const s = setup({ presets: onePreset, stats })
+    const prompt = s.store.getState().prompt!
+    playCorrectAndAdvance(s, prompt)
+    expect(stats.recentHistory(promptComboKey(prompt))).toEqual({
+      misses: 0,
+      total: 1,
+    })
+  })
+
+  it('records a missed-then-corrected prompt as a miss', () => {
+    const stats = new InMemoryRecentStats()
+    const s = setup({ presets: onePreset, stats })
+    const prompt = s.store.getState().prompt!
+
+    s.press(61, 62, 63)
+    expect(s.store.getState().phase).toBe('missed')
+    s.releaseAll()
+    playCorrectAndAdvance(s, prompt)
+
+    expect(stats.recentHistory(promptComboKey(prompt))).toEqual({
+      misses: 1,
+      total: 1,
+    })
+  })
+
+  it('records nothing for a skip, even after a miss (§6.2 step 4)', () => {
+    const stats = new InMemoryRecentStats()
+    const s = setup({ presets: onePreset, stats })
+    const prompt = s.store.getState().prompt!
+
+    s.press(61, 62, 63)
+    s.releaseAll()
+    s.store.getState().skip()
+
+    expect(stats.recentHistory(promptComboKey(prompt))).toBeNull()
+  })
+
+  it('shows the 🔥 indicator when a recently-missed combo comes up again', () => {
+    const stats = new InMemoryRecentStats()
+    const s = setup({ presets: onePreset, stats })
+    const prompt = s.store.getState().prompt!
+    expect(s.store.getState().missedRecently).toBeNull()
+
+    s.press(61, 62, 63)
+    s.releaseAll()
+    playCorrectAndAdvance(s, prompt)
+
+    // Same (only) combo again — now flagged as recently missed.
+    expect(s.store.getState().missedRecently).toBe(1)
+  })
+})
+
+describe('practiceStore — preset selection (§4)', () => {
+  it('defaults to the first preset and exposes the built-ins', () => {
+    const { store } = setup()
+    expect(store.getState().presetId).toBe('major-triads')
+    expect(store.getState().presets.map((p) => p.id)).toContain('diatonic')
+  })
+
+  it('restores a remembered selection', () => {
+    const { store } = setup({
+      memory: memoryStub({ presetId: 'seventh-chords', diatonicKey: 4 }),
+    })
+    expect(store.getState().presetId).toBe('seventh-chords')
+    expect(store.getState().diatonicKey).toBe(4)
+  })
+
+  it('falls back to the first preset for junk memory', () => {
+    const { store } = setup({
+      memory: memoryStub({ presetId: 'nope', diatonicKey: 99 }),
+    })
+    expect(store.getState().presetId).toBe('major-triads')
+    expect(store.getState().diatonicKey).toBe(0)
+  })
+
+  it('switching presets swaps the pool and shows a new prompt immediately', () => {
+    const memory = memoryStub()
+    const { store } = setup({ memory })
+    store.getState().setPreset('seventh-chords')
+
+    expect(store.getState().presetId).toBe('seventh-chords')
+    const prompt = store.getState().prompt!
+    expect(['maj7', 'min7', 'dom7']).toContain(prompt.chord.type.id)
+    expect(store.getState().phase).toBe('armed')
+    expect(memory.saved).toContainEqual({
+      presetId: 'seventh-chords',
+      diatonicKey: 0,
+    })
+  })
+
+  it('ignores unknown preset ids', () => {
+    const { store } = setup()
+    const prompt = store.getState().prompt
+    store.getState().setPreset('not-a-preset')
+    expect(store.getState().presetId).toBe('major-triads')
+    expect(store.getState().prompt).toBe(prompt)
+  })
+
+  it('a completed prompt awaiting auto-advance still counts when switching', () => {
+    const stats = new InMemoryRecentStats()
+    const s = setup({ stats })
+    const prompt = s.store.getState().prompt!
+    s.press(...correctNotes(prompt))
+    expect(s.store.getState().phase).toBe('advancing')
+
+    s.store.getState().setPreset('minor-triads')
+    expect(stats.recentHistory(promptComboKey(prompt))).toEqual({
+      misses: 0,
+      total: 1,
+    })
+    // The dead advance timer must not fire a second advance later.
+    const next = s.store.getState().prompt
+    vi.advanceTimersByTime(ADVANCE)
+    expect(s.store.getState().prompt).toBe(next)
+  })
+
+  it('the diatonic preset drills the chosen key with key spelling', () => {
+    const { store } = setup()
+    store.getState().setPreset('diatonic')
+    store.getState().setDiatonicKey(11) // B major
+
+    const scalePcs = new Set([11, 1, 3, 4, 6, 8, 10])
+    for (let i = 0; i < 10; i++) {
+      const prompt = store.getState().prompt!
+      expect(scalePcs.has(prompt.chord.root)).toBe(true)
+      // Key spelling, e.g. D♯ min — never the default policy's E♭.
+      expect(prompt.displayName).not.toContain('♭')
+      store.getState().skip()
+    }
+  })
+
+  it('changing the key while on the diatonic preset regenerates', () => {
+    const { store } = setup()
+    store.getState().setPreset('diatonic')
+    store.getState().setDiatonicKey(7) // G major
+    const gMajorPcs = new Set([7, 9, 11, 0, 2, 4, 6])
+    expect(gMajorPcs.has(store.getState().prompt!.chord.root)).toBe(true)
+    expect(store.getState().diatonicKey).toBe(7)
   })
 })

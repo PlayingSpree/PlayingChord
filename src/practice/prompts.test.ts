@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { matches } from '../theory'
-import { MAJOR_TRIADS_COMBOS } from './combos'
+import { matches, spellMajorScaleDegree } from '../theory'
 import { createPrompt } from './prompts'
 
 describe('createPrompt', () => {
@@ -12,11 +11,21 @@ describe('createPrompt', () => {
     expect(prompt.example).toEqual([60, 64, 67]) // deterministic, near middle C
   })
 
-  it('every hardcoded major-triad combo yields an example satisfying its rule', () => {
-    for (const combo of MAJOR_TRIADS_COMBOS) {
-      const prompt = createPrompt(combo)
+  it('every major-triad combo yields an example satisfying its rule', () => {
+    for (let root = 0; root < 12; root++) {
+      const prompt = createPrompt({ root, typeId: 'maj', voicingId: 'any' })
       expect(matches(prompt.example, prompt.chord, prompt.voicing)).toBe(true)
     }
+  })
+
+  it('spells the root with the default policy unless one is passed', () => {
+    const combo = { root: 3, typeId: 'min', voicingId: 'any' } as const
+    expect(createPrompt(combo).displayName).toBe('E♭ min')
+
+    // Diatonic presets pass the key-derived spelling (§3.5): iii of B major.
+    const inKey = createPrompt(combo, spellMajorScaleDegree(11, 2))
+    expect(inKey.displayName).toBe('D♯ min')
+    expect(inKey.rootSpelling.letter).toBe('D')
   })
 
   it('throws for a voicing id not in the library', () => {
