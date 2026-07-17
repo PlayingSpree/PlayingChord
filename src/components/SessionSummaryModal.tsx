@@ -1,12 +1,26 @@
+import { useEffect, useRef } from 'react'
 import { usePractice } from '../store/practiceStore'
 import type { SummaryChordEntry } from '../practice'
 
 // End-of-session summary (§7): shown when the session timer runs out.
 // Practice is frozen behind it; dismissing resumes endless practice as a
-// fresh session.
+// fresh session. Focus moves to the dismiss button when the dialog opens
+// (it is the dialog's only control) and Escape dismisses.
 export function SessionSummaryModal() {
   const summary = usePractice((s) => s.summary)
   const dismiss = usePractice((s) => s.dismissSummary)
+  const dismissButton = useRef<HTMLButtonElement>(null)
+  const open = summary !== null
+
+  useEffect(() => {
+    if (!open) return
+    dismissButton.current?.focus()
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') dismiss()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [open, dismiss])
 
   if (summary === null) return null
 
@@ -46,6 +60,7 @@ export function SessionSummaryModal() {
           />
         </div>
         <button
+          ref={dismissButton}
           type="button"
           onClick={dismiss}
           className="mt-6 w-full rounded-md bg-emerald-600 px-4 py-2 font-medium text-white transition-colors hover:bg-emerald-500"

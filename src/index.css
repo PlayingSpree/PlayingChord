@@ -1,1 +1,15 @@
 @import 'tailwindcss';
+
+/* The app is dark-only; letting the browser know keeps native widgets
+   (select dropdowns, number spinners, scrollbars) dark too. */
+:root {
+  color-scheme: dark;
+}
+
+/* One visible keyboard-focus style everywhere (a11y §6.4-adjacent: focus
+   must never be color-contrast-invisible on the dark surface). Mouse/touch
+   interaction stays ring-free via :focus-visible. */
+:focus-visible {
+  outline: 2px solid var(--color-sky-400);
+  outline-offset: 2px;
+}

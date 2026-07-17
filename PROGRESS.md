@@ -2,6 +2,67 @@
 
 Running summary of build progress against [PLAN.md](PLAN.md). Newest entry first.
 
+## 2026-07-17 — Phase 10: Polish, a11y & deploy (Milestone C) ✅
+
+The final phase: a11y/polish audit, cross-browser blocking screens re-verified,
+empty states confirmed, and the static-deploy machinery. No new tests (nothing
+pure changed; 404 still green) and a 16-check browser-driven pass.
+
+**Changes:**
+
+- `src/index.css` — `color-scheme: dark` (native select dropdowns, number
+  spinners and scrollbars were rendering light against the dark UI) and a
+  global 2 px sky `:focus-visible` outline, so every control in the settings
+  screen is keyboard-navigable with *visible* focus (PLAN.md's a11y criterion;
+  mouse clicks stay ring-free).
+- `components/SessionSummaryModal.tsx` — focus moves to the dialog's only
+  control (Continue) when the timer summary opens, and Escape dismisses; the
+  dialog already had `role="dialog"`/`aria-modal`.
+- `components/KeyboardView.tsx` — the keyboard is now one labeled
+  `role="img"` instead of ~60 unlabeled divs for screen readers; its per-key
+  marks stay redundant with the `role="status"` feedback line.
+- `index.html` — meta description + `theme-color`; icon href made relative.
+- `vite.config.ts` — `base: './'`, so the build runs from any host or
+  subdirectory (GitHub Pages project page, Netlify, plain file server).
+- `.github/workflows/deploy.yml` (new) — build + test + publish to GitHub
+  Pages on every push to `master` (`actions/deploy-pages`); one-time setup is
+  Settings → Pages → Source: "GitHub Actions".
+- `README.md` — deployment section, plus the `?midi=sim` dev tip.
+
+**Audit findings (no changes needed):** every overlay/feedback state already
+paired color with a shape/icon (§6.4 — held ●, wrong ✕, expected ○, ✔/✘
+feedback, calendar goal dot, chip ✓); all form controls carried labels from
+Phase 9; prompt name is text-7xl/8xl; History/stats/export empty states all
+render placeholders or explanatory text on a fresh install.
+
+**Verified in headless Edge (16 checks):** unsupported-browser and
+permission-denied blocking screens (§2 messaging); fresh-profile empty states
+(stats bar dashes, 0/10 goal chip, History message, disabled export); dark
+color-scheme; Tab focus shows the global outline; summary dialog focuses its
+button and Escape dismisses (fake clock); **the production build served under
+a `/playingchord/` subpath boots with zero 4xx responses** — favicon and the
+lazy StaffView chunk both resolve relative to the subpath, title + meta
+description present.
+
+**Notes / deviations:**
+
+- Milestone C's final criterion — the deployed URL working with a real MIDI
+  keyboard on a machine that never ran the dev build — needs two user steps:
+  add a GitHub remote (CI + deploy workflows activate on push) and enable
+  Pages (Settings → Pages → Source: "GitHub Actions"), then the usual
+  hardware session. The subpath-serving half was proven locally.
+- Safari/Firefox/Opera can't be automated on this machine (no Playwright
+  builds for system Safari/Opera; Firefox's permission prompt isn't
+  scriptable) — the §2 matrix beyond Edge stays a manual item for the
+  hardware session. The unsupported-browser path Safari would take *is*
+  covered by the `requestMIDIAccess`-deleted check.
+- Heading-level nits (h3 sections under h1) left as-is: sections are
+  `aria-label`ed and the structure is shallow; churn wasn't worth it.
+
+**Next:** nothing — all phases done. Open items are the pending hardware
+checks (Phases 2/4/8 feel + Milestone A/C at the piano) and the user-side
+remote + Pages setup.
+
 ## 2026-07-17 — Phase 8: Notation & audio ✅
 
 The two optional feedback channels (§3.4, §9), built after Phase 9 (which had
@@ -162,7 +223,7 @@ once it doesn't; both rules and the preset survive a reload.
 | 7 — Session modes, goals & history | ✅ Done (2026-07-16) |
 | 8 — Notation & audio | ✅ Done (2026-07-17) — chime feel on hardware pending |
 | 9 — Editors & import/export | ✅ Done (2026-07-16) |
-| 10 — Polish, a11y & deploy (Milestone C) | ⬜ Next |
+| 10 — Polish, a11y & deploy (Milestone C) | ✅ Done (2026-07-17) — GitHub remote + Pages enablement are user steps |
 
 ---
 

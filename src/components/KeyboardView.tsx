@@ -53,9 +53,16 @@ export function KeyboardView() {
         : NO_NOTES
   const state = (midi: number) => keyState(midi, heldNotes, wrong, expected)
 
+  // The keyboard is a visual instrument display; its per-key marks are
+  // redundant with the feedback line's role="status" text, so screen
+  // readers get one labeled image instead of ~60 unlabeled divs.
   return (
     <div className="flex justify-center overflow-x-auto">
-      <div className="flex rounded-lg border border-slate-700 bg-slate-950 p-1.5">
+      <div
+        role="img"
+        aria-label="On-screen keyboard showing held and highlighted keys"
+        className="flex rounded-lg border border-slate-700 bg-slate-950 p-1.5"
+      >
         {WHITE_KEYS.map((midi) => {
           const sharp = midi + 1
           const hasSharp = HAS_SHARP.has(pitchClass(midi)) && sharp <= HIGH
