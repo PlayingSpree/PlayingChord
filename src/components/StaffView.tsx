@@ -10,16 +10,20 @@ import VexFlow, {
 } from 'vexflow/bravura'
 import {
   grandStaffLayout,
+  vexflowKeySignature,
   type Chord,
   type Clef,
+  type PitchClass,
   type StaffNote,
 } from '../theory'
 
-// Grand staff for the prompt's example voicing (DESIGN.md §3.4): Learn
-// mode's answer display and the miss-3 reveal (§6.4). All spelling logic
-// lives in theory/staff.ts — this component only turns the prepared layout
-// into VexFlow calls. Default-exported for React.lazy: VexFlow (with its
-// music font) is a heavy chunk that staff-off users never download.
+// Grand staff for the prompt's example voicing (DESIGN.md §3.4): a
+// standalone reference shown whenever the staff setting is on, in both
+// modes, independent of the keyboard's own miss-3 reveal (§6.4). All
+// spelling logic lives in theory/staff.ts — this component only turns the
+// prepared layout into VexFlow calls. Default-exported for React.lazy:
+// VexFlow (with its music font) is a heavy chunk that staff-off users
+// never download.
 //
 // The staff sits on a light "manuscript" card so VexFlow's normal dark ink
 // works inside the dark UI; the notes themselves use the same sky accent as
@@ -59,9 +63,14 @@ function chordVoice(notes: StaffNote[], clef: Clef): Voice | null {
   return new Voice().addTickables([staveNote])
 }
 
-function draw(host: HTMLDivElement, chord: Chord, notes: readonly number[]) {
+function draw(
+  host: HTMLDivElement,
+  chord: Chord,
+  notes: readonly number[],
+  keySignature: PitchClass | null,
+) {
   host.replaceChildren()
-  const layout = grandStaffLayout(chord, notes)
+  const layout = grandStaffLayout(chord, notes, keySignature ?? undefined)
 
   const renderer = new Renderer(host, Renderer.Backends.SVG)
   renderer.resize(WIDTH, HEIGHT)
@@ -69,6 +78,11 @@ function draw(host: HTMLDivElement, chord: Chord, notes: readonly number[]) {
 
   const treble = new Stave(STAVE_X, TREBLE_Y, STAVE_WIDTH).addClef('treble')
   const bass = new Stave(STAVE_X, BASS_Y, STAVE_WIDTH).addClef('bass')
+  if (keySignature !== null) {
+    const sig = vexflowKeySignature(keySignature)
+    treble.addKeySignature(sig)
+    bass.addKeySignature(sig)
+  }
   treble.setContext(context).draw()
   bass.setContext(context).draw()
   new StaveConnector(treble, bass).setType('brace').setContext(context).draw()
@@ -93,9 +107,11 @@ function draw(host: HTMLDivElement, chord: Chord, notes: readonly number[]) {
 export default function StaffView({
   chord,
   notes,
+  keySignature = null,
 }: {
   chord: Chord
   notes: readonly number[]
+  keySignature?: PitchClass | null
 }) {
   const host = useRef<HTMLDivElement>(null)
 
@@ -104,13 +120,13 @@ export default function StaffView({
     if (!element) return
     let stale = false
     void fontsReady().then(() => {
-      if (!stale) draw(element, chord, notes)
+      if (!stale) draw(element, chord, notes, keySignature)
     })
     return () => {
       stale = true
       element.replaceChildren()
     }
-  }, [chord, notes])
+  }, [chord, notes, keySignature])
 
   return (
     <div

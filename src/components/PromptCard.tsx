@@ -25,18 +25,17 @@ export function PromptCard() {
   const reactionMs = usePractice((s) => s.reactionMs)
   const hint = usePractice((s) => s.hint)
   const missedRecently = usePractice((s) => s.missedRecently)
-  const mode = usePractice((s) => s.mode)
   const skip = usePractice((s) => s.skip)
   const staffEnabled = useSettings((s) => s.settings.staffEnabled)
+  const staffKeyEnabled = useSettings((s) => s.settings.staffKeyEnabled)
   const chordNameSize = useSettings((s) => s.settings.chordNameSize)
 
   if (!prompt) return null
 
-  // The staff (§3.4) scopes to Learn mode — the example is the answer
-  // display there — and joins the miss-3 reveal in Practice, which §6.4
-  // highlights on the staff whenever it's shown.
-  const showStaff =
-    staffEnabled && (mode === 'learn' || hint?.kind === 'reveal')
+  // The staff (§3.4) is purely setting-controlled: whenever staffEnabled
+  // is on, it's shown from the first prompt, in both Learn and Practice.
+  const showStaff = staffEnabled
+  const keySignature = staffKeyEnabled ? prompt.chord.root : null
 
   return (
     <section className="flex flex-col items-center gap-4 text-center">
@@ -66,7 +65,11 @@ export function PromptCard() {
             />
           }
         >
-          <StaffView chord={prompt.chord} notes={prompt.example} />
+          <StaffView
+            chord={prompt.chord}
+            notes={prompt.example}
+            keySignature={keySignature}
+          />
         </Suspense>
       )}
       {/* Fixed-height feedback line so ✔/✘ never shift the layout. Feedback

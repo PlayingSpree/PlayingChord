@@ -3,7 +3,7 @@ import {
   matches,
   requiredNoteCount,
 } from '../theory'
-import { computeHint, type Hint } from './hints'
+import { computeHint, REVEAL_AFTER_MISSES, type Hint } from './hints'
 import type { Prompt } from './prompts'
 import type { PracticeSettings } from './settings'
 
@@ -40,6 +40,10 @@ export interface LifecycleHost {
   // The machine wants the next prompt (auto-advance elapsed, or skip); the
   // host responds by calling promptShown().
   onAdvance(): void
+  // Whether miss escalation may reach the §6.4 reveal stage. Learn mode
+  // answers false — the example is overlaid from the start, so misses stay
+  // at the wrong-keys/constraint stage. Omitted means true.
+  revealOnMisses?(): boolean
 }
 
 export class AttemptLifecycle {
@@ -162,7 +166,11 @@ export class AttemptLifecycle {
   private miss(settings: PracticeSettings): void {
     if (!this.prompt) return
     this.missCount += 1
-    this.hint = computeHint(this.missCount, this.held, this.prompt, settings)
+    const stage =
+      (this.host.revealOnMisses?.() ?? true)
+        ? this.missCount
+        : Math.min(this.missCount, REVEAL_AFTER_MISSES - 1)
+    this.hint = computeHint(stage, this.held, this.prompt, settings)
     this.phase = 'missed'
     this.emit()
   }

@@ -18,9 +18,12 @@ export interface PracticeSettings extends MatchSettings {
   autoAdvanceMs: number
   // Daily active-practice goal (§7), in minutes.
   dailyGoalMinutes: number
-  // Grand-staff notation (§3.4): shown in Learn mode and with the miss-3
-  // reveal (§6.4); off keeps name+keyboard-only practice first-class.
+  // Grand-staff notation (§3.4): shown whenever this is on, in both Learn
+  // and Practice; off keeps name+keyboard-only practice first-class.
   staffEnabled: boolean
+  // Renders the staff in the chord root's major key — key signature plus
+  // diatonic respelling (§3.5) — instead of the default fixed spelling.
+  staffKeyEnabled: boolean
   // Correct chime (§9): the app's only sound — misses stay silent.
   chimeEnabled: boolean
   // Chord name display size (§7): the prompt's primary text. 'lg' matches
@@ -35,6 +38,7 @@ export const DEFAULT_PRACTICE_SETTINGS: PracticeSettings = {
   autoAdvanceMs: 800,
   dailyGoalMinutes: 10,
   staffEnabled: true,
+  staffKeyEnabled: false,
   chimeEnabled: true,
   chordNameSize: 'lg',
 }
@@ -90,6 +94,7 @@ export function sanitizeSettings(value: unknown): PracticeSettings {
       defaults.dailyGoalMinutes,
     ),
     staffEnabled: asBoolean(raw.staffEnabled, defaults.staffEnabled),
+    staffKeyEnabled: asBoolean(raw.staffKeyEnabled, defaults.staffKeyEnabled),
     chimeEnabled: asBoolean(raw.chimeEnabled, defaults.chimeEnabled),
     chordNameSize: asChordNameSize(raw.chordNameSize, defaults.chordNameSize),
   }

@@ -15,8 +15,10 @@ first) is intentionally left outside this document.
 **Key decisions:**
 - Stack: React + TypeScript + Vite + Zustand, client-side only (no accounts/server).
 - The **chord name is the prompt**; grand-staff notation (VexFlow) shows one *example*
-  voicing in Learn mode. Staff-off stays first-class — the keyboard highlight carries
-  Learn mode without notation.
+  voicing whenever the staff setting is on — in both Learn and Practice, from the first
+  prompt, not gated on mode or miss count — optionally spelled in the chord root's major
+  key with a key signature (a separate setting, §3.5). Staff-off stays first-class — the
+  keyboard highlight carries Learn mode without notation.
 - Chords are matched against a **voicing rule**: a composable spec (bass-note constraint,
   span, doubling policy). Matching is always rule-based — any voicing satisfying the rule
   counts, never only the notes drawn on the staff.
@@ -48,7 +50,7 @@ first) is intentionally left outside this document.
   closed/open position, and user-defined custom voicing rules — all built from the same
   composable model (see §3.3).
 - Prompt with the chord **name** front and center; in Learn mode, show one example
-  voicing (keyboard highlight + grand staff) to copy.
+  voicing to copy (keyboard highlight, plus the grand staff when the staff setting is on).
 - Give feedback that doesn't rely on color alone (shape/icon cues), revealed
   progressively so recall is exercised before the answer is shown.
 - Bias chord selection toward recently-missed chords (weighted repetition), offer a
@@ -212,16 +214,17 @@ interface Prompt {
                           // shown separately (e.g. "2nd inversion"), never folded into
                           // a misleading slash-chord name.
   example: number[];      // one concrete voicing satisfying the rule (MIDI notes),
-                          // deterministic per prompt — shown in Learn mode (keyboard
-                          // highlight + staff) and used for the hint reveal (§6.4).
-                          // Illustrative only: matching is against the rule, never
-                          // against these notes.
+                          // deterministic per prompt — overlaid on the keyboard from
+                          // the start in Learn mode, drawn on the staff whenever its
+                          // setting is on (§3.4/§7), and used for the Practice-mode
+                          // hint reveal (§6.4). Illustrative only: matching is against
+                          // the rule, never against these notes.
 }
 ```
 
 `realizeVoicing(chord, rule) → number[]` (in `theory/`) picks a playable example near
-middle C. The **name is the prompt**; `example` is Learn mode's answer display and the
-hint reveal — never the match target.
+middle C. The **name is the prompt**; `example` is the answer display (Learn keyboard
+overlay + staff) and the Practice-mode hint reveal — never the match target.
 
 ### 3.5 Spelling (for notation)
 
@@ -232,6 +235,12 @@ carry (the third of B major is D♯, not E♭). A small spelling module in `theo
   sharps/flats). The diatonic preset (§4) spells roots from its key instead.
 - **Chord-tone spelling:** derived from the root's letter plus the interval's degree
   (each `ChordType` interval carries a degree so a ♯5 spells as ♯5, not ♭6).
+- **Key signature option** (a staff setting, off by default): renders the grand staff in
+  the chord's root as a major key — a VexFlow key signature next to the clefs, plus
+  diatonic respelling of the chord tones. A tone whose letter+accidental already matches
+  what the key signature implies gets no glyph; a plain (natural) tone whose letter the
+  key signature alters gets a courtesy natural; anything else keeps its own sharp/flat as
+  usual. Off, the staff always uses the fixed root/chord-tone spelling above.
 
 ---
 
@@ -365,7 +374,10 @@ so pattern misses are always instant, never a stall-timer wait.
 
 ### 6.4 Progressive hints
 
-Misses on the same prompt escalate the hint level — recall first, answer later:
+The **keyboard's** answer overlay escalates progressively; the **grand staff**, when its
+setting is on, is a separate, always-visible reference from the first prompt (§3.4) — it
+doesn't wait for a miss. Misses on the same prompt escalate the keyboard's hint level —
+recall first, answer later:
 
 - **Miss 1–2:** played keys that don't belong are marked (color + icon). If every played
   key *is* a chord tone (e.g. right notes, wrong inversion), the failed constraint is
@@ -374,11 +386,11 @@ Misses on the same prompt escalate the hint level — recall first, answer later
   otherwise the notes are all valid members but mis-ordered or excessive ("too many
   notes for this pattern", "notes out of order for this pattern").
 - **Miss 3+:** the expected keys — the prompt's `example` voicing (§3.4) — are overlaid
-  on the keyboard (color + icon) and highlighted on the staff if it's shown.
+  on the keyboard (color + icon).
 
 The escalation above describes **Practice mode**. In **Learn mode** the example is
-visible from the start (the miss-3 reveal is effectively always on); wrong-key marking
-still applies.
+overlaid on the keyboard from the start, so the miss-3 reveal stage doesn't exist
+there — misses never escalate past the miss 1–2 hints, which still apply.
 
 All overlays use color **and** a shape/icon distinction, never color alone.
 
@@ -392,7 +404,7 @@ All overlays use color **and** a shape/icon distinction, never color alone.
 ├────────────────────────────────────────────────────┤
 │              D min7 — 2nd inversion                 │  ← prompt: NAME is primary
 │         🔥 Practicing: missed 3x recently           │  ← weighting indicator (when applicable)
-│          𝄞  ♩♩♩♩ (grand staff, Learn mode)          │  ← example voicing, Learn mode
+│          𝄞  ♩♩♩♩ (grand staff, if staff setting on) │  ← example voicing, both modes
 │                                                     │
 │          ✔ Correct!  (1.2s)      [Skip →]   ⏱ 3:12 │  ← feedback line; timer if set
 ├────────────────────────────────────────────────────┤
@@ -405,21 +417,24 @@ All overlays use color **and** a shape/icon distinction, never color alone.
 
 - **Session modes** (top-bar picker):
   - **Learn**: the prompt's `example` voicing is shown from the start — highlighted on
-    the on-screen keyboard and drawn on the staff (§3.4) — for the user to copy (any
-    voicing satisfying the rule still counts). Untimed. Attempts are excluded from
-    stats and weighting (§5); active minutes still count toward the daily goal.
-  - **Practice** (default): the voicing is hidden — recall from the name, hints
-    escalate per §6.4. Endless unless the timer is set. Practice-mode settings (shown
-    with the picker when Practice is active):
+    the on-screen keyboard, and drawn on the grand staff when the staff setting is on
+    (§3.4) — for the user to copy (any voicing satisfying the rule still counts).
+    Untimed. Attempts are excluded from stats and weighting (§5); active minutes still
+    count toward the daily goal.
+  - **Practice** (default): the voicing is hidden from the keyboard — recall from the
+    name, keyboard hints escalate per §6.4 — but the grand staff (if its setting is on)
+    is visible from the first prompt, independent of misses. Endless unless the timer is
+    set. Practice-mode settings (shown with the picker when Practice is active):
     - **Timer**: off (default) or 5 / 10 / 15 min / custom — countdown in the UI, then
       an end-of-session summary (prompts played, accuracy, slowest/worst chords).
     - **Worst chords only**: drills the selected preset's worst combos (§5).
 - **Prompt area**: chord name large and readable from a distance, size configurable in
   settings (small/medium/large/extra-large, default large); the voicing being drilled
-  as a text label (omitted for the `any` rule); in Learn mode the `example`
-  voicing on a grand staff (§3.4) — a staff on/off setting keeps name+keyboard-only
-  Learn first-class for users who don't read notation. A subtle indicator appears when
-  the prompt was chosen due to recent misses (§5).
+  as a text label (omitted for the `any` rule); the `example` voicing on a grand staff
+  (§3.4) whenever the staff setting is on, in either mode — optionally in the chord
+  root's key (key signature setting, §3.5) — off by default keeps name+keyboard-only
+  practice first-class for users who don't read notation. A subtle indicator appears
+  when the prompt was chosen due to recent misses (§5).
 - **Keyboard visual**: shows currently held notes live; in Practice, after misses,
   overlays escalate per the hint stages (§6.4), always color + shape/icon; Learn mode
   overlays the example voicing from the start instead. When a note falls outside the
@@ -447,9 +462,10 @@ All overlays use color **and** a shape/icon distinction, never color alone.
   with rule-compatibility validation; import/export as JSON.
 - **Settings**: preset editor, voicing builder, doubling toggle, strict-extra-notes
   toggle, chord name size (small/medium/large/extra-large, default large), staff
-  on/off (Learn mode), correct-chime on/off, judgment delay, auto-advance
-  delay, daily goal minutes. (The timer and worst-chords-only controls are Practice-mode
-  settings living next to the mode picker, not in the settings panel.)
+  on/off, staff key signature on/off (chord root as key, §3.5), correct-chime on/off,
+  judgment delay, auto-advance delay, daily goal minutes. (The timer and
+  worst-chords-only controls are Practice-mode settings living next to the mode
+  picker, not in the settings panel.)
 
 ---
 

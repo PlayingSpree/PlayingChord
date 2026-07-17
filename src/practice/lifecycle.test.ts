@@ -30,7 +30,10 @@ const patternPrompt = (root: number, typeId: ChordTypeId) =>
     voicingLibrary([ONE_PLUS_FIVE]),
   )
 
-function setup(overrides: Partial<PracticeSettings> = {}) {
+function setup(
+  overrides: Partial<PracticeSettings> = {},
+  revealOnMisses?: () => boolean,
+) {
   const settings: PracticeSettings = {
     ...DEFAULT_PRACTICE_SETTINGS,
     ...overrides,
@@ -42,6 +45,7 @@ function setup(overrides: Partial<PracticeSettings> = {}) {
     now: () => Date.now(), // driven by fake timers
     onState: (state) => emitted.push(state),
     onAdvance: () => advances.push(Date.now()),
+    revealOnMisses,
   })
   let held = new Set<number>()
   const press = (...notes: number[]) => {
@@ -325,6 +329,19 @@ describe('lifecycle — retry until correct (§6.2 step 3)', () => {
       releaseAll()
     }
     expect(machine.state.hint).toEqual({ kind: 'reveal', notes: p.example })
+  })
+
+  it('never reaches the reveal when the host disables it (Learn mode, §6.4)', () => {
+    const { machine, press, releaseAll } = setup({}, () => false)
+    machine.promptShown(prompt(0, 'maj', 'first-inversion'))
+
+    for (const expected of [1, 2, 3, 4]) {
+      press(60, 64, 67)
+      vi.advanceTimersByTime(STALL)
+      expect(machine.state.missCount).toBe(expected)
+      expect(machine.state.hint?.kind).toBe('constraint')
+      releaseAll()
+    }
   })
 })
 

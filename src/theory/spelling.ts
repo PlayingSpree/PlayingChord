@@ -126,6 +126,30 @@ export function keyDisplayName(key: PitchClass): string {
   return `${formatSpelling(spellMajorKeyTonic(key))} major`
 }
 
+// The accidental a major key's signature applies to each letter (0 = no
+// sharp/flat on the staff for that letter). Derived from the key's 7
+// diatonic degrees — a major scale touches every letter exactly once.
+export function keySignatureAlteration(
+  key: PitchClass,
+  letter: Letter,
+): number {
+  const byLetter = new Map<Letter, number>()
+  for (let degree = 0; degree < 7; degree++) {
+    const spelling = spellMajorScaleDegree(key, degree)
+    byLetter.set(spelling.letter, spelling.accidental)
+  }
+  return byLetter.get(letter) ?? 0
+}
+
+// VexFlow's Stave.addKeySignature() string for a major key rooted at `pc` —
+// matches VexFlow's supported set (Db/Ab/Eb/Bb over C#/G#/D#/A#) one-for-one
+// with the KEY_TONIC_POLICY above.
+export function vexflowKeySignature(pc: PitchClass): string {
+  const tonic = spellMajorKeyTonic(pc)
+  const mark = tonic.accidental > 0 ? '#' : tonic.accidental < 0 ? 'b' : ''
+  return `${tonic.letter}${mark}`
+}
+
 // Prompt display name (DESIGN.md §3.4): root + type id only — the voicing
 // being drilled is shown separately, never folded into a slash-chord name.
 // Diatonic prompts pass their key-derived root spelling (§3.5).

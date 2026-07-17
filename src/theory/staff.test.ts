@@ -69,6 +69,37 @@ describe('grandStaffLayout', () => {
     expect(layout.treble.every((n) => n.accidental === null)).toBe(true)
   })
 
+  it('drops the accidental glyph when the key signature already covers it', () => {
+    // G major (key=7) sharps F; the maj7's F# tone needs no glyph.
+    const layout = grandStaffLayout(chord(7, 'maj7'), [67, 71, 74, 78], 7)
+    expect(keys(layout.treble)).toEqual(['g/4', 'b/4', 'd/5', 'f#/5'])
+    expect(layout.treble.map((n) => n.accidental)).toEqual([
+      null,
+      null,
+      null,
+      null,
+    ])
+  })
+
+  it('adds a courtesy natural when the key signature alters a letter this note leaves plain', () => {
+    // G major sharps F; a plain F (dom7's b7) needs an explicit natural.
+    const layout = grandStaffLayout(chord(7, 'dom7'), [67, 71, 74, 77], 7)
+    expect(keys(layout.treble)).toEqual(['g/4', 'b/4', 'd/5', 'f/5'])
+    expect(layout.treble.map((n) => n.accidental)).toEqual([
+      null,
+      null,
+      null,
+      'n',
+    ])
+  })
+
+  it('keeps a note not covered by the key signature spelled as usual', () => {
+    // C major (key=0) alters nothing; C# still needs its sharp glyph.
+    const layout = grandStaffLayout(chord(0, 'aug'), [60, 64, 68], 0)
+    expect(keys(layout.treble)).toEqual(['c/4', 'e/4', 'g#/4'])
+    expect(layout.treble.map((n) => n.accidental)).toEqual([null, null, '#'])
+  })
+
   it('respells beyond-double accidentals from the default root policy', () => {
     // No built-in type produces one; force a triple sharp via a synthetic
     // interval — B♭'s "7th" two semitones up spells as A♯♯♯ (pc 0).

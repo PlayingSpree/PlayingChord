@@ -4,11 +4,13 @@ import {
   chordDisplayName,
   formatSpelling,
   keyDisplayName,
+  keySignatureAlteration,
   spellChord,
   spellMajorScaleDegree,
   spellMidiNote,
   spellRoot,
   spellVoicing,
+  vexflowKeySignature,
 } from './spelling'
 
 const chord = (root: number, id: ChordTypeId): Chord => ({
@@ -182,5 +184,33 @@ describe('spellVoicing', () => {
   it('falls back to the root policy for non-chord notes', () => {
     const spelled = spellVoicing(chord(0, 'maj'), [60, 61])
     expect(spelled.map(formatSpelling)).toEqual(['C', 'C♯'])
+  })
+})
+
+describe('keySignatureAlteration (§3.5 staff key signature option)', () => {
+  it('C major alters nothing', () => {
+    for (const letter of ['C', 'D', 'E', 'F', 'G', 'A', 'B'] as const) {
+      expect(keySignatureAlteration(0, letter)).toBe(0)
+    }
+  })
+
+  it('G major sharps F only', () => {
+    expect(keySignatureAlteration(7, 'F')).toBe(1)
+    expect(keySignatureAlteration(7, 'C')).toBe(0)
+  })
+
+  it('D♭ major flats every letter but C', () => {
+    expect(keySignatureAlteration(1, 'D')).toBe(-1)
+    expect(keySignatureAlteration(1, 'G')).toBe(-1)
+    expect(keySignatureAlteration(1, 'C')).toBe(0)
+  })
+})
+
+describe('vexflowKeySignature', () => {
+  it('matches the smaller-signature key names', () => {
+    expect(vexflowKeySignature(0)).toBe('C')
+    expect(vexflowKeySignature(7)).toBe('G')
+    expect(vexflowKeySignature(1)).toBe('Db')
+    expect(vexflowKeySignature(6)).toBe('F#')
   })
 })

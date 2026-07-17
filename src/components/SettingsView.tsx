@@ -147,10 +147,7 @@ function NotationSoundSection() {
   const update = useSettings((s) => s.update)
 
   return (
-    <Section
-      title="Notation & sound"
-      hint="staff scopes to Learn mode & reveals (§7); the chime is the only sound (§9)"
-    >
+    <Section title="Notation & sound" hint="the chime is the only sound (§9)">
       <div className="flex max-w-md flex-col gap-3">
         <SelectField
           label="Chord name size"
@@ -165,6 +162,11 @@ function NotationSoundSection() {
           label="Show staff notation"
           checked={settings.staffEnabled}
           onChange={(v) => update({ staffEnabled: v })}
+        />
+        <Toggle
+          label="Key signature (chord root)"
+          checked={settings.staffKeyEnabled}
+          onChange={(v) => update({ staffKeyEnabled: v })}
         />
         <Toggle
           label="Chime on correct"

@@ -70,6 +70,7 @@ describe('sanitizeSettings', () => {
       autoAdvanceMs: 1200,
       dailyGoalMinutes: 20,
       staffEnabled: false,
+      staffKeyEnabled: true,
       chimeEnabled: false,
       chordNameSize: 'sm',
     }
@@ -81,6 +82,7 @@ describe('sanitizeSettings', () => {
     // neither field, so the sanitizer must fill both.
     expect(sanitizeSettings({})).toMatchObject({
       staffEnabled: true,
+      staffKeyEnabled: false,
       chimeEnabled: true,
     })
     const result = sanitizeSettings({ staffEnabled: 0, chimeEnabled: 'off' })

@@ -307,6 +307,9 @@ export function createPracticeStore({
     const machine = new AttemptLifecycle({
       settings,
       now,
+      // Learn mode shows the answer from the start (§7), so misses never
+      // escalate to the redundant miss-3 reveal (§6.4).
+      revealOnMisses: () => get().mode !== 'learn',
       onState: (state) => set(state),
       onAdvance: () => {
         recordOutcome()
