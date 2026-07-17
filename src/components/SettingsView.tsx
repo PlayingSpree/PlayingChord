@@ -17,8 +17,8 @@ import { VoicingBuilder } from './VoicingBuilder'
 import { PresetEditor } from './PresetEditor'
 
 // The §7 settings screen: every toggle/delay/goal in one place, plus the
-// Phase 9 library — voicing builder, preset editor, JSON import/export.
-// Staff and chime toggles join when Phase 8 (notation & audio) lands.
+// Phase 9 library — voicing builder, preset editor, JSON import/export —
+// and the Phase 8 staff/chime toggles.
 
 type Editing =
   | { kind: 'rule'; rule: VoicingRule | null } // null = new
@@ -46,6 +46,7 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
 
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-6 py-8">
         <MatchingSection />
+        <NotationSoundSection />
         <VoicingRulesSection
           editing={editing?.kind === 'rule' ? editing : null}
           onEdit={(rule) => setEditing({ kind: 'rule', rule })}
@@ -126,6 +127,31 @@ function MatchingSection() {
             // Streak/goal state is derived against the current goal.
             practiceStore.getState().refreshGoal()
           }}
+        />
+      </div>
+    </Section>
+  )
+}
+
+function NotationSoundSection() {
+  const settings = useSettings((s) => s.settings)
+  const update = useSettings((s) => s.update)
+
+  return (
+    <Section
+      title="Notation & sound"
+      hint="staff scopes to Learn mode & reveals (§7); the chime is the only sound (§9)"
+    >
+      <div className="flex max-w-md flex-col gap-3">
+        <Toggle
+          label="Show staff notation"
+          checked={settings.staffEnabled}
+          onChange={(v) => update({ staffEnabled: v })}
+        />
+        <Toggle
+          label="Chime on correct"
+          checked={settings.chimeEnabled}
+          onChange={(v) => update({ chimeEnabled: v })}
         />
       </div>
     </Section>

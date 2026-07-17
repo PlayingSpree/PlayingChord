@@ -12,6 +12,11 @@ export interface PracticeSettings extends MatchSettings {
   autoAdvanceMs: number
   // Daily active-practice goal (§7), in minutes.
   dailyGoalMinutes: number
+  // Grand-staff notation (§3.4): shown in Learn mode and with the miss-3
+  // reveal (§6.4); off keeps name+keyboard-only practice first-class.
+  staffEnabled: boolean
+  // Correct chime (§9): the app's only sound — misses stay silent.
+  chimeEnabled: boolean
 }
 
 export const DEFAULT_PRACTICE_SETTINGS: PracticeSettings = {
@@ -20,6 +25,8 @@ export const DEFAULT_PRACTICE_SETTINGS: PracticeSettings = {
   judgmentDelayMs: 500,
   autoAdvanceMs: 800,
   dailyGoalMinutes: 10,
+  staffEnabled: true,
+  chimeEnabled: true,
 }
 
 export const MAX_DELAY_MS = 10_000
@@ -63,5 +70,7 @@ export function sanitizeSettings(value: unknown): PracticeSettings {
       raw.dailyGoalMinutes,
       defaults.dailyGoalMinutes,
     ),
+    staffEnabled: asBoolean(raw.staffEnabled, defaults.staffEnabled),
+    chimeEnabled: asBoolean(raw.chimeEnabled, defaults.chimeEnabled),
   }
 }

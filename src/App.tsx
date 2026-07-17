@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { midiStore } from './store/midiStore'
 import { practiceStore } from './store/practiceStore'
+import { settingsStore } from './store/settingsStore'
+import { chime, primeOnFirstGesture } from './audio'
 import { MidiGate } from './components/MidiGate'
 import { DevicePicker } from './components/DevicePicker'
 import { PresetPicker } from './components/PresetPicker'
@@ -48,6 +50,28 @@ export default function App() {
         practiceStore.getState().onHeldChange(state.heldNotes)
       }
     })
+  }, [])
+
+  useEffect(() => {
+    // Correct-chime wiring lives at this edge like MIDI (§8): the transition
+    // into 'advancing' is exactly the ✔ moment (§6.2) — skips never pass
+    // through it. Fire-and-forget, so the flash never waits on audio. The
+    // context is primed on the first gesture because autoplay policy doesn't
+    // count MIDI input as one.
+    const unprime = primeOnFirstGesture()
+    const unsubscribe = practiceStore.subscribe((state, prev) => {
+      if (
+        state.phase === 'advancing' &&
+        prev.phase !== 'advancing' &&
+        settingsStore.getState().settings.chimeEnabled
+      ) {
+        chime.play()
+      }
+    })
+    return () => {
+      unprime()
+      unsubscribe()
+    }
   }, [])
 
   return (

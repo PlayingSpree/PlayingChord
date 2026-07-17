@@ -2,6 +2,85 @@
 
 Running summary of build progress against [PLAN.md](PLAN.md). Newest entry first.
 
+## 2026-07-17 — Phase 8: Notation & audio ✅
+
+The two optional feedback channels (§3.4, §9), built after Phase 9 (which had
+jumped the queue): VexFlow grand staff for the prompt's `example` voicing,
+staff on/off setting, and the Web Audio correct chime with its toggle. 14 new
+tests (404 total) and a 19-check browser-driven pass.
+
+**Modules:**
+
+- `theory/staff.ts` (new) — `grandStaffLayout(chord, notes)`: the pure half of
+  the staff. Splits at middle C (< 60 → bass clef), converts the Phase 1
+  `spellVoicing` output to VexFlow key/accidental specs ("e#/5" — octave
+  follows the letter, so C♭5 is MIDI 71), and respells anything beyond double
+  accidentals (unreachable with built-in data) from the default root policy.
+- `components/StaffView.tsx` (new) — VexFlow 5 grand staff (brace + connected
+  staves, whole-note chord per clef, both clefs' voices formatted jointly so
+  two-hand voicings align). Drawn on a light "manuscript" card so VexFlow's
+  dark ink works in the dark UI; noteheads/accidentals use the same sky accent
+  as the keyboard's expected-key overlay (one color, one meaning, §6.4).
+  Imported via `vexflow/bravura` (Bravura + Academico only) and **lazy-loaded**
+  (`React.lazy`): the 721 kB notation chunk is only downloaded when a staff is
+  first shown — staff-off/name-only practice stays at the 268 kB main bundle.
+  Each draw awaits the entry's own in-flight font load before rendering.
+- `audio/chime.ts` (new) — `Chime` over an injectable AudioContext factory:
+  two sine partials (C6 → E6, ~½ s exponential decay), scheduled at
+  `currentTime` and fire-and-forget so the ✔ flash never waits on audio. A
+  context that isn't `running` (autoplay policy) *drops* the chime rather than
+  queueing a late one. `primeOnFirstGesture` — MIDI input doesn't count as a
+  user gesture, so one-shot pointer/key listeners create/resume the context.
+- `practice/settings.ts` — `staffEnabled` + `chimeEnabled` (default on) ride
+  `PracticeSettings` within schema v1 like `dailyGoalMinutes` did: the
+  sanitizer defaults them, so existing persisted states need no migration.
+- `components/PromptCard.tsx` — staff between the 🔥 indicator and the
+  feedback line (§7 sketch), shown when enabled in Learn mode **and** with the
+  Practice miss-3 reveal (§6.4's "highlighted on the staff if it's shown");
+  the Suspense fallback mirrors the card so the chunk load never jumps layout.
+- `App.tsx` — chime wired at the edge like MIDI (§8): a store subscription
+  plays on the transition into `advancing` (exactly the ✔ moment; skips never
+  pass through it), gated by the live `chimeEnabled` setting.
+- `components/SettingsView.tsx` — "Notation & sound" section with the two §7
+  toggles that Phase 9's settings screen had left pending.
+
+**Tests of note:** the PLAN.md "done when" spellings as `grandStaffLayout`
+unit tests — F♯ maj7 (four sharps up to E♯), A♭ min (C♭5, octave following
+the letter), B dom9 split across both staves, A♭ dim7's E♭♭/G♭♭ double flats,
+middle C landing on treble, the beyond-double-accidental fallback; chime
+scheduling against a fake AudioContext (starts at `currentTime`, every
+oscillator stopped, suspended context stays silent but requests resume,
+context created once, no Web Audio → no throw), gesture-priming cleanup; the
+settings sanitizer defaulting/coercing both new fields.
+
+**Verified in headless Edge (sim MIDI, QWERTY, 19 checks):** Practice shows no
+staff; three misses on C maj reveal staff + keyboard rings together, correct
+clears both; a wrapped AudioContext counts exactly 2 oscillator starts on the
+✔ and 0 with the chime toggled off; Learn shows the staff from the first
+prompt; F♯ maj7 draws 2 stave chords + 4 SMuFL sharp glyphs and B maj7 splits
+B3 to the bass stave (screenshots match — sky noteheads on the manuscript
+card); Learn still judges rule-based with the staff up; staff toggle off keeps
+Learn's keyboard highlight; both settings survive a reload.
+
+**Notes / deviations:**
+
+- DESIGN.md §7 scopes the staff to Learn mode, while §6.4 says the miss-3
+  reveal is "highlighted on the staff if it's shown" — interpreted as: the
+  staff (when enabled) also appears in Practice at hint stage 3, where it
+  *is* the reveal. One `staffEnabled` setting governs both.
+- New dependency: `vexflow` 5.0.0 (the only runtime dep added since Phase 0).
+  Vite warns about the >500 kB StaffView chunk — accepted: it's the music
+  font, and it's lazy.
+- VexFlow 5 draws accidentals as SMuFL `<text>` glyphs without a
+  `vf-accidental` class — the browser checks count U+E262 glyphs instead.
+- Chime audibility and perceived latency can't be checked headless — needs
+  the usual hardware session (with a click-free, MIDI-only session the first
+  chime waits for the first pointer/key gesture; that's the autoplay policy,
+  documented in `audio/chime.ts`).
+
+**Next:** Phase 10 — polish, a11y & deploy (Milestone C): overlay shape+color
+audit, cross-browser pass, layout/empty states, static deploy + README.
+
 ## 2026-07-17 — Pattern voicing rules (two-hand shapes)
 
 User request: making an arbitrary two-hand voicing (e.g. LH 1-5, RH 1-2-5) should be
@@ -81,7 +160,7 @@ once it doesn't; both rules and the preset survive a reload.
 | 5 — Presets & weighted generation | ✅ Done (2026-07-16) |
 | 6 — Storage & stats (Milestone B) | ✅ Done (2026-07-16) |
 | 7 — Session modes, goals & history | ✅ Done (2026-07-16) |
-| 8 — Notation & audio | ⬜ Skipped for now (user call, 2026-07-16) |
+| 8 — Notation & audio | ✅ Done (2026-07-17) — chime feel on hardware pending |
 | 9 — Editors & import/export | ✅ Done (2026-07-16) |
 | 10 — Polish, a11y & deploy (Milestone C) | ⬜ Next |
 

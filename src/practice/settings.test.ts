@@ -69,7 +69,22 @@ describe('sanitizeSettings', () => {
       judgmentDelayMs: 750,
       autoAdvanceMs: 1200,
       dailyGoalMinutes: 20,
+      staffEnabled: false,
+      chimeEnabled: false,
     }
     expect(sanitizeSettings(valid)).toEqual(valid)
+  })
+
+  it('defaults the staff and chime toggles on and coerces junk', () => {
+    // Added within schema v1 (Phase 8) — pre-existing persisted states have
+    // neither field, so the sanitizer must fill both.
+    expect(sanitizeSettings({})).toMatchObject({
+      staffEnabled: true,
+      chimeEnabled: true,
+    })
+    const result = sanitizeSettings({ staffEnabled: 0, chimeEnabled: 'off' })
+    expect(result.staffEnabled).toBe(true)
+    expect(result.chimeEnabled).toBe(true)
+    expect(sanitizeSettings({ chimeEnabled: false }).chimeEnabled).toBe(false)
   })
 })

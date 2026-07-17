@@ -1,6 +1,11 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { usePractice } from '../store/practiceStore'
+import { useSettings } from '../store/settingsStore'
 import type { Hint } from '../practice'
+
+// VexFlow + music font are a heavy chunk; staff-off users (a first-class
+// way to run the app, §3.4) never download it.
+const StaffView = lazy(() => import('./StaffView'))
 
 // The prompt area (DESIGN.md §7): the chord NAME is primary, large and
 // readable from a distance. The voicing being drilled appears as a separate
@@ -11,9 +16,17 @@ export function PromptCard() {
   const reactionMs = usePractice((s) => s.reactionMs)
   const hint = usePractice((s) => s.hint)
   const missedRecently = usePractice((s) => s.missedRecently)
+  const mode = usePractice((s) => s.mode)
   const skip = usePractice((s) => s.skip)
+  const staffEnabled = useSettings((s) => s.settings.staffEnabled)
 
   if (!prompt) return null
+
+  // The staff (§3.4) scopes to Learn mode — the example is the answer
+  // display there — and joins the miss-3 reveal in Practice, which §6.4
+  // highlights on the staff whenever it's shown.
+  const showStaff =
+    staffEnabled && (mode === 'learn' || hint?.kind === 'reveal')
 
   return (
     <section className="flex flex-col items-center gap-4 text-center">
@@ -29,6 +42,21 @@ export function PromptCard() {
         {missedRecently !== null &&
           `🔥 Practicing: missed ${missedRecently}× recently`}
       </p>
+      {/* Grand staff (§7 sketch: between indicator and feedback). The
+          fallback mirrors the card so the chunk/font load never jumps the
+          layout. */}
+      {showStaff && (
+        <Suspense
+          fallback={
+            <div
+              aria-hidden="true"
+              className="h-[240px] w-[320px] rounded-lg bg-slate-100 shadow-inner"
+            />
+          }
+        >
+          <StaffView chord={prompt.chord} notes={prompt.example} />
+        </Suspense>
+      )}
       {/* Fixed-height feedback line so ✔/✘ never shift the layout. Feedback
           always pairs color with an icon (§6.4); the hint stays visible
           through the retry, and misses are visual-only (§9). */}
