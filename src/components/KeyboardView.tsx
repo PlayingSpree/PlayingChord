@@ -36,22 +36,57 @@ function keyState(
   return 'idle'
 }
 
+function foldIntoRange(midi: number): number {
+  let m = midi
+  while (m < LOW) m += 12
+  while (m > HIGH) m -= 12
+  return m
+}
+
+// One octave shift for the whole set, so an out-of-range note moves its
+// entire shape into view instead of folding alone into the middle of it (§7).
+function foldOffset(notes: readonly number[]): number {
+  if (notes.length === 0) return 0
+  const min = Math.min(...notes)
+  const max = Math.max(...notes)
+  let offset = 0
+  while (min + offset < LOW) offset += 12
+  while (max + offset > HIGH && min + offset - 12 >= LOW) offset -= 12
+  return offset
+}
+
+// A shape wider than the drawn range can't fully fit even after the shift;
+// the stragglers fold per note rather than vanish.
+function foldSet(notes: readonly number[], offset: number): Set<number> {
+  return new Set(notes.map((n) => foldIntoRange(n + offset)))
+}
+
 export function KeyboardView() {
   const heldNotes = useMidi((s) => s.heldNotes)
   const hint = usePractice((s) => s.hint)
   const mode = usePractice((s) => s.mode)
   const prompt = usePractice((s) => s.prompt)
 
-  const wrong = hint?.kind === 'wrong-keys' ? new Set(hint.notes) : NO_NOTES
+  // Wrong marks sit on (recently) held keys, so they share the held set's
+  // shift; the answer overlay is its own shape and folds independently.
+  const wrongNotes = hint?.kind === 'wrong-keys' ? hint.notes : []
+  const playedOffset = foldOffset([...heldNotes, ...wrongNotes])
+  const wrong =
+    wrongNotes.length > 0 ? foldSet(wrongNotes, playedOffset) : NO_NOTES
+  const held = foldSet([...heldNotes], playedOffset)
   // Learn mode shows the example voicing from the start (§7) — the same
-  // overlay Practice earns at hint stage 3.
-  const expected =
+  // overlay Practice earns at the miss-3 reveal (§6.4).
+  const expectedNotes =
     hint?.kind === 'reveal'
-      ? new Set(hint.notes)
+      ? hint.notes
       : mode === 'learn' && prompt !== null
-        ? new Set(prompt.example)
-        : NO_NOTES
-  const state = (midi: number) => keyState(midi, heldNotes, wrong, expected)
+        ? prompt.example
+        : null
+  const expected =
+    expectedNotes !== null
+      ? foldSet(expectedNotes, foldOffset(expectedNotes))
+      : NO_NOTES
+  const state = (midi: number) => keyState(midi, held, wrong, expected)
 
   // The keyboard is a visual instrument display; its per-key marks are
   // redundant with the feedback line's role="status" text, so screen

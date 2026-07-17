@@ -397,7 +397,9 @@ All overlays use color **and** a shape/icon distinction, never color alone.
 │          ✔ Correct!  (1.2s)      [Skip →]   ⏱ 3:12 │  ← feedback line; timer if set
 ├────────────────────────────────────────────────────┤
 │  🎹 on-screen keyboard (~3 octaves)                 │  ← live held keys; miss overlays
-│                                                     │     escalate per hint stage (§6.4)
+│                                                     │     escalate per hint stage (§6.4);
+│                                                     │     out-of-range shapes octave-shift
+│                                                     │     into view whole (§7)
 └────────────────────────────────────────────────────┘
 ```
 
@@ -417,8 +419,13 @@ All overlays use color **and** a shape/icon distinction, never color alone.
   voicing on a grand staff (§3.4) — a staff on/off setting keeps name+keyboard-only
   Learn first-class for users who don't read notation. A subtle indicator appears when
   the prompt was chosen due to recent misses (§5).
-- **Keyboard visual**: shows currently held notes live; after misses, overlays escalate
-  per the hint stages (§6.4), always color + shape/icon.
+- **Keyboard visual**: shows currently held notes live; in Practice, after misses,
+  overlays escalate per the hint stages (§6.4), always color + shape/icon; Learn mode
+  overlays the example voicing from the start instead. When a note falls outside the
+  drawn ~3-octave range (custom two-hand voicings can place a left-hand note below it,
+  §6.3), its whole note set octave-shifts together into view — held + wrong-key marks
+  as one shape, the answer overlay as another — so the voicing's shape stays intact; a
+  shape wider than the drawn range folds the leftover notes per note.
 - **Feedback**: correct flash + reaction time + optional chime, auto-advance (default
   800 ms). Misses are always **visual-only** (§9). Skip button available (excluded from
   stats and weighting).
