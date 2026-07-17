@@ -14,8 +14,8 @@ const chord = (root: number, typeId: ChordTypeId): Chord => ({
 
 const keys = (notes: { key: string }[]) => notes.map((n) => n.key)
 
-// The PLAN.md "done when" spellings: awkward roots must come out right on
-// the staff, not just in text (F♯ maj7's seventh is E♯, never F).
+// Awkward roots must come out spelled right on the staff, not just in text
+// (F♯ maj7's seventh is E♯, never F).
 describe('grandStaffLayout', () => {
   it('spells F♯ maj7 with sharps up to E♯', () => {
     const layout = grandStaffLayout(chord(6, 'maj7'), [66, 70, 73, 77])

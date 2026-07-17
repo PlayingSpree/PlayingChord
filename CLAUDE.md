@@ -9,17 +9,15 @@ keyboard. React + TypeScript + Vite + Zustand + Tailwind; no backend, everything
 persists to `localStorage`. Requires Web MIDI (Chrome/Edge/Opera; no Safari) and a
 physical MIDI keyboard — there is deliberately no mouse/QWERTY fallback.
 
-## The three documents — read before coding, update after
+## DESIGN.md — the spec
 
-- **DESIGN.md** — the product/technical spec. All requirements live here, cited by
-  section (e.g. §6.2 attempt lifecycle, §3.3 voicing rules). Don't re-decide things
-  it already resolves (§9 lists resolved questions).
-- **PLAN.md** — build order: Phases 0–10 with dependencies, per-phase "done when"
-  criteria, and milestones A/B/C.
-- **PROGRESS.md** — current status. **Read it first to see where the build stands.
-  When you complete a phase, milestone, or notable chunk of work: flip its row in
-  the status table, prepend a dated entry (newest first, include deviations from
-  PLAN.md and commit hashes), and commit.** Work is committed per phase.
+All requirements live in DESIGN.md, cited by section (e.g. §6.2 attempt lifecycle,
+§3.3 voicing rules). Read the sections a change touches before coding; don't
+re-decide things it already resolves (§9 lists resolved questions). When a change
+intentionally alters product behavior, update DESIGN.md in the same commit.
+
+The app is feature-complete against the spec. The build-era docs (PLAN.md,
+PROGRESS.md) are retired — the phase-by-phase build log lives in git history.
 
 ## Commands
 
@@ -51,10 +49,10 @@ directly. Only the edges touch the platform:
 - `src/components/` + `src/store/` (Zustand) — UI layer.
 
 Domain concepts that span modules: a **Chord** is root pitch-class + `ChordType`
-(interval data); a **VoicingRule** is composable data (bass constraint / span /
-doubling) — matching held MIDI notes is always against the *rule*, never against
-the example voicing drawn on the staff; stats and weighted generation are keyed
-per **combo** `(root, typeId, voicingId)`.
+(interval data); a **VoicingRule** is data — either composable constraints (bass /
+span / doubling) or a two-hand degree pattern — and matching held MIDI notes is
+always against the *rule*, never against the example voicing drawn on the staff;
+stats and weighted generation are keyed per **combo** `(root, typeId, voicingId)`.
 
 ## Conventions
 
