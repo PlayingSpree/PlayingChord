@@ -2,6 +2,7 @@
 export * from './notes'
 export * from './chordTypes'
 export * from './voicingRules'
+export * from './pattern'
 export * from './matcher'
 export * from './realize'
 export * from './spelling'

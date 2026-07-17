@@ -188,7 +188,7 @@ function VoicingRulesSection({
   return (
     <Section
       title="Voicing rules"
-      hint="reusable bass/span/doubling specs (§3.3)"
+      hint="two-hand patterns, or reusable bass/span/doubling specs (§3.3)"
     >
       {editing ? (
         <VoicingBuilder rule={editing.rule} onClose={onClose} />

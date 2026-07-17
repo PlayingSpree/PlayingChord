@@ -9,12 +9,35 @@ export interface SpanConstraint {
   max?: number
 }
 
-export interface VoicingRule {
+// A constraint rule describes properties any satisfying voicing must have.
+// `kind` is optional so pre-pattern persisted rules (and the built-ins below)
+// stay valid without migration; absence means 'constraint'.
+export interface ConstraintVoicingRule {
+  kind?: 'constraint'
   id: string
   name: string
   bass: BassConstraint
   span?: SpanConstraint
   doubling: 'allowed' | 'exact'
+}
+
+// A pattern rule spells the voicing out explicitly as chord degrees from the
+// bottom, per hand (e.g. LH 1-5, RH 1-2-5) — for two-hand shapes constraint
+// rules can't express. Matching is exact (same note count, ascending pitch
+// classes equal to the resolved pattern) but octave placement is free.
+// Degree → pitch-class resolution lives in pattern.ts.
+export interface PatternVoicingRule {
+  kind: 'pattern'
+  id: string
+  name: string
+  leftHand: readonly number[]
+  rightHand: readonly number[]
+}
+
+export type VoicingRule = ConstraintVoicingRule | PatternVoicingRule
+
+export function isPatternRule(rule: VoicingRule): rule is PatternVoicingRule {
+  return rule.kind === 'pattern'
 }
 
 export const BUILT_IN_VOICING_RULES: readonly VoicingRule[] = [

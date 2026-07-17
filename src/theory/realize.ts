@@ -1,7 +1,12 @@
 import { MIDDLE_C, pitchClass, type PitchClass } from './notes'
 import { chordPitchClasses, chordToneAt, type Chord } from './chordTypes'
-import type { VoicingRule } from './voicingRules'
+import {
+  isPatternRule,
+  type PatternVoicingRule,
+  type VoicingRule,
+} from './voicingRules'
 import { matches } from './matcher'
+import { resolvePattern } from './pattern'
 
 // Picks one concrete, playable example voicing near middle C (DESIGN.md
 // §3.4). Deterministic; illustrative only — matching is always against the
@@ -11,6 +16,8 @@ export function realizeVoicing(
   chord: Chord,
   rule: VoicingRule,
 ): number[] | null {
+  if (isPatternRule(rule)) return realizePattern(chord, rule)
+
   const pcs = [...new Set(chordPitchClasses(chord))]
 
   let bassPc: PitchClass
@@ -56,4 +63,35 @@ export function realizeVoicing(
 
 function spanOf(notes: readonly number[]): number {
   return Math.max(...notes) - Math.min(...notes)
+}
+
+// Realizes a pattern rule: the tightest possible ascending stack of its
+// resolved pitch-class sequence (each note is the nearest instance of its
+// target pitch class above the previous one), then centered near middle C
+// the same way as constraint rules. For LH 1-5 / RH 1-2-5 over C major this
+// yields exactly C3 G3 · C4 D4 G4.
+function realizePattern(
+  chord: Chord,
+  rule: PatternVoicingRule,
+): number[] | null {
+  const target = resolvePattern(chord, rule)
+  const first = target?.[0]
+  if (target === null || first === undefined) return null
+
+  let prev = 48 + first
+  const notes = [prev]
+  for (let i = 1; i < target.length; i++) {
+    const pc = target[i]
+    if (pc === undefined) break
+    const candidate = prev + 1
+    const note = candidate + ((pc - pitchClass(candidate) + 12) % 12)
+    notes.push(note)
+    prev = note
+  }
+
+  const mean = notes.reduce((sum, n) => sum + n, 0) / notes.length
+  const shift = Math.round((MIDDLE_C - mean) / 12) * 12
+  const shifted = notes.map((n) => n + shift)
+
+  return matches(shifted, chord, rule) ? shifted : null
 }

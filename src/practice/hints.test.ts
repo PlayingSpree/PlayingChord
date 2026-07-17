@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_MATCH_SETTINGS, type MatchSettings } from '../theory'
+import {
+  DEFAULT_MATCH_SETTINGS,
+  voicingLibrary,
+  type MatchSettings,
+  type PatternVoicingRule,
+} from '../theory'
 import { computeHint, REVEAL_AFTER_MISSES } from './hints'
 import { createPrompt } from './prompts'
 import type { ChordTypeId } from '../theory'
@@ -115,5 +120,53 @@ describe(`computeHint — stage 3: reveal after ${REVEAL_AFTER_MISSES} misses`, 
     const h = hint(REVEAL_AFTER_MISSES, [61], p)
     expect(h.kind).toBe('reveal')
     if (h.kind === 'reveal') expect(h.notes).not.toBe(p.example)
+  })
+})
+
+describe('computeHint — pattern rules (§3.3, §6.4)', () => {
+  const onePlusFive: PatternVoicingRule = {
+    kind: 'pattern',
+    id: 'lh15-rh125',
+    name: '1-5 + 1-2-5',
+    leftHand: [1, 5],
+    rightHand: [1, 2, 5],
+  }
+  const patternPrompt = () =>
+    createPrompt(
+      { root: 0, typeId: 'maj', voicingId: onePlusFive.id },
+      undefined,
+      voicingLibrary([onePlusFive]),
+    )
+
+  it('marks a foreign pitch class as a wrong key', () => {
+    // C3 G3 C♯4 D4 G4 — the C♯ isn't part of the pattern's pitch classes.
+    const h = hint(1, [48, 55, 61, 62, 67], patternPrompt())
+    expect(h).toEqual({ kind: 'wrong-keys', notes: [61] })
+  })
+
+  it('reports too many notes when every pc is valid but there are extras', () => {
+    // The full 5-note pattern plus a doubled root — no foreign pc, but 6
+    // held notes against a 5-note target.
+    const h = hint(1, [48, 55, 60, 62, 67, 72], patternPrompt())
+    expect(h).toEqual({
+      kind: 'constraint',
+      text: 'Too many notes for this pattern',
+    })
+  })
+
+  it('reports order broken when pcs are valid but out of sequence', () => {
+    // Three G's (G3 G4 G5) — the target only has two G slots (positions 1
+    // and 4), so a third can never be placed no matter what else is added.
+    const h = hint(1, [55, 67, 79], patternPrompt())
+    expect(h).toEqual({
+      kind: 'constraint',
+      text: 'Notes out of order for this pattern',
+    })
+  })
+
+  it('reveals the example after enough misses, same as constraint rules', () => {
+    const p = patternPrompt()
+    const h = hint(REVEAL_AFTER_MISSES, [55, 67, 79], p)
+    expect(h).toEqual({ kind: 'reveal', notes: p.example })
   })
 })

@@ -1,4 +1,8 @@
-import { isDefinitivelyUnsatisfiable, matches } from '../theory'
+import {
+  isDefinitivelyUnsatisfiable,
+  matches,
+  requiredNoteCount,
+} from '../theory'
 import { computeHint, type Hint } from './hints'
 import type { Prompt } from './prompts'
 import type { PracticeSettings } from './settings'
@@ -143,9 +147,11 @@ export class AttemptLifecycle {
       return
     }
 
-    // Stall (§6.2): enough keys for the chord, wrong, and unchanged for the
-    // judgment delay. Smaller sets are still being built up — never stalled.
-    if (held.size >= prompt.chord.type.intervals.length) {
+    // Stall (§6.2): enough keys for a full attempt, wrong, and unchanged for
+    // the judgment delay. Smaller sets are still being built up — never
+    // stalled. "Full" is the chord's tone count for constraint rules, or the
+    // pattern's own note count for pattern rules (which may differ).
+    if (held.size >= requiredNoteCount(prompt.chord, prompt.voicing)) {
       this.stallTimer = setTimeout(() => {
         this.stallTimer = null
         if (this.phase === 'armed') this.miss(this.host.settings())

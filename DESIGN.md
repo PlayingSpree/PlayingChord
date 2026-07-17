@@ -176,6 +176,30 @@ Users can define additional rules (any combination of bass/span/doubling) throug
 voicing builder (§7); custom rules join the same library and can be referenced by any
 preset.
 
+**Pattern rules** are a second `VoicingRule` kind for shapes a bass/span/doubling
+constraint can't express — an arbitrary two-hand voicing, spelled out as chord degrees
+from the bottom of each hand:
+
+```ts
+interface PatternVoicingRule {
+  kind: "pattern";
+  id: string;
+  name: string;
+  leftHand: number[];   // degrees from the bottom, e.g. [1, 5]
+  rightHand: number[];  // e.g. [1, 2, 5]
+}
+```
+
+A degree resolves against the specific chord being drilled (`theory/pattern.ts`):
+1/3/5/7 (root/third/fifth/seventh) come only from the chord's own quality — a triad has
+no 7th, so a pattern degree 7 is unsatisfiable on it, the same "incompatible pairing"
+the preset editor already warns about for constraint rules. 2/4/6 (the "color" degrees,
+also spelled 9/11/13) use the chord's own tone when it has one (a dom9's 9th) and
+otherwise fall back to the plain major scale above the root, so e.g. `1-2-5` (an add-2
+shape) is satisfiable over an ordinary triad. Degrees above 7 fold to 1-7 an octave up.
+Matching is exact — held notes, sorted ascending, must equal the resolved
+left-hand-then-right-hand pitch-class sequence — but octave placement is free (§6.3).
+
 Omitted-tone primitives (`omittedDegrees` etc.) are **out of scope** — resolved in §9.
 
 ### 3.4 Prompt (what the user is asked to play)
@@ -331,13 +355,24 @@ Given the active `VoicingRule`:
   miss). When off, extra notes are tolerated as long as all required chord tones are
   present (a more forgiving practice mode).
 
+A **pattern** rule (§3.3) is exact by nature — 1-4 and the doubling/strict-extra-notes
+settings don't apply. It matches when held notes, sorted ascending, have the same count
+and pitch-class sequence as the rule's resolved left-hand-then-right-hand degrees;
+octave placement is free. A held set that can never complete the sequence by adding more
+notes (a foreign pitch class, too many notes, or an unrecoverable ordering) is a
+definitive miss — for a pattern of *n* notes this covers every full-sized wrong attempt,
+so pattern misses are always instant, never a stall-timer wait.
+
 ### 6.4 Progressive hints
 
 Misses on the same prompt escalate the hint level — recall first, answer later:
 
 - **Miss 1–2:** played keys that don't belong are marked (color + icon). If every played
   key *is* a chord tone (e.g. right notes, wrong inversion), the failed constraint is
-  named as text instead ("bass must be the 3rd", "span too narrow").
+  named as text instead ("bass must be the 3rd", "span too narrow"). For a pattern rule,
+  a held note whose pitch class isn't anywhere in the pattern is marked the same way;
+  otherwise the notes are all valid members but mis-ordered or excessive ("too many
+  notes for this pattern", "notes out of order for this pattern").
 - **Miss 3+:** the expected keys — the prompt's `example` voicing (§3.4) — are overlaid
   on the keyboard (color + icon) and highlighted on the staff if it's shown.
 
@@ -450,3 +485,9 @@ specified in this document — track it separately (e.g. an issue tracker).
 2. **Sound feedback** — *resolved: chime-only.* A chime plays on correct (single on/off
    toggle, default on); misses are always visual-only. No buzz exists, so
    retry-until-correct can't get audibly fatiguing.
+3. **Arbitrary two-hand voicings** — *resolved: pattern rules (§3.3).* A user asking to
+   drill a specific shape like LH 1-5 / RH 1-2-5 shouldn't have to approximate it with
+   bass/span/doubling. Pattern rules spell the shape out directly as degrees per hand
+   and match exactly (§6.3); constraint rules remain for "any voicing satisfying a
+   property." This doesn't reopen omitted-tone primitives (#1 above) — every pattern
+   degree still names a real chord tone or the plain scale step above the root.

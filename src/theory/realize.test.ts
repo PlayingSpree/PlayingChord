@@ -6,7 +6,11 @@ import {
   type Chord,
   type ChordTypeId,
 } from './chordTypes'
-import { BUILT_IN_VOICING_RULES, getBuiltInVoicingRule } from './voicingRules'
+import {
+  BUILT_IN_VOICING_RULES,
+  getBuiltInVoicingRule,
+  type PatternVoicingRule,
+} from './voicingRules'
 import { matches } from './matcher'
 import { realizeVoicing } from './realize'
 
@@ -101,5 +105,49 @@ describe('realizeVoicing — spot checks near middle C', () => {
         doubling: 'exact',
       }),
     ).toBeNull()
+  })
+})
+
+describe('realizeVoicing — pattern rules', () => {
+  const onePlusFive: PatternVoicingRule = {
+    kind: 'pattern',
+    id: 'lh15-rh125',
+    name: '1-5 + 1-2-5',
+    leftHand: [1, 5],
+    rightHand: [1, 2, 5],
+  }
+
+  it('LH 1-5 / RH 1-2-5 on C major → C3 G3 · C4 D4 G4', () => {
+    expect(realizeVoicing(chord(0, 'maj'), onePlusFive)).toEqual([
+      48, 55, 60, 62, 67,
+    ])
+  })
+
+  it('the realized voicing satisfies its own rule', () => {
+    const notes = realizeVoicing(chord(0, 'maj'), onePlusFive)
+    expect(notes).not.toBeNull()
+    if (notes) expect(matches(notes, chord(0, 'maj'), onePlusFive)).toBe(true)
+  })
+
+  it('returns null when a pattern degree is unsatisfiable for the chord', () => {
+    const needsSeventh: PatternVoicingRule = {
+      kind: 'pattern',
+      id: 'x',
+      name: 'x',
+      leftHand: [],
+      rightHand: [1, 3, 5, 7],
+    }
+    expect(realizeVoicing(chord(0, 'maj'), needsSeventh)).toBeNull()
+  })
+
+  it('a single-hand pattern realizes as a compact ascending stack', () => {
+    const rightHandOnly: PatternVoicingRule = {
+      kind: 'pattern',
+      id: 'x',
+      name: 'x',
+      leftHand: [],
+      rightHand: [1, 3, 5],
+    }
+    expect(realizeVoicing(chord(0, 'maj'), rightHandOnly)).toEqual([60, 64, 67])
   })
 })

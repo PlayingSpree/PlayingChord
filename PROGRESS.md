@@ -2,6 +2,73 @@
 
 Running summary of build progress against [PLAN.md](PLAN.md). Newest entry first.
 
+## 2026-07-17 — Pattern voicing rules (two-hand shapes)
+
+User request: making an arbitrary two-hand voicing (e.g. LH 1-5, RH 1-2-5) should be
+easy to define, not an approximation via bass/span/doubling. Added a second
+`VoicingRule` kind — `PatternVoicingRule` — spelling the shape out as chord degrees
+per hand, resolved against each chord's own quality with a major-scale fallback for
+color degrees (§3.3, §9 resolved question #3). Existing constraint rules are
+untouched; `kind` is optional on them so no migration is needed.
+
+**Modules touched:**
+
+- `theory/pattern.ts` (new) — `resolvePatternDegree`/`resolvePattern` (degree →
+  pitch-class, quality-aware with major-scale fallback for 2/4/6), `patternIsExtendable`
+  (the §6.2 definitive-miss check: can this held set still complete the sequence by
+  adding notes?).
+- `theory/voicingRules.ts` — `VoicingRule` is now a union
+  (`ConstraintVoicingRule | PatternVoicingRule`); `isPatternRule` guard.
+- `theory/matcher.ts` — pattern branches in `matches`/`isDefinitivelyUnsatisfiable`
+  (exact count + positional pitch-class equality, octave-placement-free); new
+  `requiredNoteCount` (a pattern's full size is its own note count, not the chord's
+  tone count).
+- `theory/realize.ts` — `realizePattern`: tightest ascending stack of the resolved
+  sequence, centered near middle C like constraint rules (LH 1-5/RH 1-2-5 on C major →
+  exactly C3 G3 · C4 D4 G4).
+- `practice/lifecycle.ts` — stall threshold uses `requiredNoteCount`, not the chord's
+  tone count. Proven (property, not just tested): a pattern's full-size held set is
+  always either an exact match or definitively wrong, so pattern misses are always
+  instant — the stall timer never actually fires for a pattern rule.
+- `practice/hints.ts` — `computePatternHint`: foreign pitch class → wrong-keys (same UX
+  as constraint rules); otherwise valid pcs but broken order/count → "too many notes" /
+  "notes out of order" text.
+- `practice/library.ts` — `describeVoicingRule` pattern branch ("LH 1-5 · RH 1-2-5"),
+  `parseHandDegrees`/`patternShapeLabel` for the builder, `presetWarnings` guards the
+  span-based cluster-only check (no span concept on patterns).
+- `storage/schema.ts` — `sanitizeCustomVoicingRule` branches on `raw.kind === 'pattern'`
+  (degrees 1–13, ≤5 notes/hand via `EDITOR_MAX_PATTERN_DEGREE`/`EDITOR_MAX_HAND_NOTES`,
+  at least one note total); import/export rides for free through the existing sanitizer
+  pipeline.
+- `components/VoicingBuilder.tsx` — rule-type toggle, **pattern mode is the default for
+  new rules**: two text fields (dash/space/comma-separated degrees per hand), name
+  autofill from the shape when left blank, a live note-name preview against the
+  simplest satisfying built-in chord (maj → maj7 → dom13 ladder).
+
+**Tests:** 41 new (390 total) — degree resolution incl. quality-awareness and the
+major-scale fallback, `patternIsExtendable`'s subsequence semantics, matcher/realize
+pattern branches (incl. the exact C3 G3 · C4 D4 G4 spot check), lifecycle proof that
+full-size pattern misses never need the stall timer, hint text for all three failure
+buckets, schema sanitizer bounds, builder parsing helpers.
+
+**Verified in headless Edge (sim MIDI, QWERTY, 15 checks):** pattern mode defaults for
+a new rule; live preview renders the exact C3 G3 · C4 D4 G4 example for LH 1-5/RH
+1-2-5; blank name autofills to "1-5 + 1-2-5"; the library list shows "LH 1-5 · RH
+1-2-5"; editing reopens with both hands prefilled; a second, QWERTY-playable pattern
+rule (LH 1, RH 3-5) drills end-to-end — C4 E4 G4 flashes ✔, a foreign extra note
+misses instantly; deletion is blocked while a preset references the rule and succeeds
+once it doesn't; both rules and the preset survive a reload.
+
+**Notes / deviations:**
+
+- QWERTY sim only covers C4–D♯5, narrower than the exact user example's natural
+  register (C3–G4) — the drilling check above uses a second, deliberately compact
+  pattern to exercise the same runtime path; the exact example is covered by unit
+  tests (`realize.test.ts`) instead.
+- No accidental-degree syntax (`b7`, `♯5`) — quality-awareness (a chord's own 3rd is
+  already minor on a minor chord) covers the common cases without it; flagged as a
+  possible future addition, not built.
+
 ## Status
 
 | Phase | Status |

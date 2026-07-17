@@ -3,9 +3,17 @@ import {
   BUILT_IN_VOICING_RULES,
   voicingLibrary,
   type ChordTypeId,
+  type PatternVoicingRule,
   type VoicingRule,
 } from '../theory'
-import { newLibraryId, presetWarnings } from './library'
+import {
+  describeVoicingRule,
+  EDITOR_MAX_PATTERN_DEGREE,
+  newLibraryId,
+  parseHandDegrees,
+  patternShapeLabel,
+  presetWarnings,
+} from './library'
 import type { Preset } from './presets'
 
 const bassOn7th: VoicingRule = {
@@ -103,5 +111,103 @@ describe('presetWarnings (§4)', () => {
     expect(warnings).toHaveLength(1)
     expect(warnings[0]?.kind).toBe('missing-rule')
     expect(warnings[0]?.typeId).toBeNull()
+  })
+
+  it('flags a pattern rule unsatisfiable on a chord type just like a constraint rule', () => {
+    const needsSeventh: PatternVoicingRule = {
+      kind: 'pattern',
+      id: 'pat-7th',
+      name: 'needs 7th',
+      leftHand: [],
+      rightHand: [1, 3, 5, 7],
+    }
+    const warnings = presetWarnings(
+      preset(['maj'], ['pat-7th']),
+      voicingLibrary([needsSeventh]),
+    )
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]?.kind).toBe('unsatisfiable')
+  })
+
+  it('never flags a satisfiable pattern rule as cluster-only (no span concept)', () => {
+    // A 5-note pattern over dom13 (7 tones) — satisfiable, and pattern rules
+    // have no span, so the constraint-only cluster-only check must not fire.
+    const onePlusFive: PatternVoicingRule = {
+      kind: 'pattern',
+      id: 'pat-15-125',
+      name: '1-5 + 1-2-5',
+      leftHand: [1, 5],
+      rightHand: [1, 2, 5],
+    }
+    const warnings = presetWarnings(
+      preset(['dom13'], ['pat-15-125']),
+      voicingLibrary([onePlusFive]),
+    )
+    expect(warnings).toEqual([])
+  })
+})
+
+describe('describeVoicingRule — pattern rules', () => {
+  it('labels both hands', () => {
+    const rule: PatternVoicingRule = {
+      kind: 'pattern',
+      id: 'x',
+      name: 'x',
+      leftHand: [1, 5],
+      rightHand: [1, 2, 5],
+    }
+    expect(describeVoicingRule(rule)).toBe('LH 1-5 · RH 1-2-5')
+  })
+
+  it('omits an empty hand', () => {
+    const rule: PatternVoicingRule = {
+      kind: 'pattern',
+      id: 'x',
+      name: 'x',
+      leftHand: [],
+      rightHand: [1, 3, 5],
+    }
+    expect(describeVoicingRule(rule)).toBe('RH 1-3-5')
+  })
+})
+
+describe('parseHandDegrees', () => {
+  it('accepts dash, space, and comma separators', () => {
+    expect(parseHandDegrees('1-2-5')).toEqual([1, 2, 5])
+    expect(parseHandDegrees('1 2 5')).toEqual([1, 2, 5])
+    expect(parseHandDegrees('1,2,5')).toEqual([1, 2, 5])
+  })
+
+  it('an empty/blank string is a valid empty hand', () => {
+    expect(parseHandDegrees('')).toEqual([])
+    expect(parseHandDegrees('   ')).toEqual([])
+  })
+
+  it('rejects non-integers, zero, and out-of-range degrees', () => {
+    expect(parseHandDegrees('1-2.5')).toBeNull()
+    expect(parseHandDegrees('0-5')).toBeNull()
+    expect(parseHandDegrees('1-abc')).toBeNull()
+    expect(parseHandDegrees(`1-${EDITOR_MAX_PATTERN_DEGREE + 1}`)).toBeNull()
+  })
+
+  it('accepts the max degree', () => {
+    expect(parseHandDegrees(`${EDITOR_MAX_PATTERN_DEGREE}`)).toEqual([
+      EDITOR_MAX_PATTERN_DEGREE,
+    ])
+  })
+})
+
+describe('patternShapeLabel', () => {
+  it('joins non-empty hands with " + "', () => {
+    expect(patternShapeLabel([1, 5], [1, 2, 5])).toBe('1-5 + 1-2-5')
+  })
+
+  it('omits an empty hand entirely', () => {
+    expect(patternShapeLabel([], [1, 3, 5])).toBe('1-3-5')
+    expect(patternShapeLabel([1, 3, 5], [])).toBe('1-3-5')
+  })
+
+  it('is empty for two empty hands', () => {
+    expect(patternShapeLabel([], [])).toBe('')
   })
 })

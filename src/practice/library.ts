@@ -4,6 +4,7 @@
 
 import {
   getChordType,
+  isPatternRule,
   realizeVoicing,
   type BassConstraint,
   type ChordTypeId,
@@ -39,6 +40,12 @@ export function bassConstraintLabel(bass: BassConstraint): string {
 // One-line human summary of a rule, for the library list and the builder's
 // live preview.
 export function describeVoicingRule(rule: VoicingRule): string {
+  if (isPatternRule(rule)) {
+    const parts: string[] = []
+    if (rule.leftHand.length > 0) parts.push(`LH ${rule.leftHand.join('-')}`)
+    if (rule.rightHand.length > 0) parts.push(`RH ${rule.rightHand.join('-')}`)
+    return parts.length > 0 ? parts.join(' · ') : 'empty pattern'
+  }
   const parts: string[] = []
   parts.push(
     rule.bass.kind === 'any'
@@ -55,6 +62,48 @@ export function describeVoicingRule(rule: VoicingRule): string {
   }
   parts.push(rule.doubling === 'exact' ? 'exact doubling' : 'doubling allowed')
   return parts.join(' · ')
+}
+
+// Bounds for the pattern-mode builder (§4/§7): degrees stay within what
+// resolvePatternDegree treats as meaningful (13 = a compound 6th, the
+// largest built-in extension), and a hand caps at 5 notes — a stretch, but a
+// playable one. The storage sanitizer enforces the same bounds independently
+// (schema.ts doesn't import from practice/, same as MAX_BASS_DEGREE below).
+export const EDITOR_MAX_PATTERN_DEGREE = 13
+export const EDITOR_MAX_HAND_NOTES = 5
+
+// Parses a hand's degree text ("1-5", "1 2 5", "1,2,5" all accepted) into
+// degrees; null on anything malformed (blocks saving in the builder). An
+// empty/blank string is a valid empty hand (one-hand voicings).
+export function parseHandDegrees(raw: string): number[] | null {
+  const trimmed = raw.trim()
+  if (trimmed === '') return []
+  const degrees: number[] = []
+  for (const token of trimmed.split(/[\s,-]+/)) {
+    if (token === '') continue
+    const degree = Number(token)
+    if (
+      !Number.isInteger(degree) ||
+      degree < 1 ||
+      degree > EDITOR_MAX_PATTERN_DEGREE
+    ) {
+      return null
+    }
+    degrees.push(degree)
+  }
+  return degrees
+}
+
+// Compact "1-5 + 1-2-5" shape label (no LH/RH prefixes) — the pattern
+// builder's name-autofill when the user hasn't typed one.
+export function patternShapeLabel(
+  leftHand: readonly number[],
+  rightHand: readonly number[],
+): string {
+  return [leftHand, rightHand]
+    .filter((hand) => hand.length > 0)
+    .map((hand) => hand.join('-'))
+    .join(' + ')
 }
 
 // Fresh ids for user-created library items. Prefixed so they can never
@@ -125,6 +174,7 @@ export function presetWarnings(
           message: `${type.name} can’t satisfy “${rule.name}” — these combos won’t be drilled`,
         })
       } else if (
+        !isPatternRule(rule) &&
         type.intervals.length >= CLUSTER_TONE_COUNT &&
         rule.span?.max !== undefined &&
         rule.span.max <= CLUSTER_SPAN_MAX

@@ -5,6 +5,8 @@
 
 import {
   builtInPresets,
+  EDITOR_MAX_HAND_NOTES,
+  EDITOR_MAX_PATTERN_DEGREE,
   RECENT_OUTCOME_WINDOW,
   sanitizeSettings,
   TIME_TO_CORRECT_SAMPLE_CAP,
@@ -284,6 +286,25 @@ function sanitizeSpan(value: unknown): SpanConstraint | null | undefined {
   }
 }
 
+// A hand's degree list for a pattern rule: 1..EDITOR_MAX_PATTERN_DEGREE
+// integers, capped at EDITOR_MAX_HAND_NOTES (imported from practice/library
+// so the builder and the sanitizer always agree on the bound). `null` on
+// anything malformed; an empty array is valid (one-hand voicings).
+function sanitizePatternHand(value: unknown): number[] | null {
+  if (!Array.isArray(value) || value.length > EDITOR_MAX_HAND_NOTES) {
+    return null
+  }
+  const degrees: number[] = []
+  for (const entry of value) {
+    const degree = asCount(entry)
+    if (degree === null || degree < 1 || degree > EDITOR_MAX_PATTERN_DEGREE) {
+      return null
+    }
+    degrees.push(degree)
+  }
+  return degrees
+}
+
 function sanitizeCustomVoicingRule(
   value: unknown,
   seenIds: ReadonlySet<string>,
@@ -292,12 +313,24 @@ function sanitizeCustomVoicingRule(
   if (!raw) return null
   const id = asLibraryId(raw.id, BUILT_IN_RULE_IDS)
   const name = asLibraryName(raw.name)
+  if (id === null || seenIds.has(id) || name === null) return null
+
+  if (raw.kind === 'pattern') {
+    const leftHand = sanitizePatternHand(raw.leftHand)
+    const rightHand = sanitizePatternHand(raw.rightHand)
+    if (
+      leftHand === null ||
+      rightHand === null ||
+      (leftHand.length === 0 && rightHand.length === 0)
+    ) {
+      return null
+    }
+    return { kind: 'pattern', id, name, leftHand, rightHand }
+  }
+
   const bass = sanitizeBass(raw.bass)
   const span = sanitizeSpan(raw.span)
   if (
-    id === null ||
-    seenIds.has(id) ||
-    name === null ||
     bass === null ||
     span === null ||
     (raw.doubling !== 'allowed' && raw.doubling !== 'exact')

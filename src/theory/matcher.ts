@@ -1,6 +1,11 @@
 import { pitchClass, type PitchClass } from './notes'
 import { chordPitchClasses, chordToneAt, type Chord } from './chordTypes'
-import type { VoicingRule } from './voicingRules'
+import {
+  isPatternRule,
+  type ConstraintVoicingRule,
+  type VoicingRule,
+} from './voicingRules'
+import { patternIsExtendable, resolvePattern } from './pattern'
 
 // Global matching settings (DESIGN.md §6.3).
 export interface MatchSettings {
@@ -26,7 +31,7 @@ function pcCounts(notes: readonly number[]): Map<PitchClass, number> {
 }
 
 function effectiveDoubling(
-  rule: VoicingRule,
+  rule: ConstraintVoicingRule,
   settings: MatchSettings,
 ): 'allowed' | 'exact' {
   return settings.allowOctaveDoubling ? rule.doubling : 'exact'
@@ -42,6 +47,16 @@ export function matches(
 ): boolean {
   const notes = [...held]
   if (notes.length === 0) return false
+
+  if (isPatternRule(rule)) {
+    const target = resolvePattern(chord, rule)
+    if (target === null || notes.length !== target.length) return false
+    const sortedPcs = notes
+      .slice()
+      .sort((a, b) => a - b)
+      .map(pitchClass)
+    return sortedPcs.every((pc, i) => pc === target[i])
+  }
 
   const chordPcs = new Set(chordPitchClasses(chord))
   const counts = pcCounts(notes)
@@ -89,6 +104,16 @@ export function isDefinitivelyUnsatisfiable(
   const notes = [...held]
   if (notes.length === 0) return false
 
+  if (isPatternRule(rule)) {
+    const target = resolvePattern(chord, rule)
+    if (target === null) return true
+    const sortedPcs = notes
+      .slice()
+      .sort((a, b) => a - b)
+      .map(pitchClass)
+    return !patternIsExtendable(sortedPcs, target)
+  }
+
   const chordPcs = new Set(chordPitchClasses(chord))
   const counts = pcCounts(notes)
 
@@ -110,4 +135,14 @@ export function isDefinitivelyUnsatisfiable(
   }
 
   return false
+}
+
+// How many held notes a *full* attempt needs (§6.2's stall condition: "the
+// held set has at least the chord's tone count"). A pattern rule's full size
+// is its own note count, which may differ from the chord's tone count
+// (5 notes over a triad for `1-5 + 1-2-5`).
+export function requiredNoteCount(chord: Chord, rule: VoicingRule): number {
+  return isPatternRule(rule)
+    ? rule.leftHand.length + rule.rightHand.length
+    : chord.type.intervals.length
 }

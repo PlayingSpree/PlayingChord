@@ -1,11 +1,14 @@
 import {
   chordPitchClasses,
   chordToneAt,
+  isPatternRule,
   pitchClass,
+  resolvePattern,
   type Chord,
+  type ConstraintVoicingRule,
   type MatchSettings,
+  type PatternVoicingRule,
   type PitchClass,
-  type VoicingRule,
 } from '../theory'
 import type { Prompt } from './prompts'
 
@@ -31,6 +34,9 @@ export function computeHint(
   if (missCount >= REVEAL_AFTER_MISSES) {
     return { kind: 'reveal', notes: [...prompt.example] }
   }
+  if (isPatternRule(prompt.voicing)) {
+    return computePatternHint(held, prompt.chord, prompt.voicing)
+  }
   // With strict extra notes off, foreign keys are tolerated by the matcher,
   // so they are never what failed — fall through to the constraint text.
   if (settings.strictExtraNotes) {
@@ -51,6 +57,32 @@ export function computeHint(
   }
 }
 
+// Pattern rules are exact by nature (DESIGN.md §3.3) — the doubling/strict-
+// extra-notes settings don't apply. A held note whose pitch class isn't
+// anywhere in the pattern is unambiguously wrong (wrong-keys, same UX as the
+// constraint case); otherwise the pcs are all valid members but the *order*
+// (or count) is what's broken, which is named as text instead.
+function computePatternHint(
+  held: ReadonlySet<number>,
+  chord: Chord,
+  rule: PatternVoicingRule,
+): Hint {
+  const target = resolvePattern(chord, rule)
+  const notes = [...held]
+  if (target === null) {
+    return { kind: 'constraint', text: 'Does not match the voicing rule' }
+  }
+  const targetPcs = new Set(target)
+  const foreign = notes
+    .filter((note) => !targetPcs.has(pitchClass(note)))
+    .sort((a, b) => a - b)
+  if (foreign.length > 0) return { kind: 'wrong-keys', notes: foreign }
+  if (notes.length > target.length) {
+    return { kind: 'constraint', text: 'Too many notes for this pattern' }
+  }
+  return { kind: 'constraint', text: 'Notes out of order for this pattern' }
+}
+
 function degreeName(degree: number): string {
   if (degree === 1) return 'root'
   if (degree === 2) return '2nd'
@@ -64,7 +96,7 @@ function degreeName(degree: number): string {
 export function describeFailedConstraint(
   held: Iterable<number>,
   chord: Chord,
-  rule: VoicingRule,
+  rule: ConstraintVoicingRule,
   settings: MatchSettings,
 ): string {
   const notes = [...held]

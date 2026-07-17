@@ -12,7 +12,13 @@ import {
   sanitizePresetSelection,
   sanitizeStateV1,
 } from './schema'
-import { RECENT_OUTCOME_WINDOW, TIME_TO_CORRECT_SAMPLE_CAP } from '../practice'
+import {
+  EDITOR_MAX_HAND_NOTES,
+  EDITOR_MAX_PATTERN_DEGREE,
+  RECENT_OUTCOME_WINDOW,
+  TIME_TO_CORRECT_SAMPLE_CAP,
+} from '../practice'
+import type { ConstraintVoicingRule } from '../theory'
 
 describe('localDateKey', () => {
   it('formats the local date with zero padding', () => {
@@ -171,11 +177,88 @@ describe('sanitizeCustomVoicingRules (Phase 9, §4)', () => {
     const [rule] = sanitizeCustomVoicingRules([
       { ...valid, span: { min: 'wide', max: 24 } },
     ])
-    expect(rule?.span).toEqual({ max: 24 })
+    expect((rule as ConstraintVoicingRule | undefined)?.span).toEqual({
+      max: 24,
+    })
     const [noSpan] = sanitizeCustomVoicingRules([
       { ...valid, span: { min: null } },
     ])
-    expect(noSpan?.span).toBeUndefined()
+    expect((noSpan as ConstraintVoicingRule | undefined)?.span).toBeUndefined()
+  })
+})
+
+describe('sanitizeCustomVoicingRules — pattern rules (§3.3)', () => {
+  const validPattern = {
+    kind: 'pattern',
+    id: 'rule-pat1',
+    name: '1-5 + 1-2-5',
+    leftHand: [1, 5],
+    rightHand: [1, 2, 5],
+  }
+
+  it('keeps a valid pattern rule', () => {
+    expect(sanitizeCustomVoicingRules([validPattern])).toEqual([validPattern])
+  })
+
+  it('accepts a one-hand pattern (the other hand empty)', () => {
+    const oneHand = { ...validPattern, leftHand: [] }
+    expect(sanitizeCustomVoicingRules([oneHand])).toEqual([oneHand])
+  })
+
+  it('drops a pattern with both hands empty (no notes at all)', () => {
+    expect(
+      sanitizeCustomVoicingRules([
+        { ...validPattern, leftHand: [], rightHand: [] },
+      ]),
+    ).toEqual([])
+  })
+
+  it('drops a pattern with an out-of-range or non-integer degree', () => {
+    expect(
+      sanitizeCustomVoicingRules([
+        { ...validPattern, rightHand: [1, EDITOR_MAX_PATTERN_DEGREE + 1] },
+      ]),
+    ).toEqual([])
+    expect(
+      sanitizeCustomVoicingRules([{ ...validPattern, leftHand: [0] }]),
+    ).toEqual([])
+    expect(
+      sanitizeCustomVoicingRules([{ ...validPattern, leftHand: [1.5] }]),
+    ).toEqual([])
+  })
+
+  it('accepts the max degree and the max hand size', () => {
+    const maxed = {
+      ...validPattern,
+      leftHand: Array(EDITOR_MAX_HAND_NOTES).fill(EDITOR_MAX_PATTERN_DEGREE),
+    }
+    expect(sanitizeCustomVoicingRules([maxed])).toEqual([maxed])
+  })
+
+  it('drops a hand exceeding the max note count', () => {
+    expect(
+      sanitizeCustomVoicingRules([
+        {
+          ...validPattern,
+          leftHand: Array(EDITOR_MAX_HAND_NOTES + 1).fill(1),
+        },
+      ]),
+    ).toEqual([])
+  })
+
+  it('drops a pattern whose hand is not an array', () => {
+    expect(
+      sanitizeCustomVoicingRules([{ ...validPattern, rightHand: 'nope' }]),
+    ).toEqual([])
+  })
+
+  it('still enforces id/name rules shared with constraint rules', () => {
+    expect(
+      sanitizeCustomVoicingRules([{ ...validPattern, id: 'closed' }]),
+    ).toEqual([]) // built-in id shadow
+    expect(
+      sanitizeCustomVoicingRules([{ ...validPattern, name: '   ' }]),
+    ).toEqual([])
   })
 })
 

@@ -2,7 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AttemptLifecycle, type LifecycleState } from './lifecycle'
 import { createPrompt } from './prompts'
 import { DEFAULT_PRACTICE_SETTINGS, type PracticeSettings } from './settings'
-import type { ChordTypeId } from '../theory'
+import {
+  voicingLibrary,
+  type ChordTypeId,
+  type PatternVoicingRule,
+} from '../theory'
 
 // MIDI shorthand: C4=60 C♯4=61 E4=64 G4=67 C5=72 E5=76
 
@@ -11,6 +15,20 @@ const ADVANCE = DEFAULT_PRACTICE_SETTINGS.autoAdvanceMs
 
 const prompt = (root: number, typeId: ChordTypeId, voicingId: string) =>
   createPrompt({ root, typeId, voicingId })
+
+const ONE_PLUS_FIVE: PatternVoicingRule = {
+  kind: 'pattern',
+  id: 'lh15-rh125',
+  name: '1-5 + 1-2-5',
+  leftHand: [1, 5],
+  rightHand: [1, 2, 5],
+}
+const patternPrompt = (root: number, typeId: ChordTypeId) =>
+  createPrompt(
+    { root, typeId, voicingId: ONE_PLUS_FIVE.id },
+    undefined,
+    voicingLibrary([ONE_PLUS_FIVE]),
+  )
 
 function setup(overrides: Partial<PracticeSettings> = {}) {
   const settings: PracticeSettings = {
@@ -197,6 +215,37 @@ describe('lifecycle — stall miss (§6.2 step 2)', () => {
     expect(machine.state.phase).toBe('armed')
     vi.advanceTimersByTime(1000)
     expect(machine.state.phase).toBe('missed')
+  })
+})
+
+describe('lifecycle — pattern rules (§3.3): full size uses the pattern length', () => {
+  it('never stalls while under the pattern length, even past the chord tone count', () => {
+    // C major has 3 tones; the pattern needs 5. 3 held notes (all valid,
+    // still-extendable prefix) must not trigger the old tone-count stall.
+    const { machine, press } = setup()
+    machine.promptShown(patternPrompt(0, 'maj'))
+    press(48, 55, 60) // C3 G3 C4 — a valid prefix of the 5-note pattern
+    vi.advanceTimersByTime(STALL * 20)
+    expect(machine.state.phase).toBe('armed')
+    expect(machine.state.missCount).toBe(0)
+  })
+
+  it('completing the exact pattern advances immediately', () => {
+    const { machine, press } = setup()
+    machine.promptShown(patternPrompt(0, 'maj'))
+    press(48, 55, 60, 62, 67) // C3 G3 C4 D4 G4
+    expect(machine.state.phase).toBe('advancing')
+  })
+
+  it('a full-size wrong order misses instantly — no stall wait needed', () => {
+    const { machine, press } = setup()
+    machine.promptShown(patternPrompt(0, 'maj'))
+    press(55, 67, 79) // three G's — the pattern only has two G slots
+    expect(machine.state.phase).toBe('missed')
+    expect(machine.state.hint).toEqual({
+      kind: 'constraint',
+      text: 'Notes out of order for this pattern',
+    })
   })
 })
 

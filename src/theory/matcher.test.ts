@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { getChordType, type Chord, type ChordTypeId } from './chordTypes'
-import { getBuiltInVoicingRule, type VoicingRule } from './voicingRules'
+import {
+  getBuiltInVoicingRule,
+  type PatternVoicingRule,
+  type VoicingRule,
+} from './voicingRules'
 import {
   DEFAULT_MATCH_SETTINGS,
   isDefinitivelyUnsatisfiable,
   matches,
+  requiredNoteCount,
   type MatchSettings,
 } from './matcher'
 
@@ -184,5 +189,94 @@ describe('isDefinitivelyUnsatisfiable (§6.2)', () => {
     expect(isDefinitivelyUnsatisfiable([60, 64, 67], cMaj, rule('open'))).toBe(
       false,
     )
+  })
+})
+
+describe('matches — pattern rules (two-hand shapes, §3.3)', () => {
+  const onePlusFive: PatternVoicingRule = {
+    kind: 'pattern',
+    id: 'lh15-rh125',
+    name: '1-5 + 1-2-5',
+    leftHand: [1, 5],
+    rightHand: [1, 2, 5],
+  }
+
+  it('matches C3 G3 C4 D4 G4 for LH 1-5 / RH 1-2-5 on C major', () => {
+    expect(matches([48, 55, 60, 62, 67], cMaj, onePlusFive)).toBe(true)
+  })
+
+  it('rejects the wrong note count', () => {
+    expect(matches([48, 55, 60, 62], cMaj, onePlusFive)).toBe(false)
+    expect(matches([48, 55, 60, 62, 67, 72], cMaj, onePlusFive)).toBe(false)
+  })
+
+  it('rejects a broken order even with the right pitch classes', () => {
+    // D swapped below the first C — same pitch-class multiset, wrong order.
+    expect(matches([48, 50, 55, 60, 67], cMaj, onePlusFive)).toBe(false)
+  })
+
+  it('is octave-placement-free (any register satisfying the order)', () => {
+    expect(matches([36, 43, 48, 50, 55], cMaj, onePlusFive)).toBe(true)
+  })
+
+  it('rejects when a pattern degree is unsatisfiable for the chord', () => {
+    const needsSeventh: PatternVoicingRule = {
+      kind: 'pattern',
+      id: 'x',
+      name: 'x',
+      leftHand: [],
+      rightHand: [1, 3, 5, 7],
+    }
+    expect(matches([60, 64, 67, 71], cMaj, needsSeventh)).toBe(false)
+  })
+})
+
+describe('isDefinitivelyUnsatisfiable — pattern rules', () => {
+  const onePlusFive: PatternVoicingRule = {
+    kind: 'pattern',
+    id: 'lh15-rh125',
+    name: '1-5 + 1-2-5',
+    leftHand: [1, 5],
+    rightHand: [1, 2, 5],
+  }
+
+  it('false for an empty or extendable partial attempt', () => {
+    expect(isDefinitivelyUnsatisfiable([], cMaj, onePlusFive)).toBe(false)
+    expect(isDefinitivelyUnsatisfiable([48], cMaj, onePlusFive)).toBe(false)
+    expect(isDefinitivelyUnsatisfiable([48, 55], cMaj, onePlusFive)).toBe(false)
+  })
+
+  it('true for a foreign pitch class', () => {
+    expect(isDefinitivelyUnsatisfiable([49], cMaj, onePlusFive)).toBe(true)
+  })
+
+  it('true once too many notes are held', () => {
+    expect(
+      isDefinitivelyUnsatisfiable([48, 55, 60, 62, 67, 72], cMaj, onePlusFive),
+    ).toBe(true)
+  })
+
+  it('true when held order breaks the achievable sequence', () => {
+    expect(isDefinitivelyUnsatisfiable([67, 67, 67], cMaj, onePlusFive)).toBe(
+      true,
+    )
+  })
+})
+
+describe('requiredNoteCount', () => {
+  it("a constraint rule's size is the chord's tone count", () => {
+    expect(requiredNoteCount(cMaj, rule('any'))).toBe(3)
+    expect(requiredNoteCount(chord(0, 'dom13'), rule('any'))).toBe(7)
+  })
+
+  it("a pattern rule's size is its own note count, independent of the chord", () => {
+    const onePlusFive: PatternVoicingRule = {
+      kind: 'pattern',
+      id: 'x',
+      name: 'x',
+      leftHand: [1, 5],
+      rightHand: [1, 2, 5],
+    }
+    expect(requiredNoteCount(cMaj, onePlusFive)).toBe(5)
   })
 })
