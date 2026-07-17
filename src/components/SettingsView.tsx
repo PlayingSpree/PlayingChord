@@ -2,17 +2,19 @@ import { useRef, useState } from 'react'
 import { BUILT_IN_VOICING_RULES, type VoicingRule } from '../theory'
 import {
   builtInPresets,
+  CHORD_NAME_SIZES,
   describeVoicingRule,
   MAX_DAILY_GOAL_MINUTES,
   MAX_DELAY_MS,
   poolChords,
+  type ChordNameSize,
   type Preset,
 } from '../practice'
 import type { ImportResult } from '../storage'
 import { useSettings } from '../store/settingsStore'
 import { useLibrary } from '../store/libraryStore'
 import { practiceStore } from '../store/practiceStore'
-import { NumberField, Toggle } from './fields'
+import { NumberField, SelectField, Toggle } from './fields'
 import { VoicingBuilder } from './VoicingBuilder'
 import { PresetEditor } from './PresetEditor'
 
@@ -133,6 +135,13 @@ function MatchingSection() {
   )
 }
 
+const CHORD_NAME_SIZE_LABELS: Record<ChordNameSize, string> = {
+  sm: 'Small',
+  md: 'Medium',
+  lg: 'Large (default)',
+  xl: 'Extra large',
+}
+
 function NotationSoundSection() {
   const settings = useSettings((s) => s.settings)
   const update = useSettings((s) => s.update)
@@ -143,6 +152,15 @@ function NotationSoundSection() {
       hint="staff scopes to Learn mode & reveals (§7); the chime is the only sound (§9)"
     >
       <div className="flex max-w-md flex-col gap-3">
+        <SelectField
+          label="Chord name size"
+          value={settings.chordNameSize}
+          options={CHORD_NAME_SIZES.map((size) => ({
+            value: size,
+            label: CHORD_NAME_SIZE_LABELS[size],
+          }))}
+          onChange={(v) => update({ chordNameSize: v })}
+        />
         <Toggle
           label="Show staff notation"
           checked={settings.staffEnabled}

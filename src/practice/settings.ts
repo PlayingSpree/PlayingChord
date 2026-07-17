@@ -1,5 +1,11 @@
 import type { MatchSettings } from '../theory'
 
+// Chord-name display size (§7 prompt area): discrete steps rather than a
+// free px value, so every size stays legible and the settings UI is a
+// simple select rather than a slider.
+export const CHORD_NAME_SIZES = ['sm', 'md', 'lg', 'xl'] as const
+export type ChordNameSize = (typeof CHORD_NAME_SIZES)[number]
+
 // Tunable practice behavior (DESIGN.md §6.2, §6.3): the two matcher toggles
 // plus the two lifecycle delays. Lives in practice/ so the lifecycle machine
 // stays pure; the store layer owns persistence (plain localStorage for now,
@@ -17,6 +23,9 @@ export interface PracticeSettings extends MatchSettings {
   staffEnabled: boolean
   // Correct chime (§9): the app's only sound — misses stay silent.
   chimeEnabled: boolean
+  // Chord name display size (§7): the prompt's primary text. 'lg' matches
+  // the original fixed size.
+  chordNameSize: ChordNameSize
 }
 
 export const DEFAULT_PRACTICE_SETTINGS: PracticeSettings = {
@@ -27,6 +36,7 @@ export const DEFAULT_PRACTICE_SETTINGS: PracticeSettings = {
   dailyGoalMinutes: 10,
   staffEnabled: true,
   chimeEnabled: true,
+  chordNameSize: 'lg',
 }
 
 export const MAX_DELAY_MS = 10_000
@@ -44,6 +54,15 @@ function asDelayMs(value: unknown, fallback: number): number {
 function asGoalMinutes(value: unknown, fallback: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
   return Math.round(Math.min(Math.max(value, 1), MAX_DAILY_GOAL_MINUTES))
+}
+
+function asChordNameSize(
+  value: unknown,
+  fallback: ChordNameSize,
+): ChordNameSize {
+  return CHORD_NAME_SIZES.includes(value as ChordNameSize)
+    ? (value as ChordNameSize)
+    : fallback
 }
 
 // Coerces unknown data (hand-edited localStorage, stale schema, wild UI
@@ -72,5 +91,6 @@ export function sanitizeSettings(value: unknown): PracticeSettings {
     ),
     staffEnabled: asBoolean(raw.staffEnabled, defaults.staffEnabled),
     chimeEnabled: asBoolean(raw.chimeEnabled, defaults.chimeEnabled),
+    chordNameSize: asChordNameSize(raw.chordNameSize, defaults.chordNameSize),
   }
 }

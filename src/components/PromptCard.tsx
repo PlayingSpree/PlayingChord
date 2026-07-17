@@ -1,11 +1,20 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { usePractice } from '../store/practiceStore'
 import { useSettings } from '../store/settingsStore'
-import type { Hint } from '../practice'
+import type { ChordNameSize, Hint } from '../practice'
 
 // VexFlow + music font are a heavy chunk; staff-off users (a first-class
 // way to run the app, §3.4) never download it.
 const StaffView = lazy(() => import('./StaffView'))
+
+// Tailwind classes per chord-name size setting (§7); 'lg' matches the
+// original fixed size.
+const CHORD_NAME_SIZE_CLASSES: Record<ChordNameSize, string> = {
+  sm: 'text-5xl sm:text-6xl',
+  md: 'text-6xl sm:text-7xl',
+  lg: 'text-7xl sm:text-8xl',
+  xl: 'text-8xl sm:text-9xl',
+}
 
 // The prompt area (DESIGN.md §7): the chord NAME is primary, large and
 // readable from a distance. The voicing being drilled appears as a separate
@@ -19,6 +28,7 @@ export function PromptCard() {
   const mode = usePractice((s) => s.mode)
   const skip = usePractice((s) => s.skip)
   const staffEnabled = useSettings((s) => s.settings.staffEnabled)
+  const chordNameSize = useSettings((s) => s.settings.chordNameSize)
 
   if (!prompt) return null
 
@@ -30,7 +40,9 @@ export function PromptCard() {
 
   return (
     <section className="flex flex-col items-center gap-4 text-center">
-      <h2 className="text-7xl font-bold tracking-tight sm:text-8xl">
+      <h2
+        className={`font-bold tracking-tight ${CHORD_NAME_SIZE_CLASSES[chordNameSize]}`}
+      >
         {prompt.displayName}
       </h2>
       {prompt.voicing.id !== 'any' && (

@@ -71,6 +71,7 @@ describe('sanitizeSettings', () => {
       dailyGoalMinutes: 20,
       staffEnabled: false,
       chimeEnabled: false,
+      chordNameSize: 'sm',
     }
     expect(sanitizeSettings(valid)).toEqual(valid)
   })
@@ -86,5 +87,14 @@ describe('sanitizeSettings', () => {
     expect(result.staffEnabled).toBe(true)
     expect(result.chimeEnabled).toBe(true)
     expect(sanitizeSettings({ chimeEnabled: false }).chimeEnabled).toBe(false)
+  })
+
+  it('defaults the chord name size and rejects unknown values', () => {
+    expect(sanitizeSettings({}).chordNameSize).toBe('lg')
+    for (const size of ['sm', 'md', 'lg', 'xl']) {
+      expect(sanitizeSettings({ chordNameSize: size }).chordNameSize).toBe(size)
+    }
+    expect(sanitizeSettings({ chordNameSize: 'huge' }).chordNameSize).toBe('lg')
+    expect(sanitizeSettings({ chordNameSize: 3 }).chordNameSize).toBe('lg')
   })
 })

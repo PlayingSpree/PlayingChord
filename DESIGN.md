@@ -414,8 +414,9 @@ All overlays use color **and** a shape/icon distinction, never color alone.
     - **Timer**: off (default) or 5 / 10 / 15 min / custom — countdown in the UI, then
       an end-of-session summary (prompts played, accuracy, slowest/worst chords).
     - **Worst chords only**: drills the selected preset's worst combos (§5).
-- **Prompt area**: chord name large and readable from a distance; the voicing being
-  drilled as a text label (omitted for the `any` rule); in Learn mode the `example`
+- **Prompt area**: chord name large and readable from a distance, size configurable in
+  settings (small/medium/large/extra-large, default large); the voicing being drilled
+  as a text label (omitted for the `any` rule); in Learn mode the `example`
   voicing on a grand staff (§3.4) — a staff on/off setting keeps name+keyboard-only
   Learn first-class for users who don't read notation. A subtle indicator appears when
   the prompt was chosen due to recent misses (§5).
@@ -445,7 +446,8 @@ All overlays use color **and** a shape/icon distinction, never color alone.
 - **Preset editor** (settings): create/edit/delete presets (pool + voicing refs, §4)
   with rule-compatibility validation; import/export as JSON.
 - **Settings**: preset editor, voicing builder, doubling toggle, strict-extra-notes
-  toggle, staff on/off (Learn mode), correct-chime on/off, judgment delay, auto-advance
+  toggle, chord name size (small/medium/large/extra-large, default large), staff
+  on/off (Learn mode), correct-chime on/off, judgment delay, auto-advance
   delay, daily goal minutes. (The timer and worst-chords-only controls are Practice-mode
   settings living next to the mode picker, not in the settings panel.)
 
