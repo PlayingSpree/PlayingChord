@@ -38,7 +38,8 @@ export interface Preset {
 }
 
 // Triad quality of each major-scale degree: I ii iii IV V vi vii°.
-const DIATONIC_QUALITIES: readonly ChordTypeId[] = [
+// Exported for Song mode (§6.5), whose progressions are built per degree.
+export const DIATONIC_QUALITIES: readonly ChordTypeId[] = [
   'maj',
   'min',
   'min',

@@ -25,16 +25,21 @@ export function comboWeight(history: ComboRecentHistory | null): number {
 
 // Miss-weighted random pick with no immediate repeat. `recentKeys` is the
 // played history, oldest first; only the allowed tail of it is excluded.
+// `window` widens the exclusion for queued-but-not-yet-played picks (§5's
+// upcoming preview): the caller passes RECENT_WINDOW + however many combos
+// are already queued, so the preview and the current prompt stay
+// duplicate-free whenever the pool is large enough.
 export function pickWeightedCombo(
   pool: readonly Combo[],
   recentKeys: readonly string[],
   stats: RecentStatsSource,
   rng: Rng = Math.random,
+  window: number = RECENT_WINDOW,
 ): Combo {
   if (pool.length === 0) throw new Error('Cannot pick from an empty pool')
 
   // slice(-0) would return the whole array, so guard the zero case.
-  const excludeCount = Math.min(RECENT_WINDOW, pool.length - 1)
+  const excludeCount = Math.min(window, pool.length - 1)
   const excluded = new Set(
     excludeCount === 0 ? [] : recentKeys.slice(-excludeCount),
   )
@@ -65,4 +70,38 @@ export function pickCombo(
   rng: Rng = Math.random,
 ): Combo {
   return pickWeightedCombo(pool, recentKeys, NO_HISTORY, rng)
+}
+
+// How many upcoming combos the §7 preview shows.
+export const UPCOMING_COUNT = 4
+
+// Extends `queue` up to `count` combos (§5's upcoming preview), appending
+// picks against then-current weights — later slots are dealt with with
+// yesterday's weights once anything is recorded in between, a Tetris-preview
+// staleness accepted by design. Each appended pick excludes the played
+// history plus everything already queued, so the preview and the current
+// prompt stay duplicate-free whenever the pool is large enough; a pool too
+// small for `count` distinct combos repeats rather than throwing.
+export function fillQueue(
+  queue: readonly Combo[],
+  count: number,
+  pool: readonly Combo[],
+  recentKeys: readonly string[],
+  stats: RecentStatsSource,
+  rng: Rng = Math.random,
+): Combo[] {
+  const filled = [...queue]
+  while (filled.length < count) {
+    const excluded = [...recentKeys, ...filled.map((combo) => comboKey(combo))]
+    filled.push(
+      pickWeightedCombo(
+        pool,
+        excluded,
+        stats,
+        rng,
+        RECENT_WINDOW + filled.length,
+      ),
+    )
+  }
+  return filled
 }

@@ -1,5 +1,6 @@
 import { useMidi } from '../store/midiStore'
 import { usePractice } from '../store/practiceStore'
+import { useSettings } from '../store/settingsStore'
 import { pitchClass } from '../theory'
 
 // On-screen keyboard (~3 octaves, DESIGN.md §7) showing currently held notes
@@ -66,6 +67,7 @@ export function KeyboardView() {
   const hint = usePractice((s) => s.hint)
   const mode = usePractice((s) => s.mode)
   const prompt = usePractice((s) => s.prompt)
+  const songShowExample = useSettings((s) => s.settings.songShowExample)
 
   // Wrong marks sit on (recently) held keys, so they share the held set's
   // shift; the answer overlay is its own shape and folds independently.
@@ -75,11 +77,13 @@ export function KeyboardView() {
     wrongNotes.length > 0 ? foldSet(wrongNotes, playedOffset) : NO_NOTES
   const held = foldSet([...heldNotes], playedOffset)
   // Learn mode shows the example voicing from the start (§7) — the same
-  // overlay Practice earns at the miss-3 reveal (§6.4).
+  // overlay Practice earns at the miss-3 reveal (§6.4). Song mode overlays
+  // each bar's example too while its show-example setting is on (§6.5).
   const expectedNotes =
     hint?.kind === 'reveal'
       ? hint.notes
-      : mode === 'learn' && prompt !== null
+      : prompt !== null &&
+          (mode === 'learn' || (mode === 'song' && songShowExample))
         ? prompt.example
         : null
   const expected =

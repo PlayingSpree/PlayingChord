@@ -147,7 +147,7 @@ function NotationSoundSection() {
   const update = useSettings((s) => s.update)
 
   return (
-    <Section title="Notation & sound" hint="the chime is the only sound (§9)">
+    <Section title="Notation & sound" hint="misses are always visual-only (§9)">
       <div className="flex max-w-md flex-col gap-3">
         <SelectField
           label="Chord name size"
@@ -172,6 +172,11 @@ function NotationSoundSection() {
           label="Chime on correct"
           checked={settings.chimeEnabled}
           onChange={(v) => update({ chimeEnabled: v })}
+        />
+        <Toggle
+          label="Piano sound on key press"
+          checked={settings.pianoSoundEnabled}
+          onChange={(v) => update({ pianoSoundEnabled: v })}
         />
       </div>
     </Section>

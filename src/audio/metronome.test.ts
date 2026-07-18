@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { Chime } from './chime'
 import { SharedAudioContext } from './context'
+import { Metronome } from './metronome'
 
-// A minimal structural fake of the Web Audio surface the chime touches.
+// A minimal structural fake of the Web Audio surface the metronome touches.
 
 class FakeParam {
   value = 0
@@ -43,9 +43,10 @@ class FakeGain extends FakeNode {
 
 class FakeAudioContext {
   state: AudioContextState = 'running'
-  currentTime = 1.5
+  currentTime = 2.5
   destination = new FakeNode()
   oscillators: FakeOscillator[] = []
+  gains: FakeGain[] = []
   resumeCalls = 0
   createOscillator() {
     const osc = new FakeOscillator()
@@ -53,7 +54,9 @@ class FakeAudioContext {
     return osc
   }
   createGain() {
-    return new FakeGain()
+    const gain = new FakeGain()
+    this.gains.push(gain)
+    return gain
   }
   resume() {
     this.resumeCalls += 1
@@ -63,54 +66,45 @@ class FakeAudioContext {
 
 const asContext = (fake: FakeAudioContext) => fake as unknown as AudioContext
 
-function chimeOn(ctx: FakeAudioContext): Chime {
-  return new Chime(new SharedAudioContext(() => asContext(ctx)))
+function metronomeOn(ctx: FakeAudioContext): Metronome {
+  return new Metronome(new SharedAudioContext(() => asContext(ctx)))
 }
 
-describe('Chime', () => {
-  it('schedules the first partial at currentTime — no added latency', () => {
+describe('Metronome', () => {
+  it('ticks one short oscillator at currentTime and stops it', () => {
     const ctx = new FakeAudioContext()
-    chimeOn(ctx).play()
-    expect(ctx.oscillators).toHaveLength(2)
-    expect(ctx.oscillators[0]?.startedAt).toEqual([1.5])
-    // Every oscillator is stopped shortly after — nothing rings on forever.
-    for (const osc of ctx.oscillators) {
-      expect(osc.stoppedAt[0]).toBeGreaterThan(1.5)
-      expect(osc.stoppedAt[0]).toBeLessThan(1.5 + 1)
-    }
-  })
-
-  it('shapes each partial with an attack ramp and exponential decay', () => {
-    const ctx = new FakeAudioContext()
-    chimeOn(ctx).play()
+    metronomeOn(ctx).tick(false)
+    expect(ctx.oscillators).toHaveLength(1)
     const osc = ctx.oscillators[0]!
     expect(osc.type).toBe('sine')
-    expect(osc.frequency.value).toBeCloseTo(1046.5)
+    expect(osc.startedAt).toEqual([2.5])
+    expect(osc.stoppedAt[0]).toBeGreaterThan(2.5)
+    expect(osc.stoppedAt[0]).toBeLessThan(2.5 + 0.5)
+  })
+
+  it('accents beat 1 with a higher, louder click', () => {
+    const ctx = new FakeAudioContext()
+    const metronome = metronomeOn(ctx)
+    metronome.tick(true)
+    metronome.tick(false)
+    const [accent, normal] = ctx.oscillators
+    expect(accent!.frequency.value).toBeGreaterThan(normal!.frequency.value)
+    const peakOf = (gain: FakeGain) =>
+      gain.gain.events.find((e) => e.kind === 'linear')!.value
+    const [accentGain, normalGain] = ctx.gains
+    expect(peakOf(accentGain!)).toBeGreaterThan(peakOf(normalGain!))
   })
 
   it('stays silent while the context is suspended, but asks it to resume', () => {
     const ctx = new FakeAudioContext()
     ctx.state = 'suspended'
-    chimeOn(ctx).play()
+    metronomeOn(ctx).tick(true)
     expect(ctx.oscillators).toHaveLength(0)
     expect(ctx.resumeCalls).toBe(1)
   })
 
-  it('reuses one context across plays', () => {
-    const ctx = new FakeAudioContext()
-    let created = 0
-    const shared = new SharedAudioContext(() => {
-      created += 1
-      return asContext(ctx)
-    })
-    const chime = new Chime(shared)
-    chime.play()
-    chime.play()
-    expect(created).toBe(1)
-  })
-
   it('does nothing without Web Audio (factory yields null)', () => {
-    const chime = new Chime(new SharedAudioContext(() => null))
-    expect(() => chime.play()).not.toThrow()
+    const metronome = new Metronome(new SharedAudioContext(() => null))
+    expect(() => metronome.tick(true)).not.toThrow()
   })
 })

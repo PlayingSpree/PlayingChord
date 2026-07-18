@@ -25,6 +25,19 @@ export type Hint =
   // Overlay the prompt's example voicing (and the staff, once it exists).
   | { kind: 'reveal'; notes: number[] }
 
+// Held keys whose pitch class isn't in the chord, ascending. The wrong-keys
+// stage of computeHint, and Song mode's always-on marking (§6.5) — advisory
+// there, so it ignores strictExtraNotes deliberately.
+export function wrongHeldKeys(
+  held: ReadonlySet<number>,
+  chord: Chord,
+): number[] {
+  const chordPcs = new Set(chordPitchClasses(chord))
+  return [...held]
+    .filter((note) => !chordPcs.has(pitchClass(note)))
+    .sort((a, b) => a - b)
+}
+
 export function computeHint(
   missCount: number,
   held: ReadonlySet<number>,
@@ -40,10 +53,7 @@ export function computeHint(
   // With strict extra notes off, foreign keys are tolerated by the matcher,
   // so they are never what failed — fall through to the constraint text.
   if (settings.strictExtraNotes) {
-    const chordPcs = new Set(chordPitchClasses(prompt.chord))
-    const wrong = [...held]
-      .filter((note) => !chordPcs.has(pitchClass(note)))
-      .sort((a, b) => a - b)
+    const wrong = wrongHeldKeys(held, prompt.chord)
     if (wrong.length > 0) return { kind: 'wrong-keys', notes: wrong }
   }
   return {

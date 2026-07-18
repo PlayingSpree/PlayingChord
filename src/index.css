@@ -13,3 +13,14 @@
   outline: 2px solid var(--color-sky-400);
   outline-offset: 2px;
 }
+
+/* Song mode (§6.5): the current progression chip pulses once per metronome
+   beat — the element is remounted (React key = beat counter) to retrigger. */
+@keyframes beat-pulse {
+  from {
+    transform: scale(1.12);
+  }
+  to {
+    transform: scale(1);
+  }
+}

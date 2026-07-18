@@ -3,6 +3,8 @@ import {
   DEFAULT_PRACTICE_SETTINGS,
   MAX_DAILY_GOAL_MINUTES,
   MAX_DELAY_MS,
+  MAX_SONG_TEMPO_BPM,
+  MIN_SONG_TEMPO_BPM,
   sanitizeSettings,
 } from './settings'
 
@@ -72,7 +74,11 @@ describe('sanitizeSettings', () => {
       staffEnabled: false,
       staffKeyEnabled: true,
       chimeEnabled: false,
+      pianoSoundEnabled: false,
       chordNameSize: 'sm',
+      songTempoBpm: 90,
+      songChordCount: 3,
+      songShowExample: false,
     }
     expect(sanitizeSettings(valid)).toEqual(valid)
   })
@@ -89,6 +95,48 @@ describe('sanitizeSettings', () => {
     expect(result.staffEnabled).toBe(true)
     expect(result.chimeEnabled).toBe(true)
     expect(sanitizeSettings({ chimeEnabled: false }).chimeEnabled).toBe(false)
+  })
+
+  it('defaults the piano-sound toggle on and coerces junk', () => {
+    // Added alongside the chime — same added-within-v1 sanitizer-defaulting
+    // convention, so pre-existing persisted states fill in cleanly.
+    expect(sanitizeSettings({}).pianoSoundEnabled).toBe(true)
+    expect(
+      sanitizeSettings({ pianoSoundEnabled: 'off' }).pianoSoundEnabled,
+    ).toBe(true)
+    expect(
+      sanitizeSettings({ pianoSoundEnabled: false }).pianoSoundEnabled,
+    ).toBe(false)
+  })
+
+  it('clamps the song tempo and rejects junk', () => {
+    expect(sanitizeSettings({}).songTempoBpm).toBe(60)
+    expect(sanitizeSettings({ songTempoBpm: 39 }).songTempoBpm).toBe(
+      MIN_SONG_TEMPO_BPM,
+    )
+    expect(sanitizeSettings({ songTempoBpm: 141 }).songTempoBpm).toBe(
+      MAX_SONG_TEMPO_BPM,
+    )
+    expect(sanitizeSettings({ songTempoBpm: 72.6 }).songTempoBpm).toBe(73)
+    expect(sanitizeSettings({ songTempoBpm: '80' }).songTempoBpm).toBe(60)
+  })
+
+  it('restricts the song chord count to 2-4 and defaults the example toggle on', () => {
+    expect(sanitizeSettings({}).songChordCount).toBe(4)
+    for (const count of [2, 3, 4]) {
+      expect(sanitizeSettings({ songChordCount: count }).songChordCount).toBe(
+        count,
+      )
+    }
+    expect(sanitizeSettings({ songChordCount: 5 }).songChordCount).toBe(4)
+    expect(sanitizeSettings({ songChordCount: '3' }).songChordCount).toBe(4)
+    expect(sanitizeSettings({}).songShowExample).toBe(true)
+    expect(sanitizeSettings({ songShowExample: 'off' }).songShowExample).toBe(
+      true,
+    )
+    expect(sanitizeSettings({ songShowExample: false }).songShowExample).toBe(
+      false,
+    )
   })
 
   it('defaults the chord name size and rejects unknown values', () => {

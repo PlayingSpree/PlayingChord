@@ -1,14 +1,19 @@
 import { useState } from 'react'
 import { usePractice } from '../store/practiceStore'
+import { settingsStore, useSettings } from '../store/settingsStore'
 import {
+  MAX_SONG_TEMPO_BPM,
   MAX_TIMER_MINUTES,
+  MIN_SONG_TEMPO_BPM,
+  SONG_CHORD_COUNTS,
   TIMER_PRESET_MINUTES,
   type SessionMode,
 } from '../practice'
 
-// Top-bar session-mode picker (§7) with the Practice-mode settings beside
-// it: the session timer and the worst-chords-only toggle. Learn hides both
-// (Learn is untimed and always draws from the whole pool).
+// Top-bar session-mode picker (§7) with the mode-specific settings beside
+// it: Practice gets the session timer and the worst-chords-only toggle;
+// Song (§6.5) gets tempo, progression length and the show-example toggle.
+// Learn has neither (untimed, always the whole pool).
 export function ModeBar() {
   const mode = usePractice((s) => s.mode)
   const setMode = usePractice((s) => s.setMode)
@@ -26,6 +31,9 @@ export function ModeBar() {
         <ModeButton mode="practice" active={mode} onSelect={setMode}>
           Practice
         </ModeButton>
+        <ModeButton mode="song" active={mode} onSelect={setMode}>
+          Song
+        </ModeButton>
       </div>
       {mode === 'practice' && (
         <>
@@ -33,7 +41,66 @@ export function ModeBar() {
           <WorstOnlyToggle />
         </>
       )}
+      {mode === 'song' && <SongControls />}
     </div>
+  )
+}
+
+// Song-mode settings (§6.5/§7): persisted (tempo and length are skill-level
+// preferences) but set here beside the mode picker, not the settings panel.
+// Tempo applies from the next beat, chord count from the next progression,
+// show-example is pure display — no store action needed.
+function SongControls() {
+  const tempo = useSettings((s) => s.settings.songTempoBpm)
+  const chordCount = useSettings((s) => s.settings.songChordCount)
+  const showExample = useSettings((s) => s.settings.songShowExample)
+  const update = settingsStore.getState().update
+  // Committing on blur, not per keystroke: the sanitizer clamps to
+  // [40, 140], which would rewrite "1" to 40 mid-way through typing "100".
+  const [tempoDraft, setTempoDraft] = useState<string | null>(null)
+
+  return (
+    <>
+      <label className="flex items-center gap-1.5 text-sm text-slate-300">
+        <input
+          type="number"
+          min={MIN_SONG_TEMPO_BPM}
+          max={MAX_SONG_TEMPO_BPM}
+          value={tempoDraft ?? tempo}
+          aria-label="Tempo in beats per minute"
+          onChange={(e) => setTempoDraft(e.target.value)}
+          onBlur={() => {
+            if (tempoDraft !== null && tempoDraft !== '') {
+              update({ songTempoBpm: Number(tempoDraft) })
+            }
+            setTempoDraft(null)
+          }}
+          className="w-16 rounded border border-slate-700 bg-slate-900 px-2 py-1 text-right text-sm text-slate-100"
+        />
+        BPM
+      </label>
+      <select
+        className="rounded-md border border-slate-700 bg-slate-800 px-2 py-1 text-sm"
+        aria-label="Chords per progression"
+        value={chordCount}
+        onChange={(e) => update({ songChordCount: Number(e.target.value) })}
+      >
+        {SONG_CHORD_COUNTS.map((count) => (
+          <option key={count} value={count}>
+            {count} chords
+          </option>
+        ))}
+      </select>
+      <label className="flex cursor-pointer items-center gap-1.5 text-sm text-slate-300">
+        <input
+          type="checkbox"
+          checked={showExample}
+          onChange={(e) => update({ songShowExample: e.target.checked })}
+          className="h-4 w-4 accent-sky-500"
+        />
+        Show example
+      </label>
+    </>
   )
 }
 

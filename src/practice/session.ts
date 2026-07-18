@@ -3,8 +3,9 @@ import type { PromptOutcome } from './stats'
 // Session modes (DESIGN.md §7): Learn shows the example voicing from the
 // start and is stats-neutral — completed prompts feed neither the per-combo
 // records nor the session tallies (§5), though active minutes still count.
-// Practice (the default) hides the voicing and records everything.
-export type SessionMode = 'learn' | 'practice'
+// Practice (the default) hides the voicing and records everything. Song
+// (§6.5) is clock-paced: a looped diatonic progression judged per bar.
+export type SessionMode = 'learn' | 'practice' | 'song'
 
 // Practice-mode session timer choices (§7); "custom" adds a free minutes
 // input in the UI on top of these.

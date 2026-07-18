@@ -57,6 +57,16 @@ describe('applyOutcome (§8 combo stat record)', () => {
     )
     expect(record.timeToCorrectMs).toEqual([1235, 0])
   })
+
+  it('a null time (§6.5 Song bar) counts the outcome without a sample', () => {
+    let record = applyOutcome(null, 'first-try', null)
+    record = applyOutcome(record, 'missed', null)
+    record = applyOutcome(record, 'first-try', 1200)
+    expect(record.attempts).toBe(3)
+    expect(record.firstTrySuccesses).toBe(2)
+    expect(record.recentOutcomes).toEqual(['first-try', 'missed', 'first-try'])
+    expect(record.timeToCorrectMs).toEqual([1200])
+  })
 })
 
 describe('recentHistoryOf / InMemoryComboStats (§5 weighting view)', () => {

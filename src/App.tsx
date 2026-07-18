@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { midiStore } from './store/midiStore'
 import { practiceStore } from './store/practiceStore'
 import { settingsStore } from './store/settingsStore'
-import { chime, primeOnFirstGesture } from './audio'
+import { chime, metronome, piano, primeOnFirstGesture } from './audio'
 import { MidiGate } from './components/MidiGate'
 import { DevicePicker } from './components/DevicePicker'
 import { PresetPicker } from './components/PresetPicker'
@@ -35,13 +35,19 @@ function createSource(): MidiSource {
   return new WebMidiSource()
 }
 
+// Module-level singleton, like the stores: a source created per mount would
+// mean the piano-sound effect's subscription (below) and midiStore's own
+// initialize() could end up on two different instances under StrictMode's
+// double-invoke.
+const midiSource = createSource()
+
 export default function App() {
   const [view, setView] = useState<'practice' | 'history' | 'settings'>(
     'practice',
   )
 
   useEffect(() => {
-    void midiStore.getState().initialize(createSource())
+    void midiStore.getState().initialize(midiSource)
     // Every held-set change is judged (§6.2) and feeds active-time tracking
     // (§7); the stores stay decoupled — practice knows nothing about MIDI,
     // only about held-note sets.
@@ -49,28 +55,66 @@ export default function App() {
       if (state.heldNotes !== prev.heldNotes) {
         practiceStore.getState().onHeldChange(state.heldNotes)
       }
+      // A device switch (or unplug) means the old device's noteOffs will
+      // never arrive — silence anything still ringing from it.
+      if (state.activeDeviceId !== prev.activeDeviceId) {
+        piano.allNotesOff()
+      }
     })
   }, [])
 
   useEffect(() => {
-    // Correct-chime wiring lives at this edge like MIDI (§8): the transition
-    // into 'advancing' is exactly the ✔ moment (§6.2) — skips never pass
-    // through it. Fire-and-forget, so the flash never waits on audio. The
-    // context is primed on the first gesture because autoplay policy doesn't
-    // count MIDI input as one.
+    // Chime + piano wiring both live at this edge like MIDI (§8). The
+    // context is primed on the first gesture because autoplay policy
+    // doesn't count MIDI input as one, and priming is shared between both
+    // instruments (§9).
     const unprime = primeOnFirstGesture()
-    const unsubscribe = practiceStore.subscribe((state, prev) => {
+
+    // Correct-chime: the transition into 'advancing' is exactly the ✔
+    // moment (§6.2) — skips never pass through it. Fire-and-forget, so the
+    // flash never waits on audio. Song mode (§6.5) never enters 'advancing';
+    // its beats drive the metronome click and a bar's first match plays the
+    // same ✔ chime, both keyed off the engine's monotonic counters.
+    const unsubscribePractice = practiceStore.subscribe((state, prev) => {
+      const chimeEnabled = () => settingsStore.getState().settings.chimeEnabled
       if (
         state.phase === 'advancing' &&
         prev.phase !== 'advancing' &&
-        settingsStore.getState().settings.chimeEnabled
+        chimeEnabled()
       ) {
         chime.play()
       }
+      if (state.song !== null) {
+        if (state.song.beat !== prev.song?.beat) {
+          metronome.tick(state.song.beatInBar === 0)
+        }
+        if (
+          prev.song !== null &&
+          state.song.hitCount > prev.song.hitCount &&
+          chimeEnabled()
+        ) {
+          chime.play()
+        }
+      }
     })
+
+    // Piano: voices the user's own key presses with velocity (§9); noteOff
+    // always forwards regardless of the setting so toggling it off mid-hold
+    // can't leave a note ringing.
+    const unsubscribeMidi = midiSource.subscribe((event) => {
+      if (event.kind === 'noteOn') {
+        if (settingsStore.getState().settings.pianoSoundEnabled) {
+          piano.noteOn(event.note, event.velocity)
+        }
+      } else if (event.kind === 'noteOff') {
+        piano.noteOff(event.note)
+      }
+    })
+
     return () => {
       unprime()
-      unsubscribe()
+      unsubscribePractice()
+      unsubscribeMidi()
     }
   }, [])
 

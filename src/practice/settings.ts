@@ -24,11 +24,19 @@ export interface PracticeSettings extends MatchSettings {
   // Renders the staff in the chord root's major key — key signature plus
   // diatonic respelling (§3.5) — instead of the default fixed spelling.
   staffKeyEnabled: boolean
-  // Correct chime (§9): the app's only sound — misses stay silent.
+  // Correct chime (§9): on ✔, independent of the piano sound below.
   chimeEnabled: boolean
+  // Piano tone on each key press (§9): voices the user's own playing,
+  // velocity-sensitive — not feedback, so misses still stay visual-only.
+  pianoSoundEnabled: boolean
   // Chord name display size (§7): the prompt's primary text. 'lg' matches
   // the original fixed size.
   chordNameSize: ChordNameSize
+  // Song mode (§6.5) — set beside the mode picker, not the settings panel,
+  // but persisted here so tempo/length survive reloads.
+  songTempoBpm: number
+  songChordCount: number // 2–4 chords per progression
+  songShowExample: boolean // overlay each bar's example voicing, Learn-style
 }
 
 export const DEFAULT_PRACTICE_SETTINGS: PracticeSettings = {
@@ -40,11 +48,20 @@ export const DEFAULT_PRACTICE_SETTINGS: PracticeSettings = {
   staffEnabled: true,
   staffKeyEnabled: false,
   chimeEnabled: true,
+  pianoSoundEnabled: true,
   chordNameSize: 'lg',
+  songTempoBpm: 60,
+  songChordCount: 4,
+  songShowExample: true,
 }
 
 export const MAX_DELAY_MS = 10_000
 export const MAX_DAILY_GOAL_MINUTES = 1_440 // one full day
+
+// Song-mode tempo bounds (§6.5) and progression-length choices (§7).
+export const MIN_SONG_TEMPO_BPM = 40
+export const MAX_SONG_TEMPO_BPM = 140
+export const SONG_CHORD_COUNTS: readonly number[] = [2, 3, 4]
 
 function asBoolean(value: unknown, fallback: boolean): boolean {
   return typeof value === 'boolean' ? value : fallback
@@ -66,6 +83,21 @@ function asChordNameSize(
 ): ChordNameSize {
   return CHORD_NAME_SIZES.includes(value as ChordNameSize)
     ? (value as ChordNameSize)
+    : fallback
+}
+
+export function sanitizeSongTempoBpm(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return DEFAULT_PRACTICE_SETTINGS.songTempoBpm
+  }
+  return Math.round(
+    Math.min(Math.max(value, MIN_SONG_TEMPO_BPM), MAX_SONG_TEMPO_BPM),
+  )
+}
+
+function asSongChordCount(value: unknown, fallback: number): number {
+  return SONG_CHORD_COUNTS.includes(value as number)
+    ? (value as number)
     : fallback
 }
 
@@ -96,6 +128,16 @@ export function sanitizeSettings(value: unknown): PracticeSettings {
     staffEnabled: asBoolean(raw.staffEnabled, defaults.staffEnabled),
     staffKeyEnabled: asBoolean(raw.staffKeyEnabled, defaults.staffKeyEnabled),
     chimeEnabled: asBoolean(raw.chimeEnabled, defaults.chimeEnabled),
+    pianoSoundEnabled: asBoolean(
+      raw.pianoSoundEnabled,
+      defaults.pianoSoundEnabled,
+    ),
     chordNameSize: asChordNameSize(raw.chordNameSize, defaults.chordNameSize),
+    songTempoBpm: sanitizeSongTempoBpm(raw.songTempoBpm),
+    songChordCount: asSongChordCount(
+      raw.songChordCount,
+      defaults.songChordCount,
+    ),
+    songShowExample: asBoolean(raw.songShowExample, defaults.songShowExample),
   }
 }

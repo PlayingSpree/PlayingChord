@@ -3,6 +3,7 @@ import { ALL_PITCH_CLASSES } from '../theory'
 import { comboKey, type Combo } from './combos'
 import {
   comboWeight,
+  fillQueue,
   MISS_WEIGHT_BOOST,
   pickCombo,
   pickWeightedCombo,
@@ -181,5 +182,55 @@ describe('pickWeightedCombo (§5)', () => {
     expect(pool).toContainEqual(
       pickWeightedCombo(pool, [], stats, () => 0.9999999),
     )
+  })
+})
+
+describe('fillQueue (§5 upcoming preview)', () => {
+  it('fills an empty queue to count', () => {
+    const pool = poolOf(12)
+    const queue = fillQueue([], 4, pool, [], statsOf({}))
+    expect(queue).toHaveLength(4)
+    queue.forEach((combo) => expect(pool).toContainEqual(combo))
+  })
+
+  it('preserves the existing queue prefix and only appends', () => {
+    const pool = poolOf(12)
+    const seed = fillQueue([], 2, pool, [], statsOf({}))
+    const filled = fillQueue(seed, 4, pool, [], statsOf({}))
+    expect(filled.slice(0, 2)).toEqual(seed)
+    expect(filled).toHaveLength(4)
+  })
+
+  it('a large pool has no duplicates among queued items or the recent tail', () => {
+    const pool = poolOf(12)
+    const recent = pool.slice(0, 3).map(comboKey)
+    const queue = fillQueue([], 4, pool, recent, statsOf({}))
+    const keys = queue.map(comboKey)
+    expect(new Set(keys).size).toBe(keys.length)
+    keys.forEach((key) => expect(recent).not.toContain(key))
+  })
+
+  it('a 2-combo pool alternates without throwing', () => {
+    const pool = poolOf(2)
+    const queue = fillQueue([], 4, pool, [], statsOf({}))
+    expect(queue).toHaveLength(4)
+    for (let i = 1; i < queue.length; i++) {
+      expect(comboKey(queue[i]!)).not.toBe(comboKey(queue[i - 1]!))
+    }
+  })
+
+  it('a 1-combo pool returns count copies of the only combo', () => {
+    const pool = poolOf(1)
+    const queue = fillQueue([], 4, pool, [], statsOf({}))
+    expect(queue).toEqual([pool[0], pool[0], pool[0], pool[0]])
+  })
+
+  it('the first pick from an empty queue matches pickWeightedCombo with the same rng', () => {
+    const pool = poolOf(12)
+    const stats = statsOf({ [comboKey(pool[0]!)]: { misses: 5, total: 5 } })
+    const rngA = seededRng(11)
+    const rngB = seededRng(11)
+    const [head] = fillQueue([], 1, pool, [], stats, rngA)
+    expect(head).toEqual(pickWeightedCombo(pool, [], stats, rngB))
   })
 })

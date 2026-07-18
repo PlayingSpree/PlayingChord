@@ -258,6 +258,97 @@ describe('practiceStore — generation', () => {
   })
 })
 
+describe('practiceStore — upcoming queue (§5/§7)', () => {
+  const bigPreset = presetsOf({
+    kind: 'product',
+    roots: [0, 1, 2, 3, 4, 5],
+    chordTypes: ['maj'],
+  })
+
+  it('shows 4 labeled entries immediately after start', () => {
+    const s = setup({ presets: bigPreset })
+    expect(s.store.getState().upcoming).toHaveLength(4)
+    s.store.getState().upcoming.forEach((u) => {
+      expect(u.key).toBeTruthy()
+      expect(u.label).toBeTruthy()
+    })
+  })
+
+  it('deals the queue head next and appends one item on advance', () => {
+    const s = setup({ presets: bigPreset })
+    const before = s.store.getState().upcoming
+    const prompt = s.store.getState().prompt!
+
+    playCorrectAndAdvance(s, prompt)
+
+    expect(promptComboKey(s.store.getState().prompt!)).toBe(before[0]!.key)
+    const after = s.store.getState().upcoming
+    expect(after).toHaveLength(4)
+    expect(after.slice(0, 3)).toEqual(before.slice(1))
+  })
+
+  it('the current prompt and upcoming queue share no duplicate keys', () => {
+    const s = setup({ presets: bigPreset })
+    for (let i = 0; i < 20; i++) {
+      const prompt = s.store.getState().prompt!
+      const keys = [
+        promptComboKey(prompt),
+        ...s.store.getState().upcoming.map((u) => u.key),
+      ]
+      expect(new Set(keys).size).toBe(keys.length)
+      playCorrectAndAdvance(s, prompt)
+    }
+  })
+
+  it('rebuilds the queue from the new pool on setPreset', () => {
+    const s = setup() // default deps: real built-in presets
+    s.store.getState().setPreset('seventh-chords')
+
+    const seventhTypeIds = new Set(['maj7', 'min7', 'dom7'])
+    const keys = [
+      promptComboKey(s.store.getState().prompt!),
+      ...s.store.getState().upcoming.map((u) => u.key),
+    ]
+    keys.forEach((key) => {
+      const typeId = key.split(':')[1]!
+      expect(seventhTypeIds.has(typeId)).toBe(true)
+    })
+  })
+
+  it('rebuilds the queue from the worst-only pool on setWorstOnly', () => {
+    const stats = new InMemoryComboStats()
+    const explicit = presetsOf({
+      kind: 'explicit',
+      chords: [
+        { root: 0, typeId: 'maj' },
+        { root: 1, typeId: 'maj' },
+        { root: 2, typeId: 'maj' },
+      ],
+    })
+    stats.record('0:maj:any', 'missed', 4000)
+    const s = setup({ presets: explicit, stats })
+
+    s.store.getState().setWorstOnly(true)
+
+    expect(s.store.getState().upcoming.length).toBeGreaterThan(0)
+    const keys = [
+      promptComboKey(s.store.getState().prompt!),
+      ...s.store.getState().upcoming.map((u) => u.key),
+    ]
+    keys.forEach((key) => expect(key).toBe('0:maj:any'))
+  })
+
+  it('a single-combo pool previews 4 copies of the only combo', () => {
+    const onePreset = presetsOf({
+      kind: 'explicit',
+      chords: [{ root: 0, typeId: 'maj' }],
+    })
+    const s = setup({ presets: onePreset })
+    expect(s.store.getState().upcoming).toHaveLength(4)
+    s.store.getState().upcoming.forEach((u) => expect(u.key).toBe('0:maj:any'))
+  })
+})
+
 describe('practiceStore — outcome recording (§5/§7)', () => {
   const onePreset = presetsOf({
     kind: 'explicit',
@@ -301,20 +392,6 @@ describe('practiceStore — outcome recording (§5/§7)', () => {
     s.store.getState().skip()
 
     expect(stats.recentHistory(promptComboKey(prompt))).toBeNull()
-  })
-
-  it('shows the 🔥 indicator when a recently-missed combo comes up again', () => {
-    const stats = new InMemoryComboStats()
-    const s = setup({ presets: onePreset, stats })
-    const prompt = s.store.getState().prompt!
-    expect(s.store.getState().missedRecently).toBeNull()
-
-    s.press(61, 62, 63)
-    s.releaseAll()
-    playCorrectAndAdvance(s, prompt)
-
-    // Same (only) combo again — now flagged as recently missed.
-    expect(s.store.getState().missedRecently).toBe(1)
   })
 })
 
@@ -377,7 +454,6 @@ describe('practiceStore — session stats & worst chords (§7)', () => {
     expect(s.store.getState().worstChords).toEqual([
       { key: '0:maj:any', label: 'C maj', accuracy: 0.5 },
     ])
-    expect(s.store.getState().missedRecently).toBe(1) // up-weighting visible
   })
 
   it('scopes worst chords to the active preset and includes voicing labels', () => {
@@ -884,5 +960,143 @@ describe('practiceStore — custom library (Phase 9)', () => {
     s.store.getState().refreshLibrary()
     expect(s.store.getState().prompt).toBeNull()
     expect(s.store.getState().phase).toBe('idle')
+  })
+})
+
+describe('practiceStore — Song mode (§6.5)', () => {
+  const BEAT = 60_000 / DEFAULT_PRACTICE_SETTINGS.songTempoBpm
+  const BAR = BEAT * 4
+
+  // rng () => 0 in C major picks the lowest remaining degrees:
+  // I ii iii IV = C, Dm, Em, F.
+  const enterSong = (deps: Parameters<typeof createPracticeStore>[0] = {}) => {
+    const s = setup({ rng: () => 0, ...deps })
+    s.store.getState().setMode('song')
+    return s
+  }
+
+  it('entering Song counts in with progression chips; the machine stays dead', () => {
+    const s = enterSong()
+    const state = s.store.getState()
+    expect(state.song?.countingIn).toBe(true)
+    expect(state.upcoming).toEqual([])
+    expect(state.prompt?.displayName).toBe('C maj')
+    expect(state.songChords.map((c) => c.label)).toEqual(['C', 'Dm', 'Em', 'F'])
+    expect(state.songChords.map((c) => c.roman)).toEqual([
+      'I',
+      'ii',
+      'iii',
+      'IV',
+    ])
+
+    // Correct notes during the count-in: no §6.2 judging, no marking.
+    s.press(60, 64, 67)
+    expect(s.store.getState().phase).toBe('idle')
+    expect(s.store.getState().song?.hitCount).toBe(0)
+    expect(s.store.getState().hint).toBeNull()
+    s.releaseAll()
+  })
+
+  it('records hits and misses per bar with no time sample or session tally', () => {
+    const stats = new InMemoryComboStats()
+    const s = enterSong({ stats })
+    s.press(60, 64, 67) // hold C maj through the count-in (legato)
+    vi.advanceTimersByTime(BAR) // bar 0 starts and judges the held set
+    expect(s.store.getState().song?.hitCount).toBe(1)
+    expect(stats.get('0:maj:any')).toBeNull() // stamped only at bar end
+
+    vi.advanceTimersByTime(BAR) // bar 0 completes, bar 1 (Dm) starts
+    expect(stats.get('0:maj:any')).toEqual({
+      attempts: 1,
+      firstTrySuccesses: 1,
+      recentOutcomes: ['first-try'],
+      timeToCorrectMs: [],
+    })
+
+    s.releaseAll()
+    vi.advanceTimersByTime(BAR) // bar 1 untouched → miss
+    expect(stats.get('2:min:any')?.recentOutcomes).toEqual(['missed'])
+    expect(s.store.getState().session.prompts).toBe(0) // stats bar untouched
+  })
+
+  it('marks foreign held keys without ever escalating', () => {
+    const s = enterSong()
+    vi.advanceTimersByTime(BAR) // bar 0 (C maj) live
+    s.press(61)
+    expect(s.store.getState().hint).toEqual({ kind: 'wrong-keys', notes: [61] })
+    expect(s.store.getState().missCount).toBe(0)
+    s.releaseAll()
+    expect(s.store.getState().hint).toBeNull()
+  })
+
+  it('re-evaluates the wrong-key mark when the bar turns over', () => {
+    const s = enterSong()
+    vi.advanceTimersByTime(BAR)
+    s.press(62) // D: foreign to C maj…
+    expect(s.store.getState().hint).toEqual({ kind: 'wrong-keys', notes: [62] })
+    vi.advanceTimersByTime(BAR) // …but a chord tone of bar 1's D minor
+    expect(s.store.getState().hint).toBeNull()
+    s.releaseAll()
+  })
+
+  it('setDiatonicKey rebuilds at the new key with a fresh count-in', () => {
+    const memory = memoryStub()
+    const s = enterSong({ memory })
+    vi.advanceTimersByTime(BAR + BEAT) // one beat into bar 0
+    s.store.getState().setDiatonicKey(7)
+    const state = s.store.getState()
+    expect(state.song?.countingIn).toBe(true)
+    expect(state.prompt?.displayName).toBe('G maj')
+    expect(state.songChords.map((c) => c.label)).toEqual(['G', 'Am', 'Bm', 'C'])
+    expect(memory.saved.at(-1)).toMatchObject({ diatonicKey: 7 })
+  })
+
+  it('leaving Song stops the clock and resumes self-paced practice', () => {
+    const stats = new InMemoryComboStats()
+    const s = enterSong({ stats })
+    vi.advanceTimersByTime(BAR + BEAT) // a bar in flight
+    s.store.getState().setMode('practice')
+    const state = s.store.getState()
+    expect(state.song).toBeNull()
+    expect(state.songChords).toEqual([])
+    expect(state.prompt).not.toBeNull()
+    expect(state.phase).toBe('armed')
+
+    // Dead clock: the abandoned bar recorded nothing, and time passing
+    // records nothing more.
+    vi.advanceTimersByTime(BAR * 10)
+    expect(stats.get('0:maj:any')).toBeNull()
+  })
+
+  it('pause halts the song; start counts a fresh progression back in', () => {
+    const s = enterSong()
+    vi.advanceTimersByTime(BAR + BEAT)
+    s.store.getState().pause()
+    expect(s.store.getState().prompt).toBeNull()
+    expect(s.store.getState().song).toBeNull()
+    vi.advanceTimersByTime(BAR * 5) // silent while paused
+
+    s.store.getState().start()
+    expect(s.store.getState().mode).toBe('song')
+    expect(s.store.getState().song?.countingIn).toBe(true)
+  })
+
+  it('skip is inert in Song', () => {
+    const s = enterSong()
+    vi.advanceTimersByTime(BAR)
+    const before = s.store.getState().song
+    s.store.getState().skip()
+    expect(s.store.getState().song).toBe(before)
+    expect(s.store.getState().prompt?.displayName).toBe('C maj')
+  })
+
+  it('active minutes accrue from Song-mode playing', () => {
+    const activity = new InMemoryDailyActivity()
+    const s = enterSong({ activity })
+    s.press(60)
+    vi.advanceTimersByTime(6000)
+    s.press(62)
+    expect(activity.todayMinutes()).toBeCloseTo(0.1, 5)
+    s.releaseAll()
   })
 })

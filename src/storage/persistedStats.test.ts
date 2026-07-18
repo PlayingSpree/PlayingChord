@@ -88,6 +88,26 @@ describe('PersistedComboStats', () => {
     expect(storage.state.dailyRecords['2026-07-17']?.prompts).toBe(1)
   })
 
+  it('a null-time record (§6.5 Song bar) skips the daily tick', () => {
+    const storage = new AppStorage(fakeKV())
+    const stats = new PersistedComboStats(storage, () => '2026-07-18')
+
+    stats.record(KEY, 'missed', null)
+    stats.record(KEY, 'first-try', null)
+
+    expect(stats.get(KEY)).toEqual({
+      attempts: 2,
+      firstTrySuccesses: 1,
+      recentOutcomes: ['missed', 'first-try'],
+      timeToCorrectMs: [],
+    })
+    expect(storage.state.dailyRecords['2026-07-18']).toBeUndefined()
+
+    // A numeric record still ticks both.
+    stats.record(KEY, 'first-try', 900)
+    expect(storage.state.dailyRecords['2026-07-18']?.prompts).toBe(1)
+  })
+
   // Milestone B at the unit level: misses recorded through one storage
   // instance still drive weighting and worst-chords through a fresh one.
   it('misses survive a "reload" and feed weighting + worst chords', () => {

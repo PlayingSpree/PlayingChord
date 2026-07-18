@@ -4,9 +4,11 @@ A web app for practicing piano chords with a MIDI keyboard. The app shows a rand
 from a chosen preset, the user plays it on their connected MIDI keyboard, and the app
 validates the input and moves on to the next chord.
 
-Status: **Draft v5** — session modes reworked with the user on 2026-07-16: two modes,
-**Learn** (example voicing visible, untimed) and **Practice** (voicing hidden), with the
-former timed/review modes folded into Practice-mode settings. Draft v4 (2026-07-15)
+Status: **Draft v6** — **Song mode** added with the user on 2026-07-17: a third session
+mode that plays a short diatonic progression to a metronome, where the clock advances
+instead of waiting for a correct answer (§6.5). Draft v5 (2026-07-16) reworked session
+modes into **Learn** (example voicing visible, untimed) and **Practice** (voicing
+hidden), with the former timed/review modes folded into Practice-mode settings. Draft v4 (2026-07-15)
 refined prompt emphasis, judging model, hint policy, goals/streaks, sound policy,
 extended-chord stance, and no-device behavior. Both previously open questions are
 resolved (see [§9](#9-resolved-questions)). Build sequencing (what gets implemented
@@ -27,13 +29,16 @@ first) is intentionally left outside this document.
 - On a wrong attempt: **retry until correct**, with **progressive hints** — early misses
   only mark the wrong played keys; the expected keys are revealed from the 3rd miss.
 - **Session modes**: **Learn** (example voicing shown from the start, untimed,
-  stats-neutral) and **Practice** (default: voicing hidden, endless). Practice-mode
-  settings: an optional **session timer** (with end-of-session summary) and a
-  **worst chords only** toggle (replacing the old review mode) — plus subtle
-  miss-weighting always.
+  stats-neutral), **Practice** (default: voicing hidden, endless), and **Song**
+  (a 2–4-chord diatonic progression looped to a metronome — the bar boundary judges,
+  not the player's success; §6.5). Practice-mode settings: an optional **session
+  timer** (with end-of-session summary) and a **worst chords only** toggle (replacing
+  the old review mode) — plus subtle miss-weighting always.
 - **Goals & streaks**: a daily practice-*time* goal with streak tracking, persisted
   locally alongside the existing stats history.
-- Sound: **correct chime only** — misses are always visual-only.
+- Sound: a **correct chime**, plus an optional **key-press piano tone**
+  (the user's own playing, velocity-sensitive, default on) — misses are
+  always visual-only.
 - Extended chords (9th/11th/13th) stay in the library and are matched **literally**
   (every chord tone present, two hands allowed); omission/shell/rootless voicings are
   explicitly out of scope.
@@ -58,6 +63,8 @@ first) is intentionally left outside this document.
   sessions.
 - Practice sessions are endless by default; an optional session timer ends the session
   with a summary.
+- Simulate playing a real song: loop a short random progression in one key against a
+  fixed tempo, training chord *transitions* under time pressure (Song mode, §6.5).
 - Track a **daily practice-time goal and streak** to encourage regular practice.
 
 ### Non-goals
@@ -86,7 +93,7 @@ first) is intentionally left outside this document.
 | State | **Zustand** | Small app; simpler selector/update ergonomics than context for frequently-changing MIDI state (held notes) |
 | Styling | Tailwind CSS | Quick iteration on practice UI |
 | Notation | VexFlow | Render an example voicing on a grand staff — optional reference, not the prompt itself (§3.4) |
-| Audio | Web Audio API (small wrapper) | Correct-chime only; misses are silent (§9) |
+| Audio | Web Audio API (small wrapper) | Correct-chime + key-press piano synth; misses are silent (§9) |
 | Testing | Vitest | Chord theory + voicing matching are pure functions, easy to unit test |
 
 **Browser support:** Web MIDI works in Chrome, Edge, and Opera; Firefox 108+ with
@@ -296,12 +303,23 @@ or machines.
   their history.
 - **No immediate repeat**: the last `min(3, poolSize − 1)` combos are excluded, so small
   custom pools (≤ 3 combos) still generate.
-- A subtle indicator marks prompts chosen because of recent misses (§7).
+- **Upcoming preview**: generation keeps a queue of the next 4 combos, dealt in
+  order (§7); one new combo is appended after each advance, picked with the
+  then-current weights. Combos already queued join the no-immediate-repeat
+  exclusion (extending it beyond the played-history window above) so the
+  preview and the current prompt stay duplicate-free whenever the pool is
+  large enough; a pool too small for 4 distinct combos repeats within the
+  preview rather than leaving slots empty. The queue is rebuilt from scratch
+  whenever the pool changes (preset, key, mode, worst-only, or a library
+  edit).
 - **Worst chords only** (a Practice-mode setting, §7) inverts the emphasis: it draws
   only from the selected preset's worst combos instead of gently biasing the normal
   stream.
 - Only Practice-mode attempts are recorded: Learn mode feeds neither the per-combo stats
   nor the weighting (§7), though its active time still counts toward the daily goal.
+- **Song mode** generates differently: it builds a whole *progression* up front rather
+  than dealing from the weighted queue (§6.5). Its bar results do feed the per-combo
+  stats, so Song-mode misses raise those combos' weights in Practice.
 
 ---
 
@@ -394,6 +412,58 @@ there — misses never escalate past the miss 1–2 hints, which still apply.
 
 All overlays use color **and** a shape/icon distinction, never color alone.
 
+### 6.5 Song mode
+
+Song mode simulates playing a real song: a short chord progression in one key, looped
+against a metronome. Where Learn/Practice are **self-paced** (the attempt lifecycle of
+§6.2 waits for the player), Song mode is **clock-paced** — the bar boundary judges, and
+the music moves on whether the chord landed or not. The skill trained is *transitioning
+between chords in time*, not precision striking. §6.2 does not apply here: no arming on
+key release, no stall timer, no definitive-miss latching, no retry-until-correct, no
+progressive hint escalation.
+
+**Progression generation.** The user picks a **major key**; chords come from that key's
+diatonic triads (the same I–vii° set as the `diatonic` pool, §4). A progression is
+**2–4 chords** (a Song-mode setting, default 4): it always **starts on I**, **excludes
+vii°**, and contains no repeated chord; the rest is uniform-random. Voicing is always
+the `any` rule — voicing constraints under tempo are out of scope for now. The weighted
+queue of §5 is not used.
+
+**Timing.** One chord per bar, fixed at **4 beats**; tempo is a BPM setting (default
+60, range 40–140). A metronome click (accented beat 1) runs throughout — a small
+addition to `src/audio/` beside the chime. Every new progression starts with a
+**one-bar count-in**.
+
+**Judging — land it anywhere in the bar.** A bar is a **hit** if at any moment during
+it the held notes satisfy the chord under the `any` rule (§6.3, with the global
+doubling / strict-extra-notes settings applying as usual); otherwise it is a **miss**
+when the bar ends. The held set is evaluated continuously — holding a chord across its
+whole bar, releasing early, or changing chords legato (notes still down from the
+previous bar) are all fine. A stricter "down by beat 1" variant is deliberately
+deferred.
+
+**Phrase structure.** The progression repeats **4 times** (fixed) as one *phrase* —
+about 60–90 s at default tempo. At the end of a phrase a brief per-chord hit/miss
+summary is shown, then a new progression is generated and counts in. Endless until the
+user stops, like Practice.
+
+**Example voicing.** A Song-mode setting, **Show example** (default **on**), overlays
+each bar's example voicing on the keyboard Learn-style (and the grand staff still
+follows its own global setting, §3.4). Off, the keyboard shows only live held notes.
+There is no miss-3 reveal — the next loop of the progression is the retry. In either
+state, wrong held keys are marked with the miss-1 styling (§6.4), without escalation.
+
+**Stats.** Each bar records into the existing per-combo stats keyed
+`(root, typeId, "any")` (§5/§8): a hit is an attempt with a first-try success, a miss
+is an attempt without one. No time-to-correct samples are recorded — there is no
+"prompt shown → correct" span in a clock-paced bar. Active minutes count toward the
+daily goal as in the other modes.
+
+**Deferred (revisit after the random-in-key version proves itself):** curated famous
+progressions (I–V–vi–IV etc. as named presets), rhythm variety (chords shorter or
+longer than one bar), voicing rules other than `any`, minor keys, and the stricter
+down-by-beat-1 judging variant.
+
 ---
 
 ## 7. UI / Screens
@@ -403,7 +473,7 @@ All overlays use color **and** a shape/icon distinction, never color alone.
 │ [Preset ▾] [Mode ▾] [Device ▾] 🔥12  [History] [⚙] │  ← top bar: streak + goal progress
 ├────────────────────────────────────────────────────┤
 │              D min7 — 2nd inversion                 │  ← prompt: NAME is primary
-│         🔥 Practicing: missed 3x recently           │  ← weighting indicator (when applicable)
+│      (G maj) (A min) (F maj7) (E min — 1st inv)     │  ← upcoming preview, next 4
 │          𝄞  ♩♩♩♩ (grand staff, if staff setting on) │  ← example voicing, both modes
 │                                                     │
 │          ✔ Correct!  (1.2s)      [Skip →]   ⏱ 3:12 │  ← feedback line; timer if set
@@ -428,13 +498,28 @@ All overlays use color **and** a shape/icon distinction, never color alone.
     - **Timer**: off (default) or 5 / 10 / 15 min / custom — countdown in the UI, then
       an end-of-session summary (prompts played, accuracy, slowest/worst chords).
     - **Worst chords only**: drills the selected preset's worst combos (§5).
+  - **Song**: a looped diatonic progression against a metronome — clock-paced judging
+    per §6.5. Replaces the preset picker with a **major-key picker** while active.
+    Song-mode settings (shown with the picker when Song is active, mirroring how
+    Practice hosts its own):
+    - **Tempo**: BPM, default 60, range 40–140.
+    - **Chords per progression**: 2 / 3 / 4 (default 4).
+    - **Show example**: default on — each bar's example voicing overlaid on the
+      keyboard, Learn-style (§6.5).
+
+    Display: the upcoming-preview chip row becomes the **progression display** — the
+    whole progression as chips (`C — G — Am — F`) with Roman numerals underneath
+    (`I — V — vi — IV`; the key is known), the current chord's chip highlighted and
+    pulsing on the beat, and a hit/miss icon stamped on each chip as its bar
+    completes. The current chord's name stays the large primary prompt as usual.
 - **Prompt area**: chord name large and readable from a distance, size configurable in
   settings (small/medium/large/extra-large, default large); the voicing being drilled
   as a text label (omitted for the `any` rule); the `example` voicing on a grand staff
   (§3.4) whenever the staff setting is on, in either mode — optionally in the chord
   root's key (key signature setting, §3.5) — off by default keeps name+keyboard-only
-  practice first-class for users who don't read notation. A subtle indicator appears
-  when the prompt was chosen due to recent misses (§5).
+  practice first-class for users who don't read notation. Below the name, a row of
+  small muted chips previews the next 4 upcoming combos in dealing order (§5), each
+  labeled like the worst-chords list (name, plus voicing unless it's the `any` rule).
 - **Keyboard visual**: shows currently held notes live; in Practice, after misses,
   overlays escalate per the hint stages (§6.4), always color + shape/icon; Learn mode
   overlays the example voicing from the start instead. When a note falls outside the
@@ -463,9 +548,9 @@ All overlays use color **and** a shape/icon distinction, never color alone.
 - **Settings**: preset editor, voicing builder, doubling toggle, strict-extra-notes
   toggle, chord name size (small/medium/large/extra-large, default large), staff
   on/off, staff key signature on/off (chord root as key, §3.5), correct-chime on/off,
-  judgment delay, auto-advance delay, daily goal minutes. (The timer and
-  worst-chords-only controls are Practice-mode settings living next to the mode
-  picker, not in the settings panel.)
+  piano sound on key press on/off (§9), judgment delay, auto-advance delay, daily
+  goal minutes. (The timer and worst-chords-only controls are Practice-mode
+  settings living next to the mode picker, not in the settings panel.)
 
 ---
 
@@ -477,12 +562,13 @@ src/
   theory/         # chord types, interval math, naming, spelling (§3.5), voicing rules,
                   #   matcher, realizeVoicing (pure, unit-tested)
   practice/       # session engine: attempt lifecycle (§6.2), prompt generation, weighted
-                  #   selection, session modes (Learn/Practice + timer/worst-chords),
-                  #   hint staging
+                  #   selection, session modes (Learn/Practice + timer/worst-chords,
+                  #   Song progression + bar clock §6.5), hint staging
   storage/        # localStorage persistence: presets, custom voicing rules, per-combo
                   #   stats history, daily practice totals + goal/streak state
                   #   (versioned schema, import/export)
-  audio/          # Web Audio correct-chime
+  audio/          # Web Audio: correct-chime, key-press piano synth, metronome click
+                  #   (shared context)
   components/     # PromptCard, KeyboardView, DevicePicker, PresetEditor, VoicingBuilder,
                   #   StatsBar, SessionSummary, HistoryView
   store/          # app state (settings, session) — Zustand
@@ -507,8 +593,11 @@ specified in this document — track it separately (e.g. an issue tracker).
    are drilled literally with all chord tones present (§3.2); shell/rootless voicings
    and an `omittedDegrees` primitive are non-goals. Revisit only if literal extended
    drills prove unusable in practice.
-2. **Sound feedback** — *resolved: chime-only.* A chime plays on correct (single on/off
-   toggle, default on); misses are always visual-only. No buzz exists, so
+2. **Sound feedback** — *resolved: chime plus a key-press piano, misses stay silent.*
+   A chime plays on correct (single on/off toggle, default on). A velocity-sensitive
+   oscillator piano synth additionally voices the user's own key presses (its own
+   toggle, default on) — this is the player's own playing, not feedback, so it doesn't
+   change the resolution: misses are still always visual-only. No buzz exists, so
    retry-until-correct can't get audibly fatiguing.
 3. **Arbitrary two-hand voicings** — *resolved: pattern rules (§3.3).* A user asking to
    drill a specific shape like LH 1-5 / RH 1-2-5 shouldn't have to approximate it with

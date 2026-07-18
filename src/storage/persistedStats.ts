@@ -63,7 +63,7 @@ export class PersistedComboStats implements ComboStatsSource {
   record(
     comboKey: string,
     outcome: PromptOutcome,
-    timeToCorrectMs: number,
+    timeToCorrectMs: number | null,
   ): void {
     const date = this.today()
     this.storage.update((state) => ({
@@ -76,15 +76,22 @@ export class PersistedComboStats implements ComboStatsSource {
           timeToCorrectMs,
         ),
       },
-      dailyRecords: {
-        ...state.dailyRecords,
-        [date]: applyDailyPrompt(
-          state.dailyRecords[date],
-          date,
-          outcome,
-          timeToCorrectMs,
-        ),
-      },
+      // A null time is a Song-mode bar (§6.5): it feeds the per-combo record
+      // only. Daily prompt tallies drive History's accuracy/avg-time trends,
+      // whose populations are self-paced prompts — a 0-time bar would drag
+      // the avg-time trend toward zero.
+      dailyRecords:
+        timeToCorrectMs === null
+          ? state.dailyRecords
+          : {
+              ...state.dailyRecords,
+              [date]: applyDailyPrompt(
+                state.dailyRecords[date],
+                date,
+                outcome,
+                timeToCorrectMs,
+              ),
+            },
     }))
   }
 }

@@ -9,11 +9,16 @@ import {
   createPrompt,
   DEFAULT_DIATONIC_KEY,
   expandPreset,
-  pickWeightedCombo,
+  fillQueue,
   rankWorstCombos,
   RECENT_WINDOW,
+  romanNumeral,
   sanitizeTimerMinutes,
+  songChordLabel,
+  SongEngine,
+  UPCOMING_COUNT,
   summarizeSession,
+  wrongHeldKeys,
   type AttemptPhase,
   type Combo,
   type ComboStatsSource,
@@ -27,9 +32,12 @@ import {
   type SessionEvent,
   type SessionMode,
   type SessionSummary,
+  type SongChord,
+  type SongState,
 } from '../practice'
 import {
   BUILT_IN_VOICING_LIBRARY,
+  spellMajorScaleDegree,
   voicingLibrary,
   type PitchClass,
   type VoicingLibrary,
@@ -96,6 +104,20 @@ export interface WorstChordEntry {
   accuracy: number
 }
 
+// A §5/§7 upcoming-preview entry: the next combos to be dealt, in order.
+export interface UpcomingChord {
+  key: string
+  label: string
+}
+
+// One chip of the §6.5 Song-mode progression display: compact chord label
+// ("Am") over its Roman numeral ("vi"), keyed like the per-combo stats.
+export interface SongChordChip {
+  key: string
+  label: string
+  roman: string
+}
+
 // Today's progress toward the §7 daily goal, mirrored into reactive state
 // whenever buffered active time flushes (appStorage itself isn't reactive).
 export interface GoalProgress {
@@ -124,10 +146,11 @@ export interface PracticeStoreState {
   reactionMs: number | null
   missCount: number
   hint: Hint | null
-  // Recent misses of the current prompt's combo — drives the 🔥 "Practicing"
-  // indicator (§5/§7); null when there are none.
-  missedRecently: number | null
   mode: SessionMode
+  // Song mode (§6.5): the engine's live snapshot (null outside Song) and
+  // the progression display chips derived per progression.
+  song: SongState | null
+  songChords: readonly SongChordChip[]
   // Practice-mode settings (§7): they live beside the mode picker, not in
   // the settings panel, and reset with the app load.
   worstOnly: boolean
@@ -138,6 +161,9 @@ export interface PracticeStoreState {
   // Worst combos of the current preset from the *persisted* records, so the
   // list survives reloads (Milestone B) unlike the session tallies.
   worstChords: readonly WorstChordEntry[]
+  // Next combos to be dealt, in order (§5/§7 preview); rebuilt whenever the
+  // pool changes.
+  upcoming: readonly UpcomingChord[]
   goal: GoalProgress
   start(): void
   onHeldChange(held: ReadonlySet<number>): void
@@ -181,6 +207,10 @@ export function createPracticeStore({
   settings = () => settingsStore.getState().settings,
 }: PracticeStoreDeps = {}) {
   let recentKeys: string[] = []
+  // Next combos to be dealt, in order (§5 upcoming preview); invalidated
+  // (reset to []) wherever the pool/expansion can change, alongside
+  // recentKeys.
+  let queue: Combo[] = []
   let currentCombo: Combo | null = null
   let sessionEvents: SessionEvent[] = []
   let pendingActiveMs = 0
@@ -253,20 +283,30 @@ export function createPracticeStore({
     }
 
     const nextPrompt = () => {
-      const combo = pickWeightedCombo(pickPool(), recentKeys, stats, rng)
+      const pool = pickPool()
+      if (queue.length === 0) {
+        queue = fillQueue([], 1, pool, recentKeys, stats, rng)
+      }
+      const combo = queue.shift()
+      // Unreachable: fillQueue(_, 1, ...) always returns exactly one combo
+      // for a non-empty pool, and pickPool() never returns an empty pool.
+      if (combo === undefined) throw new Error('Upcoming queue was empty')
       currentCombo = combo
       recentKeys.push(comboKey(combo))
       if (recentKeys.length > RECENT_WINDOW) recentKeys.shift()
+      queue = fillQueue(queue, UPCOMING_COUNT, pool, recentKeys, stats, rng)
       const prompt = createPrompt(
         combo,
         expansion.rootSpellings.get(combo.root),
         voicings(),
       )
-      const misses = stats.recentHistory(comboKey(combo))?.misses ?? 0
       set({
         prompt,
-        missedRecently: misses > 0 ? misses : null,
         worstChords: worstChords(),
+        upcoming: queue.map((c) => ({
+          key: comboKey(c),
+          label: comboLabel(c, expansion.rootSpellings.get(c.root), voicings()),
+        })),
       })
       machine.promptShown(prompt)
     }
@@ -316,6 +356,79 @@ export function createPracticeStore({
         nextPrompt()
       },
     })
+
+    // Song mode (§6.5): the clock-paced engine beside the self-paced
+    // machine — only one is live per mode. Prompts are derived per
+    // progression (identity-compared: the engine replaces the array
+    // wholesale) so the keyboard/staff reuse the ordinary Prompt plumbing.
+    let songProgression: readonly SongChord[] = []
+    let songPrompts: Prompt[] = []
+    let songHeld: ReadonlySet<number> = new Set()
+
+    const songComboKey = (chord: SongChord): string =>
+      comboKey({ root: chord.root, typeId: chord.typeId, voicingId: 'any' })
+
+    // Song's §6.4-style wrong-key marking, without the hint machinery: a
+    // foreign held key is marked while held, never escalating. Recomputed on
+    // every held change AND every engine emit — the mark must follow the
+    // chord when the bar turns over under sustained keys.
+    const songWrongHint = (state: SongState | null): Hint | null => {
+      if (state === null || state.countingIn) return null
+      const chord = songPrompts[state.barIndex]?.chord
+      if (chord === undefined) return null
+      const notes = wrongHeldKeys(songHeld, chord)
+      return notes.length > 0 ? { kind: 'wrong-keys', notes } : null
+    }
+
+    const songEngine = new SongEngine({
+      settings,
+      now,
+      rng,
+      onState: (state) => {
+        if (state.progression !== songProgression) {
+          songProgression = state.progression
+          const key = get().diatonicKey
+          songPrompts = state.progression.map((chord) =>
+            createPrompt(
+              { root: chord.root, typeId: chord.typeId, voicingId: 'any' },
+              spellMajorScaleDegree(key, chord.degree),
+              voicings(),
+            ),
+          )
+          set({
+            songChords: state.progression.map((chord) => ({
+              key: songComboKey(chord),
+              label: songChordLabel(
+                spellMajorScaleDegree(key, chord.degree),
+                chord.typeId,
+              ),
+              roman: romanNumeral(chord.degree),
+            })),
+          })
+        }
+        set({
+          song: state,
+          prompt: songPrompts[state.barIndex] ?? null,
+          hint: songWrongHint(state),
+        })
+      },
+      // Each judged bar feeds the per-combo record — hit = first-try, miss =
+      // attempt — with no time sample (§6.5); Practice weighting inherits it.
+      onBarResult: (chord, hit) => {
+        stats.record(songComboKey(chord), hit ? 'first-try' : 'missed', null)
+      },
+    })
+
+    // Leaving Song: halt the clock (the in-flight bar is abandoned silently)
+    // and drop the derived state. The expansion is re-resolved on the way
+    // out because the key picker may have moved while the preset pool
+    // wasn't looking.
+    const leaveSong = () => {
+      songEngine.stop()
+      songProgression = []
+      songPrompts = []
+      set({ song: null, songChords: [], hint: null })
+    }
 
     // Active minutes (§7): every held-note change is an interaction event
     // for the ActiveTimeTracker rule — including Learn mode and free play,
@@ -370,6 +483,7 @@ export function createPracticeStore({
       const { list, preset, expansion: next } = resolve(presetId, diatonicKey)
       expansion = next
       recentKeys = []
+      queue = []
       memory.save({ presetId: preset.id, diatonicKey })
       set({ presets: list, presetId: preset.id, diatonicKey })
       nextPrompt()
@@ -384,34 +498,48 @@ export function createPracticeStore({
       reactionMs: null,
       missCount: 0,
       hint: null,
-      missedRecently: null,
       mode: 'practice',
+      song: null,
+      songChords: [],
       worstOnly: false,
       timerMinutes: null,
       timerEndsAt: null,
       summary: null,
       session: FRESH_SESSION,
       worstChords: [],
+      upcoming: [],
       goal: currentGoal(),
 
       start() {
         // React StrictMode mounts effects twice; a paused store re-prompts,
         // but never over an open summary.
         if (get().prompt !== null || get().summary !== null) return
+        if (get().mode === 'song') {
+          songEngine.start(get().diatonicKey)
+          return
+        }
         nextPrompt()
       },
 
       onHeldChange(held: ReadonlySet<number>) {
         touchActivity()
+        if (get().mode === 'song') {
+          songHeld = held
+          songEngine.heldChange(held)
+          set({ hint: songWrongHint(get().song) })
+          return
+        }
         machine.heldChange(held)
       },
 
       skip() {
+        if (get().mode === 'song') return // clock-paced: no skipping (§6.5)
         machine.skip()
       },
 
       setPreset(id: string) {
         if (id === get().presetId) return
+        if (get().mode === 'song') return // picker is a key select in Song
         if (!get().presets.some((p) => p.id === id)) return
         applySelection(id, get().diatonicKey)
       },
@@ -419,6 +547,14 @@ export function createPracticeStore({
       setDiatonicKey(key: PitchClass) {
         const sanitized = sanitizeDiatonicKey(key)
         if (sanitized === get().diatonicKey) return
+        if (get().mode === 'song') {
+          // Song ignores presets — remember the key and let the engine
+          // rebuild + count in again (§6.5); the in-flight bar is abandoned.
+          memory.save({ presetId: get().presetId, diatonicKey: sanitized })
+          set({ diatonicKey: sanitized, presets: presets(sanitized) })
+          songEngine.setKey(sanitized)
+          return
+        }
         const active = get().presets.find((p) => p.id === get().presetId)
         if (active?.pool.kind === 'diatonic') {
           applySelection(get().presetId, sanitized)
@@ -432,18 +568,41 @@ export function createPracticeStore({
 
       setMode(mode: SessionMode) {
         if (mode === get().mode) return
+        const leavingSong = get().mode === 'song'
         // A pending ✔ counts under the outgoing mode's rules (recordOutcome
         // still sees the old mode); the current prompt is replaced so a
         // Learn reveal can't be answered for Practice credit.
         recordOutcome()
-        clearTimer() // Learn is untimed (§7); leaving ends a timer silently
+        clearTimer() // Learn/Song are untimed (§7); leaving ends a timer
+        queue = [] // the pool can change (worstOnly only applies in practice)
+        if (mode === 'song') {
+          machine.stop() // clears phase/hint/reactionMs via onState
+          set({ mode, upcoming: [] })
+          songEngine.start(get().diatonicKey)
+          return
+        }
         set({ mode })
+        if (leavingSong) {
+          leaveSong()
+          // Re-resolve on the way out: the key picker may have moved while
+          // the diatonic preset's expansion wasn't tracking it.
+          const current = get()
+          const {
+            list,
+            preset,
+            expansion: next,
+          } = resolve(current.presetId, current.diatonicKey)
+          expansion = next
+          set({ presets: list, presetId: preset.id })
+        }
         nextPrompt()
       },
 
       setWorstOnly(on: boolean) {
         if (on === get().worstOnly) return
+        if (get().mode === 'song') return // not rendered in Song; stay safe
         recordOutcome()
+        queue = []
         set({ worstOnly: on })
         nextPrompt()
       },
@@ -474,11 +633,22 @@ export function createPracticeStore({
         if (get().summary === null) return
         resetSession() // endless practice resumes as a fresh session
         set({ summary: null })
+        // A summary can be dismissed after switching into Song (the timer
+        // expired earlier) — the song is already running, nothing to deal.
+        if (get().mode === 'song') return
         nextPrompt()
       },
 
       pause() {
         if (get().prompt === null) return
+        if (get().mode === 'song') {
+          // Halt the clock; the in-flight bar is abandoned silently and a
+          // fresh progression counts in on return (start()).
+          leaveSong()
+          flushActivity()
+          set({ prompt: null })
+          return
+        }
         recordOutcome() // a ✔ waiting out its advance window still counts
         machine.stop()
         flushActivity()
@@ -497,6 +667,10 @@ export function createPracticeStore({
           expansion: next,
         } = resolve(current.presetId, current.diatonicKey)
         expansion = next
+        // The queue's combos are only guaranteed valid against the
+        // expansion they were drawn from; a library edit can change rules
+        // or spellings even when the preset itself is unchanged.
+        queue = []
         if (preset.id !== current.presetId) {
           // The active preset vanished (deleted, or now empty) — the
           // resolver fell back; remember the fallback like any selection.
@@ -505,8 +679,9 @@ export function createPracticeStore({
         }
         set({ presets: list, presetId: preset.id, worstChords: worstChords() })
         // Paused (settings/History open) means no prompt to refresh; a live
-        // one is redealt so it can't reference deleted content.
-        if (get().prompt !== null) {
+        // one is redealt so it can't reference deleted content. Song ignores
+        // presets entirely — its prompts only ever use the `any` rule.
+        if (get().mode !== 'song' && get().prompt !== null) {
           recordOutcome()
           nextPrompt()
         }

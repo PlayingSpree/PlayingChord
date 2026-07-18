@@ -38,10 +38,12 @@ export interface RecentStatsSource {
 // and the §7 worst-chords ranking consume.
 export interface ComboStatsSource extends RecentStatsSource {
   get(comboKey: string): ComboStatRecord | null
+  // timeToCorrectMs is null for Song-mode bars (§6.5): a clock-paced bar has
+  // no "prompt shown → correct" span, so no time sample is stored.
   record(
     comboKey: string,
     outcome: PromptOutcome,
-    timeToCorrectMs: number,
+    timeToCorrectMs: number | null,
   ): void
 }
 
@@ -50,7 +52,7 @@ export const NO_HISTORY: RecentStatsSource = { recentHistory: () => null }
 export function applyOutcome(
   record: ComboStatRecord | null,
   outcome: PromptOutcome,
-  timeToCorrectMs: number,
+  timeToCorrectMs: number | null,
 ): ComboStatRecord {
   const base = record ?? {
     attempts: 0,
@@ -65,10 +67,13 @@ export function applyOutcome(
     recentOutcomes: [...base.recentOutcomes, outcome].slice(
       -RECENT_OUTCOME_WINDOW,
     ),
-    timeToCorrectMs: [
-      ...base.timeToCorrectMs,
-      Math.max(0, Math.round(timeToCorrectMs)),
-    ].slice(-TIME_TO_CORRECT_SAMPLE_CAP),
+    timeToCorrectMs:
+      timeToCorrectMs === null
+        ? base.timeToCorrectMs
+        : [
+            ...base.timeToCorrectMs,
+            Math.max(0, Math.round(timeToCorrectMs)),
+          ].slice(-TIME_TO_CORRECT_SAMPLE_CAP),
   }
 }
 
@@ -96,7 +101,7 @@ export class InMemoryComboStats implements ComboStatsSource {
   record(
     comboKey: string,
     outcome: PromptOutcome,
-    timeToCorrectMs: number,
+    timeToCorrectMs: number | null,
   ): void {
     this.records.set(
       comboKey,
