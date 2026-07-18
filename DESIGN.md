@@ -527,11 +527,12 @@ keys, and the stricter down-by-beat-1 judging variant.
   as a text label (omitted for the `any` rule); the `example` voicing on a grand staff
   (§3.4) whenever the staff setting is on, in either mode — optionally in the chord
   root's key (key signature setting, §3.5) — off by default keeps name+keyboard-only
-  practice first-class for users who don't read notation. Below the name, a row of
-  muted chips previews the next 4 upcoming combos in dealing order (§5), each
-  labeled like the worst-chords list (name, plus voicing unless it's the `any` rule);
-  the chip row (and Song mode's progression display, §6.5) scales with the chord-name
-  size setting so it stays readable from the same distance as the name.
+  practice first-class for users who don't read notation. Below the name, a column of
+  muted chips previews the next 4 upcoming combos in dealing order (§5), stacked top
+  to bottom with the next one on top, each labeled like the worst-chords list (name,
+  plus voicing unless it's the `any` rule); Song mode's progression display (§6.5)
+  keeps a left-to-right row instead, since it reads in time. Both scale with the
+  chord-name size setting so they stay readable from the same distance as the name.
 - **Keyboard visual**: shows currently held notes live; in Practice, after misses,
   overlays escalate per the hint stages (§6.4), always color + shape/icon; Learn mode
   overlays the example voicing from the start instead. When a note falls outside the

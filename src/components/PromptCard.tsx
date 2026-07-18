@@ -60,11 +60,15 @@ export function PromptCard() {
       )}
       {/* Song mode (§6.5): the chip row is the progression display — the
           whole progression with Roman numerals, the current chip pulsing on
-          the beat, hit/miss stamped as each bar completes. Otherwise it's
-          the §5/§7 upcoming preview: the next combos to be dealt, in order.
-          Fixed min-height so it never shifts the layout. */}
+          the beat, hit/miss stamped as each bar completes, laid out as a
+          left-to-right row (it reads in time). Otherwise it's the §5/§7
+          upcoming preview: the next combos to be dealt, stacked top to
+          bottom with the next one on top. Min-height so an empty row never
+          shifts the layout. */}
       <div
-        className={`flex min-h-10 flex-wrap items-center justify-center gap-2 ${CHIP_SIZE_CLASSES[chordNameSize]}`}
+        className={`flex min-h-10 items-center justify-center gap-2 ${
+          song !== null ? 'flex-wrap' : 'flex-col'
+        } ${CHIP_SIZE_CLASSES[chordNameSize]}`}
       >
         {song !== null ? (
           <SongProgressionChips />
