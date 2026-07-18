@@ -16,6 +16,16 @@ const CHORD_NAME_SIZE_CLASSES: Record<ChordNameSize, string> = {
   xl: 'text-8xl sm:text-9xl',
 }
 
+// The chip row (upcoming preview / song progression) tracks the same setting
+// so it stays readable from whatever distance the name is sized for. Set on
+// the row container; chips inherit.
+const CHIP_SIZE_CLASSES: Record<ChordNameSize, string> = {
+  sm: 'text-base',
+  md: 'text-lg',
+  lg: 'text-xl',
+  xl: 'text-2xl',
+}
+
 // The prompt area (DESIGN.md §7): the chord NAME is primary, large and
 // readable from a distance. The voicing being drilled appears as a separate
 // label (omitted for the `any` rule) — never folded into the name.
@@ -53,14 +63,16 @@ export function PromptCard() {
           the beat, hit/miss stamped as each bar completes. Otherwise it's
           the §5/§7 upcoming preview: the next combos to be dealt, in order.
           Fixed min-height so it never shifts the layout. */}
-      <div className="flex min-h-6 flex-wrap items-center justify-center gap-2">
+      <div
+        className={`flex min-h-10 flex-wrap items-center justify-center gap-2 ${CHIP_SIZE_CLASSES[chordNameSize]}`}
+      >
         {song !== null ? (
           <SongProgressionChips />
         ) : (
           upcoming.map((u, i) => (
             <span
               key={`${i}-${u.key}`}
-              className="rounded-full bg-slate-800 px-2.5 py-0.5 text-xs text-slate-400"
+              className="rounded-full bg-slate-800 px-3 py-1 text-slate-400"
             >
               {u.label}
             </span>
@@ -136,7 +148,7 @@ function SongProgressionChips() {
     return (
       <span
         key={`${i}-${chip.key}`}
-        className={`flex flex-col items-center rounded-lg px-3 py-1 text-sm leading-tight ${
+        className={`flex flex-col items-center rounded-lg px-3 py-1 leading-tight ${
           current
             ? 'bg-slate-700 text-slate-100 ring-1 ring-sky-400'
             : 'bg-slate-800 text-slate-400'
@@ -151,7 +163,7 @@ function SongProgressionChips() {
           {chip.label}
         </span>
         {chip.roman !== '' && (
-          <span className="text-[10px] text-slate-500">{chip.roman}</span>
+          <span className="text-[0.7em] text-slate-500">{chip.roman}</span>
         )}
       </span>
     )
