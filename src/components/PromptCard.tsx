@@ -1,8 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { usePractice } from '../store/practiceStore'
 import { useSettings } from '../store/settingsStore'
-import { songChordLabel, type ChordNameSize, type Hint } from '../practice'
-import { spellMajorScaleDegree } from '../theory'
+import type { ChordNameSize, Hint } from '../practice'
 
 // VexFlow + music font are a heavy chunk; staff-off users (a first-class
 // way to run the app, §3.4) never download it.
@@ -122,9 +121,10 @@ export function PromptCard() {
   )
 }
 
-// The §6.5 progression display: label over Roman numeral per chip; the
-// current chip pulses once per beat (remounted via the beat counter) and
-// each chip is stamped ✓/✗ as its bar completes within the current loop.
+// The §6.5 progression display: label over Roman numeral per chip (the
+// numeral only exists for a diatonic preset); the current chip pulses once
+// per beat (remounted via the beat counter) and each chip is stamped ✓/✗
+// as its bar completes within the current loop.
 function SongProgressionChips() {
   const song = usePractice((s) => s.song)
   const songChords = usePractice((s) => s.songChords)
@@ -150,7 +150,9 @@ function SongProgressionChips() {
           {result === false && <span className="text-rose-400">✗ </span>}
           {chip.label}
         </span>
-        <span className="text-[10px] text-slate-500">{chip.roman}</span>
+        {chip.roman !== '' && (
+          <span className="text-[10px] text-slate-500">{chip.roman}</span>
+        )}
       </span>
     )
   })
@@ -160,10 +162,10 @@ function SongProgressionChips() {
 // hit tally when one just completed.
 function SongCountIn() {
   const song = usePractice((s) => s.song)
-  const diatonicKey = usePractice((s) => s.diatonicKey)
+  const songSummary = usePractice((s) => s.songSummary)
   if (song === null || !song.countingIn) return null
 
-  if (song.phraseSummary === null) {
+  if (songSummary === null) {
     return (
       <span className="text-base font-medium text-slate-300">
         Count-in… {song.beatInBar + 1}
@@ -173,7 +175,7 @@ function SongCountIn() {
   return (
     <span className="flex flex-wrap items-center justify-center gap-x-3 text-base font-medium">
       <span className="text-slate-400">Phrase:</span>
-      {song.phraseSummary.map((entry, i) => (
+      {songSummary.map((entry, i) => (
         <span
           key={i}
           className={
@@ -184,11 +186,7 @@ function SongCountIn() {
                 : 'text-amber-300'
           }
         >
-          {songChordLabel(
-            spellMajorScaleDegree(diatonicKey, entry.chord.degree),
-            entry.chord.typeId,
-          )}{' '}
-          {entry.hits}/{entry.loops}
+          {entry.label} {entry.hits}/{entry.loops}
         </span>
       ))}
     </span>

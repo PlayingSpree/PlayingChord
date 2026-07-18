@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { spellRoot } from '../theory'
+import type { ChordPool } from './presets'
 import { DEFAULT_PRACTICE_SETTINGS, type PracticeSettings } from './settings'
 import {
   buildProgression,
@@ -16,10 +17,12 @@ import {
 const BEAT = 60_000 / DEFAULT_PRACTICE_SETTINGS.songTempoBpm
 const BAR = BEAT * SONG_BEATS_PER_BAR
 
+const diatonic = (key: number): ChordPool => ({ kind: 'diatonic', key })
+
 describe('buildProgression (§6.5)', () => {
-  it('starts on I and respects the chord count', () => {
+  it('starts a diatonic pool on I and respects the chord count', () => {
     for (const count of [2, 3, 4]) {
-      const progression = buildProgression(0, count, () => 0.5)
+      const progression = buildProgression(diatonic(0), count, () => 0.5)
       expect(progression).toHaveLength(count)
       expect(progression[0]).toEqual({ degree: 0, root: 0, typeId: 'maj' })
     }
@@ -29,7 +32,7 @@ describe('buildProgression (§6.5)', () => {
     for (let seed = 0; seed < 20; seed++) {
       let calls = 0
       const rng = () => (((seed + 1) * (calls++ + 7)) % 13) / 13
-      const progression = buildProgression(2, 4, rng)
+      const progression = buildProgression(diatonic(2), 4, rng)
       const degrees = progression.map((c) => c.degree)
       expect(degrees).not.toContain(6)
       expect(new Set(degrees).size).toBe(degrees.length)
@@ -38,7 +41,7 @@ describe('buildProgression (§6.5)', () => {
 
   it('resolves roots and qualities from the key', () => {
     // rng always 0 picks the lowest remaining degree: I ii iii IV in G.
-    expect(buildProgression(7, 4, () => 0)).toEqual([
+    expect(buildProgression(diatonic(7), 4, () => 0)).toEqual([
       { degree: 0, root: 7, typeId: 'maj' },
       { degree: 1, root: 9, typeId: 'min' },
       { degree: 2, root: 11, typeId: 'min' },
@@ -47,8 +50,36 @@ describe('buildProgression (§6.5)', () => {
   })
 
   it('clamps a junk chord count into 2-4', () => {
-    expect(buildProgression(0, 99, () => 0)).toHaveLength(4)
-    expect(buildProgression(0, 1, () => 0)).toHaveLength(2)
+    expect(buildProgression(diatonic(0), 99, () => 0)).toHaveLength(4)
+    expect(buildProgression(diatonic(0), 1, () => 0)).toHaveLength(2)
+  })
+
+  it('draws a non-diatonic pool uniform-random with no degree and no repeat', () => {
+    const pool: ChordPool = {
+      kind: 'product',
+      roots: [0, 4],
+      chordTypes: ['maj', 'min'],
+    }
+    // rng 0 picks the first remaining candidate each time (poolChords order).
+    expect(buildProgression(pool, 4, () => 0)).toEqual([
+      { degree: null, root: 0, typeId: 'maj' },
+      { degree: null, root: 0, typeId: 'min' },
+      { degree: null, root: 4, typeId: 'maj' },
+      { degree: null, root: 4, typeId: 'min' },
+    ])
+  })
+
+  it('clamps the length to the pool’s distinct chords', () => {
+    const pool: ChordPool = {
+      kind: 'explicit',
+      chords: [
+        { root: 0, typeId: 'maj' },
+        { root: 0, typeId: 'maj' }, // duplicate — collapses
+        { root: 7, typeId: 'maj' },
+      ],
+    }
+    const progression = buildProgression(pool, 4, () => 0)
+    expect(progression.map((c) => c.root)).toEqual([0, 7])
   })
 })
 
@@ -68,6 +99,9 @@ describe('romanNumeral / songChordLabel', () => {
   it('labels chips compactly', () => {
     expect(songChordLabel(spellRoot(0), 'maj')).toBe('C')
     expect(songChordLabel(spellRoot(9), 'min')).toBe('Am')
+    expect(songChordLabel(spellRoot(0), 'dom7')).toBe('C7')
+    expect(songChordLabel(spellRoot(0), 'maj7')).toBe('Cmaj7')
+    expect(songChordLabel(spellRoot(0), 'dim')).toBe('C°')
   })
 })
 
@@ -110,7 +144,7 @@ describe('SongEngine (§6.5 clock-paced lifecycle)', () => {
 
   it('counts in for one bar, emitting a beat per interval', () => {
     const h = harness()
-    h.engine.start(0)
+    h.engine.start(diatonic(0))
     expect(h.states).toHaveLength(1)
     expect(h.last()).toMatchObject({ countingIn: true, beat: 0, beatInBar: 0 })
 
@@ -130,7 +164,7 @@ describe('SongEngine (§6.5 clock-paced lifecycle)', () => {
 
   it('judges notes already held when the bar starts (legato)', () => {
     const h = harness()
-    h.engine.start(0)
+    h.engine.start(diatonic(0))
     h.engine.heldChange(C_MAJOR)
     expect(h.last().hitCount).toBe(0) // count-in never judges
 
@@ -148,7 +182,7 @@ describe('SongEngine (§6.5 clock-paced lifecycle)', () => {
 
   it('a mid-bar match counts as a hit, stamped only at bar end', () => {
     const h = harness()
-    h.engine.start(0)
+    h.engine.start(diatonic(0))
     vi.advanceTimersByTime(BAR + BEAT) // one beat into bar 0
     h.engine.heldChange(C_MAJOR)
     expect(h.last().hitCount).toBe(1)
@@ -160,7 +194,7 @@ describe('SongEngine (§6.5 clock-paced lifecycle)', () => {
 
   it('an untouched or wrong bar is a miss at the boundary', () => {
     const h = harness()
-    h.engine.start(0)
+    h.engine.start(diatonic(0))
     vi.advanceTimersByTime(BAR) // bar 0 (C maj) starts
     h.engine.heldChange(new Set([60, 61])) // C + C# — never matches
     h.engine.heldChange(new Set())
@@ -172,7 +206,7 @@ describe('SongEngine (§6.5 clock-paced lifecycle)', () => {
 
   it('a hit is not double-counted within a bar', () => {
     const h = harness()
-    h.engine.start(0)
+    h.engine.start(diatonic(0))
     vi.advanceTimersByTime(BAR)
     h.engine.heldChange(C_MAJOR)
     h.engine.heldChange(new Set())
@@ -182,13 +216,13 @@ describe('SongEngine (§6.5 clock-paced lifecycle)', () => {
 
   it('match settings flow into judging', () => {
     const h = harness({ strictExtraNotes: false })
-    h.engine.start(0)
+    h.engine.start(diatonic(0))
     vi.advanceTimersByTime(BAR)
     h.engine.heldChange(new Set([...C_MAJOR, 61])) // extra note tolerated
     expect(h.last().hitCount).toBe(1)
 
     const strict = harness()
-    strict.engine.start(0)
+    strict.engine.start(diatonic(0))
     vi.advanceTimersByTime(BAR)
     strict.engine.heldChange(new Set([...C_MAJOR, 61]))
     expect(strict.states[strict.states.length - 1]!.hitCount).toBe(0)
@@ -196,7 +230,7 @@ describe('SongEngine (§6.5 clock-paced lifecycle)', () => {
 
   it('loops the progression and summarizes the phrase into the next count-in', () => {
     const h = harness()
-    h.engine.start(0)
+    h.engine.start(diatonic(0))
     // Hold C maj forever: every C-maj bar hits, everything else misses.
     h.engine.heldChange(C_MAJOR)
 
@@ -227,7 +261,7 @@ describe('SongEngine (§6.5 clock-paced lifecycle)', () => {
 
   it('reads tempo fresh each beat', () => {
     const h = harness()
-    h.engine.start(0)
+    h.engine.start(diatonic(0))
     h.updateSettings({ songTempoBpm: 120 }) // 500 ms beats from the next tick
     vi.advanceTimersByTime(BEAT) // the already-scheduled 1000 ms beat
     expect(h.last().beat).toBe(1)
@@ -241,16 +275,16 @@ describe('SongEngine (§6.5 clock-paced lifecycle)', () => {
 
   it('does not drift: beats stay locked to absolute time', () => {
     const h = harness({ songTempoBpm: 100 }) // 600 ms
-    h.engine.start(0)
+    h.engine.start(diatonic(0))
     vi.advanceTimersByTime(600 * 60)
     expect(h.last().beat).toBe(60)
   })
 
-  it('setKey rebuilds the progression and counts in again, recording nothing', () => {
+  it('setPool rebuilds the progression and counts in again, recording nothing', () => {
     const h = harness()
-    h.engine.start(0)
+    h.engine.start(diatonic(0))
     vi.advanceTimersByTime(BAR + BEAT) // one beat into bar 0
-    h.engine.setKey(7)
+    h.engine.setPool(diatonic(7))
     expect(h.barResults).toHaveLength(0) // in-flight bar abandoned silently
     const state = h.last()
     expect(state.countingIn).toBe(true)
@@ -260,7 +294,7 @@ describe('SongEngine (§6.5 clock-paced lifecycle)', () => {
 
   it('stop() halts the clock silently', () => {
     const h = harness()
-    h.engine.start(0)
+    h.engine.start(diatonic(0))
     vi.advanceTimersByTime(BAR)
     const emitted = h.states.length
     h.engine.stop()
@@ -273,7 +307,7 @@ describe('SongEngine (§6.5 clock-paced lifecycle)', () => {
 
   it('chord count is read at each new progression', () => {
     const h = harness({ songChordCount: 2 })
-    h.engine.start(0)
+    h.engine.start(diatonic(0))
     expect(h.last().progression).toHaveLength(2)
     h.updateSettings({ songChordCount: 3 })
     // Finish the phrase: count-in + 2 bars × loops.

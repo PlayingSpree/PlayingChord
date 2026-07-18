@@ -11,22 +11,24 @@ import {
   type PitchClass,
 } from '../theory'
 import type { Rng } from './generator'
-import { DIATONIC_QUALITIES } from './presets'
+import { DIATONIC_QUALITIES, poolChords, type ChordPool } from './presets'
 import { sanitizeSongTempoBpm, type PracticeSettings } from './settings'
 
-// Song mode (DESIGN.md §6.5): a short diatonic progression looped against a
-// metronome. Where the §6.2 lifecycle is self-paced (the machine waits for
-// the player), this engine is clock-paced — the bar boundary judges and the
-// music moves on whether the chord landed or not. No arming, no stall timer,
-// no retry, no hint escalation.
+// Song mode (DESIGN.md §6.5): a short progression drawn from the active
+// preset's chord pool, looped against a metronome. Where the §6.2 lifecycle
+// is self-paced (the machine waits for the player), this engine is
+// clock-paced — the bar boundary judges and the music moves on whether the
+// chord landed or not. No arming, no stall timer, no retry, no hint
+// escalation.
 
 export const SONG_BEATS_PER_BAR = 4
 export const SONG_LOOPS_PER_PHRASE = 4
 
-// One chord of a progression: the diatonic degree (0 = I … 6 = vii°, though
-// vii° is never generated) plus its resolved root and quality.
+// One chord of a progression: its root and quality, plus the diatonic
+// degree (0 = I … 6 = vii°, though vii° is never generated) when it came
+// from a diatonic pool — null for every other pool (no Roman numeral).
 export interface SongChord {
-  degree: number
+  degree: number | null
   root: PitchClass
   typeId: ChordTypeId
 }
@@ -77,14 +79,35 @@ export function romanNumeral(degree: number): string {
   return ROMAN_NUMERALS[degree] ?? ''
 }
 
-// Compact chip label (§7: "C — G — Am — F"). Only maj/min occur in
-// generated progressions (vii° is excluded), but ° keeps a dim readable.
+// Compact chip suffix per chord quality (§7: "C — G — Am — F"). Exhaustive
+// over ChordTypeId so adding a chord type forces a suffix choice.
+const CHIP_SUFFIX: Record<ChordTypeId, string> = {
+  maj: '',
+  min: 'm',
+  dim: '°',
+  aug: '+',
+  sus2: 'sus2',
+  sus4: 'sus4',
+  maj6: '6',
+  min6: 'm6',
+  add9: 'add9',
+  maj7: 'maj7',
+  min7: 'm7',
+  dom7: '7',
+  dim7: '°7',
+  m7b5: 'm7♭5',
+  maj9: 'maj9',
+  min9: 'm9',
+  dom9: '9',
+  dom11: '11',
+  dom13: '13',
+}
+
 export function songChordLabel(
   spelling: NoteSpelling,
   typeId: ChordTypeId,
 ): string {
-  const suffix = typeId === 'maj' ? '' : typeId === 'min' ? 'm' : '°'
-  return `${formatSpelling(spelling)}${suffix}`
+  return `${formatSpelling(spelling)}${CHIP_SUFFIX[typeId]}`
 }
 
 function songChordAt(key: PitchClass, degree: number): SongChord {
@@ -95,23 +118,47 @@ function songChordAt(key: PitchClass, degree: number): SongChord {
   }
 }
 
-// §6.5 progression generation: always starts on I, excludes vii°, no
-// repeated chord, the rest uniform-random.
+// §6.5 progression generation, from the active preset's chord pool. No
+// repeated chord, length clamped to 2–4 and to the pool's distinct chords.
+// A diatonic pool keeps its musical shape — always starts on I, excludes
+// vii°; every other pool draws uniform-random.
 export function buildProgression(
-  key: PitchClass,
+  pool: ChordPool,
   chordCount: number,
   rng: Rng = Math.random,
 ): SongChord[] {
   const count = Math.min(Math.max(Math.round(chordCount), 2), 4)
-  const candidates = [1, 2, 3, 4, 5] // ii iii IV V vi
-  const chords = [songChordAt(key, 0)]
-  while (chords.length < count) {
+  if (pool.kind === 'diatonic') {
+    const candidates = [1, 2, 3, 4, 5] // ii iii IV V vi
+    const chords = [songChordAt(pool.key, 0)]
+    while (chords.length < count) {
+      const index = Math.min(
+        Math.floor(rng() * candidates.length),
+        candidates.length - 1,
+      )
+      const degree = candidates.splice(index, 1)[0]
+      if (degree !== undefined) chords.push(songChordAt(pool.key, degree))
+    }
+    return chords
+  }
+  // Distinct (root, quality) pairs — an explicit pool may list duplicates.
+  const seen = new Set<string>()
+  const candidates: SongChord[] = []
+  for (const { root, typeId } of poolChords(pool)) {
+    const key = `${root}:${typeId}`
+    if (!seen.has(key)) {
+      seen.add(key)
+      candidates.push({ degree: null, root, typeId })
+    }
+  }
+  const chords: SongChord[] = []
+  while (chords.length < count && candidates.length > 0) {
     const index = Math.min(
       Math.floor(rng() * candidates.length),
       candidates.length - 1,
     )
-    const degree = candidates.splice(index, 1)[0]
-    if (degree !== undefined) chords.push(songChordAt(key, degree))
+    const chord = candidates.splice(index, 1)[0]
+    if (chord !== undefined) chords.push(chord)
   }
   return chords
 }
@@ -126,7 +173,7 @@ export class SongEngine {
   private readonly host: SongEngineHost
   private readonly anyRule = getBuiltInVoicingRule('any')
 
-  private key: PitchClass = 0
+  private pool: ChordPool = { kind: 'diatonic', key: 0 }
   private progression: SongChord[] = []
   private countingIn = true
   private loopIndex = 0
@@ -165,20 +212,21 @@ export class SongEngine {
     }
   }
 
-  // Begin (or restart) at this key: fresh progression, count-in, beat 0 now.
-  start(key: PitchClass): void {
+  // Begin (or restart) on this pool: fresh progression, count-in, beat 0 now.
+  start(pool: ChordPool): void {
     this.stop()
-    this.key = key
+    this.pool = pool
     this.hitCount = 0
     this.beat = -1
     this.restartPhrase(null)
   }
 
-  // A key change mid-song rebuilds the progression and counts in again; the
-  // in-flight bar is abandoned silently, nothing recorded.
-  setKey(key: PitchClass): void {
+  // A pool change mid-song (preset or key switch, a library edit) rebuilds
+  // the progression and counts in again; the in-flight bar is abandoned
+  // silently, nothing recorded.
+  setPool(pool: ChordPool): void {
     if (this.timer === null) return
-    this.key = key
+    this.pool = pool
     this.restartPhrase(null)
   }
 
@@ -211,7 +259,7 @@ export class SongEngine {
       this.timer = null
     }
     this.progression = buildProgression(
-      this.key,
+      this.pool,
       this.host.settings().songChordCount,
       this.host.rng,
     )

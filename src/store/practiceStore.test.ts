@@ -967,10 +967,20 @@ describe('practiceStore — Song mode (§6.5)', () => {
   const BEAT = 60_000 / DEFAULT_PRACTICE_SETTINGS.songTempoBpm
   const BAR = BEAT * 4
 
-  // rng () => 0 in C major picks the lowest remaining degrees:
-  // I ii iii IV = C, Dm, Em, F.
+  // A diatonic preset that follows the key picker, like the built-in one.
+  const diatonicPresets = (key: PitchClass): readonly Preset[] => [
+    {
+      id: 'test-diatonic',
+      name: 'Test diatonic',
+      pool: { kind: 'diatonic', key },
+      voicingIds: ['any'],
+    },
+  ]
+
+  // rng () => 0 with the diatonic preset in C major picks the lowest
+  // remaining degrees: I ii iii IV = C, Dm, Em, F.
   const enterSong = (deps: Parameters<typeof createPracticeStore>[0] = {}) => {
-    const s = setup({ rng: () => 0, ...deps })
+    const s = setup({ rng: () => 0, presets: diatonicPresets, ...deps })
     s.store.getState().setMode('song')
     return s
   }
@@ -1049,6 +1059,33 @@ describe('practiceStore — Song mode (§6.5)', () => {
     expect(state.prompt?.displayName).toBe('G maj')
     expect(state.songChords.map((c) => c.label)).toEqual(['G', 'Am', 'Bm', 'C'])
     expect(memory.saved.at(-1)).toMatchObject({ diatonicKey: 7 })
+  })
+
+  it('draws the progression from a non-diatonic preset, without numerals', () => {
+    // The default built-ins: 'major-triads' (all 12 roots × maj) is first.
+    const s = setup({ rng: () => 0 })
+    s.store.getState().setMode('song')
+    const state = s.store.getState()
+    expect(state.presetId).toBe('major-triads')
+    expect(state.songChords.map((c) => c.label)).toEqual(['C', 'C♯', 'D', 'E♭'])
+    expect(state.songChords.map((c) => c.roman)).toEqual(['', '', '', ''])
+    expect(state.prompt?.displayName).toBe('C maj')
+  })
+
+  it('setPreset mid-song rebuilds from the new pool with a fresh count-in', () => {
+    const s = setup({ rng: () => 0 })
+    s.store.getState().setMode('song')
+    vi.advanceTimersByTime(BAR + BEAT) // a bar in flight
+    s.store.getState().setPreset('minor-triads')
+    const state = s.store.getState()
+    expect(state.presetId).toBe('minor-triads')
+    expect(state.song?.countingIn).toBe(true)
+    expect(state.songChords.map((c) => c.label)).toEqual([
+      'Cm',
+      'C♯m',
+      'Dm',
+      'E♭m',
+    ])
   })
 
   it('leaving Song stops the clock and resumes self-paced practice', () => {

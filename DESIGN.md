@@ -4,8 +4,11 @@ A web app for practicing piano chords with a MIDI keyboard. The app shows a rand
 from a chosen preset, the user plays it on their connected MIDI keyboard, and the app
 validates the input and moves on to the next chord.
 
-Status: **Draft v6** — **Song mode** added with the user on 2026-07-17: a third session
-mode that plays a short diatonic progression to a metronome, where the clock advances
+Status: **Draft v7** — Song mode now draws its progression from the **active preset's
+chord pool** instead of a separate key selection (2026-07-18), so all three modes share
+one preset picker; a diatonic preset keeps the starts-on-I / no-vii° / Roman-numeral
+behavior (§6.5). Draft v6 (2026-07-17) added **Song mode**: a third session
+mode that plays a short progression to a metronome, where the clock advances
 instead of waiting for a correct answer (§6.5). Draft v5 (2026-07-16) reworked session
 modes into **Learn** (example voicing visible, untimed) and **Practice** (voicing
 hidden), with the former timed/review modes folded into Practice-mode settings. Draft v4 (2026-07-15)
@@ -30,8 +33,8 @@ first) is intentionally left outside this document.
   only mark the wrong played keys; the expected keys are revealed from the 3rd miss.
 - **Session modes**: **Learn** (example voicing shown from the start, untimed,
   stats-neutral), **Practice** (default: voicing hidden, endless), and **Song**
-  (a 2–4-chord diatonic progression looped to a metronome — the bar boundary judges,
-  not the player's success; §6.5). Practice-mode settings: an optional **session
+  (a 2–4-chord progression from the active preset's pool looped to a metronome — the
+  bar boundary judges, not the player's success; §6.5). Practice-mode settings: an optional **session
   timer** (with end-of-session summary) and a **worst chords only** toggle (replacing
   the old review mode) — plus subtle miss-weighting always.
 - **Goals & streaks**: a daily practice-*time* goal with streak tracking, persisted
@@ -63,8 +66,9 @@ first) is intentionally left outside this document.
   sessions.
 - Practice sessions are endless by default; an optional session timer ends the session
   with a summary.
-- Simulate playing a real song: loop a short random progression in one key against a
-  fixed tempo, training chord *transitions* under time pressure (Song mode, §6.5).
+- Simulate playing a real song: loop a short random progression from the selected
+  preset against a fixed tempo, training chord *transitions* under time pressure
+  (Song mode, §6.5).
 - Track a **daily practice-time goal and streak** to encourage regular practice.
 
 ### Non-goals
@@ -414,19 +418,22 @@ All overlays use color **and** a shape/icon distinction, never color alone.
 
 ### 6.5 Song mode
 
-Song mode simulates playing a real song: a short chord progression in one key, looped
-against a metronome. Where Learn/Practice are **self-paced** (the attempt lifecycle of
+Song mode simulates playing a real song: a short chord progression drawn from the
+active preset, looped against a metronome. Where Learn/Practice are **self-paced** (the attempt lifecycle of
 §6.2 waits for the player), Song mode is **clock-paced** — the bar boundary judges, and
 the music moves on whether the chord landed or not. The skill trained is *transitioning
 between chords in time*, not precision striking. §6.2 does not apply here: no arming on
 key release, no stall timer, no definitive-miss latching, no retry-until-correct, no
 progressive hint escalation.
 
-**Progression generation.** The user picks a **major key**; chords come from that key's
-diatonic triads (the same I–vii° set as the `diatonic` pool, §4). A progression is
-**2–4 chords** (a Song-mode setting, default 4): it always **starts on I**, **excludes
-vii°**, and contains no repeated chord; the rest is uniform-random. Voicing is always
-the `any` rule — voicing constraints under tempo are out of scope for now. The weighted
+**Progression generation.** Chords come from the **active preset's chord pool** — the
+same selection the other modes practice (§4), one picker for all three modes. A
+progression is **2–4 chords** (a Song-mode setting, default 4), contains no repeated
+chord, and is clamped to the pool's distinct chords when the pool is smaller. A
+**diatonic** pool keeps its musical shape: the progression always **starts on I** and
+**excludes vii°**, with the rest uniform-random; any other pool is drawn
+uniform-random throughout. Voicing is always the `any` rule regardless of the preset's
+voicing rules — voicing constraints under tempo are out of scope for now. The weighted
 queue of §5 is not used.
 
 **Timing.** One chord per bar, fixed at **4 beats**; tempo is a BPM setting (default
@@ -459,10 +466,10 @@ is an attempt without one. No time-to-correct samples are recorded — there is 
 "prompt shown → correct" span in a clock-paced bar. Active minutes count toward the
 daily goal as in the other modes.
 
-**Deferred (revisit after the random-in-key version proves itself):** curated famous
+**Deferred (revisit after the random version proves itself):** curated famous
 progressions (I–V–vi–IV etc. as named presets), rhythm variety (chords shorter or
-longer than one bar), voicing rules other than `any`, minor keys, and the stricter
-down-by-beat-1 judging variant.
+longer than one bar), honoring the preset's voicing rules instead of `any`, minor
+keys, and the stricter down-by-beat-1 judging variant.
 
 ---
 
@@ -498,8 +505,10 @@ down-by-beat-1 judging variant.
     - **Timer**: off (default) or 5 / 10 / 15 min / custom — countdown in the UI, then
       an end-of-session summary (prompts played, accuracy, slowest/worst chords).
     - **Worst chords only**: drills the selected preset's worst combos (§5).
-  - **Song**: a looped diatonic progression against a metronome — clock-paced judging
-    per §6.5. Replaces the preset picker with a **major-key picker** while active.
+  - **Song**: a looped progression from the active preset against a metronome —
+    clock-paced judging per §6.5. The preset picker (and, for the diatonic preset,
+    its key picker) works exactly as in the other modes; switching mid-song rebuilds
+    the progression with a fresh count-in.
     Song-mode settings (shown with the picker when Song is active, mirroring how
     Practice hosts its own):
     - **Tempo**: BPM, default 60, range 40–140.
@@ -509,9 +518,10 @@ down-by-beat-1 judging variant.
 
     Display: the upcoming-preview chip row becomes the **progression display** — the
     whole progression as chips (`C — G — Am — F`) with Roman numerals underneath
-    (`I — V — vi — IV`; the key is known), the current chord's chip highlighted and
-    pulsing on the beat, and a hit/miss icon stamped on each chip as its bar
-    completes. The current chord's name stays the large primary prompt as usual.
+    (`I — V — vi — IV`) when the pool is diatonic (the key is known; other pools show
+    no numerals), the current chord's chip highlighted and pulsing on the beat, and a
+    hit/miss icon stamped on each chip as its bar completes. The current chord's name
+    stays the large primary prompt as usual.
 - **Prompt area**: chord name large and readable from a distance, size configurable in
   settings (small/medium/large/extra-large, default large); the voicing being drilled
   as a text label (omitted for the `any` rule); the `example` voicing on a grand staff
