@@ -5,6 +5,8 @@ from a chosen preset, you play it, and it validates the voicing and moves on.
 
 See **[DESIGN.md](DESIGN.md)** for the full product/technical design.
 
+> Created by an LLM (Claude Code).
+
 ## Requirements
 
 - A browser with **Web MIDI** support: Chrome, Edge, or Opera (Firefox 108+ with
