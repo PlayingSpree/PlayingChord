@@ -76,6 +76,7 @@ describe('sanitizeSettings', () => {
       chimeEnabled: false,
       pianoSoundEnabled: false,
       chordNameSize: 'sm',
+      unlockByFifths: true,
       songTempoBpm: 90,
       songChordCount: 3,
       songShowExample: false,
@@ -137,6 +138,14 @@ describe('sanitizeSettings', () => {
     expect(sanitizeSettings({ songShowExample: false }).songShowExample).toBe(
       false,
     )
+  })
+
+  it('defaults the circle-of-fifths unlock order off and coerces junk', () => {
+    expect(sanitizeSettings({}).unlockByFifths).toBe(false)
+    expect(sanitizeSettings({ unlockByFifths: 'on' }).unlockByFifths).toBe(
+      false,
+    )
+    expect(sanitizeSettings({ unlockByFifths: true }).unlockByFifths).toBe(true)
   })
 
   it('defaults the chord name size and rejects unknown values', () => {

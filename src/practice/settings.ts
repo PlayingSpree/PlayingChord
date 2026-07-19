@@ -32,6 +32,10 @@ export interface PracticeSettings extends MatchSettings {
   // Chord name display size (§7): the prompt's primary text. 'lg' matches
   // the original fixed size.
   chordNameSize: ChordNameSize
+  // Unlock order (§5.1): root-ordered (product) pools unlock along the
+  // circle of fifths (C → G → D …) instead of chromatically. Diatonic and
+  // explicit pools keep their own deliberate order either way.
+  unlockByFifths: boolean
   // Song mode (§6.5) — set beside the mode picker, not the settings panel,
   // but persisted here so tempo/length survive reloads.
   songTempoBpm: number
@@ -50,6 +54,7 @@ export const DEFAULT_PRACTICE_SETTINGS: PracticeSettings = {
   chimeEnabled: true,
   pianoSoundEnabled: true,
   chordNameSize: 'lg',
+  unlockByFifths: false,
   songTempoBpm: 60,
   songChordCount: 4,
   songShowExample: true,
@@ -133,6 +138,7 @@ export function sanitizeSettings(value: unknown): PracticeSettings {
       defaults.pianoSoundEnabled,
     ),
     chordNameSize: asChordNameSize(raw.chordNameSize, defaults.chordNameSize),
+    unlockByFifths: asBoolean(raw.unlockByFifths, defaults.unlockByFifths),
     songTempoBpm: sanitizeSongTempoBpm(raw.songTempoBpm),
     songChordCount: asSongChordCount(
       raw.songChordCount,

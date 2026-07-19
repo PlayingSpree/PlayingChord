@@ -473,6 +473,67 @@ describe('practiceStore — unlock progress (§5)', () => {
     expect(s.store.getState().justUnlocked).toBe(false)
   })
 
+  it('unlocking publishes the new chords’ labels for the toast', () => {
+    const s = setup({ presets: sixRoots })
+    expect(s.store.getState().justUnlockedLabels).toEqual([])
+
+    let advances = 0
+    while (!s.store.getState().justUnlocked && advances < 10) {
+      playCorrectAndAdvance(s, s.store.getState().prompt!)
+      advances++
+    }
+
+    // The batch after roots 0–2 is roots 3 and 4: E♭ and E major.
+    expect(s.store.getState().justUnlockedLabels).toEqual(['E♭', 'E'])
+    vi.advanceTimersByTime(JUST_UNLOCKED_FLASH_MS)
+    expect(s.store.getState().justUnlockedLabels).toEqual([])
+  })
+
+  it('unlockByFifths reorders a product pool’s unlock order (§5.1)', () => {
+    const s = setup({
+      presets: sixRoots,
+      settings: () => ({ ...DEFAULT_PRACTICE_SETTINGS, unlockByFifths: true }),
+    })
+    // Fifths positions of roots 0–5 are C=0, D=2, E=4 ahead of C♯=7,
+    // E♭=9, F=11 — so the first unlocked three are 0, 2, 4.
+    for (let i = 0; i < 20; i++) {
+      expect([0, 2, 4]).toContain(s.store.getState().prompt!.chord.root)
+      s.store.getState().skip()
+    }
+  })
+
+  it('unlockByFifths leaves a diatonic pool in scale-degree order', () => {
+    const s = setup({
+      presets: presetsOf({ kind: 'diatonic', key: 7 }), // G major
+      settings: () => ({ ...DEFAULT_PRACTICE_SETTINGS, unlockByFifths: true }),
+    })
+    // Still the first three scale degrees — G, Am, Bm — not a fifths sort
+    // of the diatonic roots (which would surface C first).
+    for (let i = 0; i < 20; i++) {
+      expect([7, 9, 11]).toContain(s.store.getState().prompt!.chord.root)
+      s.store.getState().skip()
+    }
+  })
+
+  it('refreshUnlockOrder re-derives the order after the setting flips', () => {
+    let fifths = false
+    const s = setup({
+      presets: sixRoots,
+      settings: () => ({
+        ...DEFAULT_PRACTICE_SETTINGS,
+        unlockByFifths: fifths,
+      }),
+    })
+    expect([0, 1, 2]).toContain(s.store.getState().prompt!.chord.root)
+
+    fifths = true
+    s.store.getState().refreshUnlockOrder()
+    for (let i = 0; i < 20; i++) {
+      expect([0, 2, 4]).toContain(s.store.getState().prompt!.chord.root)
+      s.store.getState().skip()
+    }
+  })
+
   it('a slow first-try success does not master', () => {
     const s = setup({ presets: sixRoots })
     for (let i = 0; i < 6; i++) {

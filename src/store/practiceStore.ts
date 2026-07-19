@@ -195,9 +195,11 @@ export interface PracticeStoreState {
   upcoming: readonly UpcomingChord[]
   goal: GoalProgress
   // The active preset's §5 unlock state, plus a transient celebration flag
-  // set for JUST_UNLOCKED_FLASH_MS when a batch unlocks.
+  // set for JUST_UNLOCKED_FLASH_MS when a batch unlocks — with the newly
+  // opened chords' labels for the unlock toast.
   progress: UnlockProgress
   justUnlocked: boolean
+  justUnlockedLabels: readonly string[]
   start(): void
   onHeldChange(held: ReadonlySet<number>): void
   skip(): void
@@ -218,6 +220,9 @@ export interface PracticeStoreState {
   refreshLibrary(): void
   // Wipe a preset's §5 unlock progress back to the initial unlock count.
   resetPresetProgress(presetId: string): void
+  // Re-derive the active preset's unlock order after the §5.1 order setting
+  // changes; the unlocked count carries over onto the new order.
+  refreshUnlockOrder(): void
 }
 
 export interface PracticeStoreDeps {
@@ -305,7 +310,14 @@ export function createPracticeStore({
     let justUnlockedTimer: ReturnType<typeof setTimeout> | null = null
 
     const reloadProgress = () => {
-      chordOrder = chordOrderOf(expansion.combos)
+      // Circle-of-fifths unlock order (§5.1) applies only to root-ordered
+      // (product) pools — diatonic/explicit orders are deliberate as-is.
+      chordOrder = chordOrderOf(
+        expansion.combos,
+        settings().unlockByFifths && activePreset.pool.kind === 'product'
+          ? 'fifths'
+          : 'pool',
+      )
       const stored = progressStore.get(activePreset.id)
       progressRecord = reconcileProgress(
         stored ?? initialProgress(chordOrder.length),
@@ -335,13 +347,25 @@ export function createPracticeStore({
       }
     }
 
-    const flashJustUnlocked = () => {
+    const flashJustUnlocked = (labels: readonly string[]) => {
       clearUnlockFlash()
-      set({ justUnlocked: true })
+      set({ justUnlocked: true, justUnlockedLabels: labels })
       justUnlockedTimer = setTimeout(() => {
         justUnlockedTimer = null
-        set({ justUnlocked: false })
+        set({ justUnlocked: false, justUnlockedLabels: [] })
       }, JUST_UNLOCKED_FLASH_MS)
+    }
+
+    // Compact "Am"-style label for a chord-order key, for the unlock toast:
+    // resolved through the expansion so the diatonic pool's key spellings
+    // apply, same as the Song chips.
+    const chordKeyLabel = (key: string): string => {
+      const combo = expansion.combos.find((c) => poolChordKey(c) === key)
+      if (combo === undefined) return key
+      return songChordLabel(
+        expansion.rootSpellings.get(combo.root) ?? spellRoot(combo.root),
+        combo.typeId,
+      )
     }
 
     // Feeds a completed Practice prompt into the §5 unlock progress. On an
@@ -361,13 +385,18 @@ export function createPracticeStore({
         timeToCorrectMs,
       )
       if (!update.changed) return
+      const previousCount = progressRecord.unlockedCount
       progressRecord = update.record
       unlocked = unlockedChordKeys(chordOrder, progressRecord)
       progressStore.set(activePreset.id, progressRecord)
       set({ progress: progressSnapshot() })
       if (update.justUnlocked) {
         queue = []
-        flashJustUnlocked()
+        flashJustUnlocked(
+          chordOrder
+            .slice(previousCount, progressRecord.unlockedCount)
+            .map(chordKeyLabel),
+        )
       }
     }
 
@@ -620,6 +649,7 @@ export function createPracticeStore({
         diatonicKey,
         progress: progressSnapshot(),
         justUnlocked: false,
+        justUnlockedLabels: [],
       })
       // A live song rebuilds from the new pool with a fresh count-in; a
       // paused one (no clock) picks the pool up on the next start().
@@ -653,6 +683,7 @@ export function createPracticeStore({
       goal: currentGoal(),
       progress: progressSnapshot(),
       justUnlocked: false,
+      justUnlockedLabels: [],
 
       start() {
         // React StrictMode mounts effects twice; a paused store re-prompts,
@@ -830,10 +861,32 @@ export function createPracticeStore({
         clearUnlockFlash()
         queue = []
         recentKeys = []
-        set({ progress: progressSnapshot(), justUnlocked: false })
+        set({
+          progress: progressSnapshot(),
+          justUnlocked: false,
+          justUnlockedLabels: [],
+        })
         // Song isn't gated (§6.5) and a paused store has no prompt to
         // re-deal; a live Learn/Practice prompt redeals from the narrowed
         // pool so a now-locked chord isn't left on screen.
+        if (get().mode !== 'song' && get().prompt !== null) nextPrompt()
+      },
+
+      refreshUnlockOrder() {
+        // A pending ✔ counts (and may master) under the outgoing order,
+        // like every other pool change.
+        recordOutcome()
+        reloadProgress()
+        clearUnlockFlash()
+        queue = []
+        recentKeys = []
+        set({
+          progress: progressSnapshot(),
+          justUnlocked: false,
+          justUnlockedLabels: [],
+        })
+        // Usually toggled from Settings while paused (no prompt); a live
+        // Learn/Practice prompt redeals from the reordered unlocked set.
         if (get().mode !== 'song' && get().prompt !== null) nextPrompt()
       },
     }

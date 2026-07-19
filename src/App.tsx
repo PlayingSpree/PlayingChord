@@ -13,6 +13,7 @@ import { StatsBar } from './components/StatsBar'
 import { ModeBar } from './components/ModeBar'
 import { GoalChip } from './components/GoalChip'
 import { UnlockChip } from './components/UnlockChip'
+import { UnlockToast } from './components/UnlockToast'
 import { SessionSummaryModal } from './components/SessionSummaryModal'
 import { HistoryView } from './components/HistoryView'
 import {
@@ -187,6 +188,7 @@ function PracticeView({
         </div>
       </footer>
 
+      <UnlockToast />
       <SessionSummaryModal />
     </main>
   )

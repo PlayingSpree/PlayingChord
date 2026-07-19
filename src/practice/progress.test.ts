@@ -55,6 +55,30 @@ describe('chordOrderOf (§5 unlock order)', () => {
   it('keys chords by root and type, ignoring voicing', () => {
     expect(poolChordKey({ root: 4, typeId: 'min7' })).toBe('4:min7')
   })
+
+  it('fifths mode reorders all 12 roots along the circle of fifths', () => {
+    expect(chordOrderOf(combosOf(12), 'fifths')).toEqual(
+      [0, 7, 2, 9, 4, 11, 6, 1, 8, 3, 10, 5].map((root) => `${root}:maj`),
+    )
+  })
+
+  it('fifths mode keeps one root’s chord types in pool order', () => {
+    const combos: Combo[] = ([0, 2, 7] as const).flatMap((root) =>
+      (['maj', 'min'] as const).map((typeId) => ({
+        root,
+        typeId,
+        voicingId: 'any',
+      })),
+    )
+    expect(chordOrderOf(combos, 'fifths')).toEqual([
+      '0:maj',
+      '0:min',
+      '7:maj',
+      '7:min',
+      '2:maj',
+      '2:min',
+    ])
+  })
 })
 
 describe('initialProgress / reconcileProgress (§5)', () => {

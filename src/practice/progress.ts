@@ -25,22 +25,40 @@ export function poolChordKey(chord: {
   return `${chord.root}:${chord.typeId}`
 }
 
+// How the unlock queue is ordered (§5.1): 'pool' follows the pool's own
+// order; 'fifths' reorders roots along the circle of fifths (C → G → D …),
+// for root-ordered pools where chromatic neighbors aren't the musical ones.
+export type UnlockOrderMode = 'pool' | 'fifths'
+
+// Circle-of-fifths position of a pitch class: C=0, G=1, D=2 … F=11.
+function fifthsIndex(pc: number): number {
+  return (pc * 7) % 12
+}
+
 // The unlock order: the pool's own order (§4/§5), reconstructed from the
 // expansion rather than poolChords() so chords with no satisfiable combo —
 // which can never be attempted, hence never mastered — don't occupy (and
 // permanently block) an unlock slot. Combos of one chord are contiguous in
 // an expansion, so first-occurrence dedup preserves pool order exactly.
-export function chordOrderOf(combos: readonly Combo[]): string[] {
+// 'fifths' mode then stable-sorts by root, keeping one root's chords in
+// their pool order relative to each other.
+export function chordOrderOf(
+  combos: readonly Combo[],
+  mode: UnlockOrderMode = 'pool',
+): string[] {
   const seen = new Set<string>()
-  const order: string[] = []
+  const chords: { key: string; root: number }[] = []
   for (const combo of combos) {
     const key = poolChordKey(combo)
     if (!seen.has(key)) {
       seen.add(key)
-      order.push(key)
+      chords.push({ key, root: combo.root })
     }
   }
-  return order
+  if (mode === 'fifths') {
+    chords.sort((a, b) => fifthsIndex(a.root) - fifthsIndex(b.root))
+  }
+  return chords.map((chord) => chord.key)
 }
 
 // Persisted per preset id (§8). Mastered chords are stored as *indices* into

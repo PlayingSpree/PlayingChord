@@ -299,6 +299,8 @@ function PresetsSection({
   onClose: () => void
 }) {
   const customPresets = useLibrary((s) => s.customPresets)
+  const unlockByFifths = useSettings((s) => s.settings.unlockByFifths)
+  const update = useSettings((s) => s.update)
   const resetProgress = (presetId: string) =>
     practiceStore.getState().resetPresetProgress(presetId)
 
@@ -308,6 +310,22 @@ function PresetsSection({
         <PresetEditor preset={editing.preset} onClose={onClose} />
       ) : (
         <>
+          <div className="mb-3 max-w-md">
+            <Toggle
+              label="Unlock chords in circle-of-fifths order"
+              checked={unlockByFifths}
+              onChange={(v) => {
+                update({ unlockByFifths: v })
+                // The active preset's unlock order changes under its
+                // saved progress — re-derive it now (§5.1).
+                practiceStore.getState().refreshUnlockOrder()
+              }}
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              C → G → D → A … for root-ordered pools; diatonic and custom chord
+              lists keep their own order
+            </p>
+          </div>
           <ul className="divide-y divide-slate-800">
             {builtInPresets().map((preset) => (
               <LibraryRow

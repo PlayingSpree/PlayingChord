@@ -7,7 +7,9 @@ validates the input and moves on to the next chord.
 Status: **Draft v8** — flashcard-style **chord unlocking** (2026-07-19): each preset
 starts with only its first 3 chords in play, and a fast first-try success on every
 unlocked chord opens 2 more, until the whole pool is available (§5). Learn/Practice
-generate only from unlocked chords; Song mode stays full-pool. Draft v7 made Song mode
+generate only from unlocked chords; Song mode stays full-pool. A same-day revision
+added an optional **circle-of-fifths unlock order** for root-ordered pools and an
+unlock **toast** naming the newly opened chords (§5.1, §7). Draft v7 made Song mode
 draw its progression from the **active preset's
 chord pool** instead of a separate key selection (2026-07-18), so all three modes share
 one preset picker; a diatonic preset keeps the starts-on-I / no-vii° / Roman-numeral
@@ -341,6 +343,13 @@ flashcard-style batches instead of the whole pool at once:
   scale-degree order (I → vii°) for `diatonic`, declared order for `explicit`/custom.
   A chord whose every combo is unsatisfiable (rule/type mismatch, §4) is skipped —
   it can never be attempted, so it must never occupy an unlock slot.
+- **Circle-of-fifths order** (setting, default off): `product` pools unlock roots
+  along the circle of fifths (C → G → D → A …) instead of chromatically — the
+  classic pedagogy order; a root's chord types keep their relative pool order.
+  Diatonic and explicit pools keep their own deliberate order regardless. Toggling
+  re-derives the active preset's order in place: the unlocked *count* (and the
+  positional mastered indices, like a diatonic key change) carries onto the new
+  order, so no progress is lost, though which chords are open shifts with it.
 - A fresh preset starts with the **first 3** chords unlocked (clamped to the pool).
 - A chord is **mastered** by one Practice-mode attempt that is both **first-try
   correct** and **under 2000 ms** time-to-correct. All the chord's voicing combos
@@ -579,7 +588,9 @@ keys, and the stricter down-by-beat-1 judging variant.
   stats and weighting).
 - **Unlock chip** (top bar): `N/total` chords unlocked for the active preset (§5.1),
   with a brief highlight when a batch unlocks; hidden in Song mode, which isn't
-  gated. Full state in the tooltip.
+  gated. Full state in the tooltip. The unlock moment also shows a transient
+  **toast** naming the newly opened chords ("🔓 New chords unlocked: A, E"), for
+  the same window as the chip highlight.
 - **Goals & streaks**: daily goal = **active practice minutes** (default 10,
   configurable). Streak = consecutive days (local timezone) meeting the goal. Shown
   compactly in the top bar; detailed in History.
@@ -601,8 +612,9 @@ keys, and the stricter down-by-beat-1 judging variant.
   toggle, chord name size (small/medium/large/extra-large, default large), staff
   on/off, staff key signature on/off (chord root as key, §3.5), correct-chime on/off,
   piano sound on key press on/off (§9), judgment delay, auto-advance delay, daily
-  goal minutes. (The timer and worst-chords-only controls are Practice-mode
-  settings living next to the mode picker, not in the settings panel.)
+  goal minutes, circle-of-fifths unlock order on/off (§5.1). (The timer and
+  worst-chords-only controls are Practice-mode settings living next to the mode
+  picker, not in the settings panel.)
 
 ---
 
