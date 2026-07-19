@@ -187,10 +187,12 @@ function LibraryRow({
   name,
   detail,
   onEdit,
+  onResetProgress,
 }: {
   name: string
   detail: string
   onEdit?: () => void // absent for built-ins
+  onResetProgress?: () => void // presets only (§5 unlock progress)
 }) {
   return (
     <li className="flex items-center justify-between gap-3 py-1.5">
@@ -198,17 +200,29 @@ function LibraryRow({
         <span className="text-sm text-slate-200">{name}</span>
         <span className="ml-2 text-xs text-slate-500">{detail}</span>
       </div>
-      {onEdit ? (
-        <button
-          type="button"
-          onClick={onEdit}
-          className="rounded-md border border-slate-700 px-2.5 py-0.5 text-xs text-slate-300 transition-colors hover:border-slate-500"
-        >
-          Edit
-        </button>
-      ) : (
-        <span className="text-xs text-slate-600">built-in</span>
-      )}
+      <div className="flex items-center gap-2">
+        {onResetProgress && (
+          <button
+            type="button"
+            onClick={onResetProgress}
+            title="Restart this preset's chord unlocks at the first few chords"
+            className="rounded-md border border-slate-700 px-2.5 py-0.5 text-xs text-slate-400 transition-colors hover:border-amber-600 hover:text-amber-300"
+          >
+            Reset progress
+          </button>
+        )}
+        {onEdit ? (
+          <button
+            type="button"
+            onClick={onEdit}
+            className="rounded-md border border-slate-700 px-2.5 py-0.5 text-xs text-slate-300 transition-colors hover:border-slate-500"
+          >
+            Edit
+          </button>
+        ) : (
+          <span className="text-xs text-slate-600">built-in</span>
+        )}
+      </div>
     </li>
   )
 }
@@ -285,6 +299,8 @@ function PresetsSection({
   onClose: () => void
 }) {
   const customPresets = useLibrary((s) => s.customPresets)
+  const resetProgress = (presetId: string) =>
+    practiceStore.getState().resetPresetProgress(presetId)
 
   return (
     <Section title="Presets" hint="what the generator draws from (§4)">
@@ -298,6 +314,7 @@ function PresetsSection({
                 key={preset.id}
                 name={preset.name}
                 detail={describePreset(preset)}
+                onResetProgress={() => resetProgress(preset.id)}
               />
             ))}
             {customPresets.map((preset) => (
@@ -306,6 +323,7 @@ function PresetsSection({
                 name={preset.name}
                 detail={describePreset(preset)}
                 onEdit={() => onEdit(preset)}
+                onResetProgress={() => resetProgress(preset.id)}
               />
             ))}
           </ul>

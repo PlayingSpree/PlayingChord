@@ -9,8 +9,10 @@ import {
   sanitizeCustomVoicingRules,
   sanitizeDailyRecords,
   sanitizeDevice,
+  sanitizePresetProgress,
   sanitizePresetSelection,
   sanitizeStateV1,
+  sanitizeStateV2,
 } from './schema'
 import {
   EDITOR_MAX_HAND_NOTES,
@@ -354,16 +356,17 @@ describe('sanitizeCustomPresets (Phase 9, §4)', () => {
   })
 })
 
-describe('sanitizeStateV1', () => {
+describe('sanitizeStateV2', () => {
   it('coerces a fully junk payload to defaults', () => {
     expect(
-      sanitizeStateV1({
-        version: 1,
+      sanitizeStateV2({
+        version: 2,
         settings: 'junk',
         lastMidiDevice: 42,
         presetSelection: [],
         comboStats: null,
         dailyRecords: 7,
+        presetProgress: 'junk',
       }),
     ).toEqual(defaultState())
   })
@@ -398,5 +401,35 @@ describe('sanitizeStateV1', () => {
     expect(state.customVoicingRules.map((r) => r.id)).toEqual(['rule-ok'])
     // The garbled rule was dropped, so the reference to it goes too.
     expect(state.customPresets[0]?.voicingIds).toEqual(['rule-ok'])
+  })
+})
+
+describe('sanitizePresetProgress (v2, §5)', () => {
+  it('keeps valid records and drops garbled ones whole', () => {
+    expect(
+      sanitizePresetProgress({
+        'major-triads': { unlockedCount: 5, masteredIndices: [0, 2] },
+        'no-indices': { unlockedCount: 3 },
+        'zero-unlocked': { unlockedCount: 0, masteredIndices: [] },
+        'negative-unlocked': { unlockedCount: -2, masteredIndices: [] },
+        'not-a-record': 42,
+      }),
+    ).toEqual({
+      'major-triads': { unlockedCount: 5, masteredIndices: [0, 2] },
+    })
+  })
+
+  it('filters out-of-range indices, dedupes, and sorts', () => {
+    expect(
+      sanitizePresetProgress({
+        p: { unlockedCount: 4, masteredIndices: [3, 1, 3, -1, 4, 2.5, 'x'] },
+      }),
+    ).toEqual({ p: { unlockedCount: 4, masteredIndices: [1, 3] } })
+  })
+
+  it('returns empty for non-objects', () => {
+    expect(sanitizePresetProgress(null)).toEqual({})
+    expect(sanitizePresetProgress([])).toEqual({})
+    expect(sanitizePresetProgress('junk')).toEqual({})
   })
 })

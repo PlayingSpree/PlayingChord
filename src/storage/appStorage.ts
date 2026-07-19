@@ -4,7 +4,7 @@
 // tests).
 
 import { LEGACY_KEYS, migrateState } from './migrate'
-import { STATE_STORAGE_KEY, type PersistedStateV1 } from './schema'
+import { STATE_STORAGE_KEY, type PersistedState } from './schema'
 
 export interface KeyValueStore {
   get(key: string): string | null
@@ -25,7 +25,7 @@ function parseJson(raw: string | null): unknown {
 
 export class AppStorage {
   private readonly kv: KeyValueStore
-  private current: PersistedStateV1
+  private current: PersistedState
 
   constructor(kv: KeyValueStore) {
     this.kv = kv
@@ -41,11 +41,11 @@ export class AppStorage {
     }
   }
 
-  get state(): PersistedStateV1 {
+  get state(): PersistedState {
     return this.current
   }
 
-  update(mutate: (state: PersistedStateV1) => PersistedStateV1): void {
+  update(mutate: (state: PersistedState) => PersistedState): void {
     this.current = mutate(this.current)
     this.persist()
   }

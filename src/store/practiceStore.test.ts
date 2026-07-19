@@ -8,13 +8,19 @@ import {
 import {
   comboKey,
   DEFAULT_PRACTICE_SETTINGS,
+  INITIAL_UNLOCK_COUNT,
   InMemoryComboStats,
+  UNLOCK_BATCH_SIZE,
   type ChordPool,
   type Preset,
   type Prompt,
 } from '../practice'
-import { InMemoryDailyActivity } from '../storage'
-import { createPracticeStore, type PresetMemory } from './practiceStore'
+import { InMemoryDailyActivity, InMemoryPresetProgress } from '../storage'
+import {
+  createPracticeStore,
+  JUST_UNLOCKED_FLASH_MS,
+  type PresetMemory,
+} from './practiceStore'
 
 const ADVANCE = DEFAULT_PRACTICE_SETTINGS.autoAdvanceMs
 const STALL = DEFAULT_PRACTICE_SETTINGS.judgmentDelayMs
@@ -38,12 +44,24 @@ function memoryStub(
   }
 }
 
+// A progress source with the given preset already fully unlocked, for tests
+// about generation across a whole pool (the §5 gating is tested separately).
+function fullyUnlocked(
+  presetId: string,
+  chordCount: number,
+): InMemoryPresetProgress {
+  const progress = new InMemoryPresetProgress()
+  progress.set(presetId, { unlockedCount: chordCount, masteredIndices: [] })
+  return progress
+}
+
 function setup(deps: Parameters<typeof createPracticeStore>[0] = {}) {
   const store = createPracticeStore({
     settings: () => DEFAULT_PRACTICE_SETTINGS, // independent of localStorage
     memory: memoryStub(),
     stats: new InMemoryComboStats(), // never the shared appStorage singleton
     activity: new InMemoryDailyActivity(),
+    progress: new InMemoryPresetProgress(),
     ...deps,
   })
   let held = new Set<number>()
@@ -246,7 +264,7 @@ describe('practiceStore — generation', () => {
       roots: [0, 1, 2, 3, 4, 5],
       chordTypes: ['maj'],
     })
-    const s = setup({ presets })
+    const s = setup({ presets, progress: fullyUnlocked('test', 6) })
     const seen: string[] = []
 
     for (let i = 0; i < 50; i++) {
@@ -288,7 +306,10 @@ describe('practiceStore — upcoming queue (§5/§7)', () => {
   })
 
   it('the current prompt and upcoming queue share no duplicate keys', () => {
-    const s = setup({ presets: bigPreset })
+    const s = setup({
+      presets: bigPreset,
+      progress: fullyUnlocked('test', 6),
+    })
     for (let i = 0; i < 20; i++) {
       const prompt = s.store.getState().prompt!
       const keys = [
@@ -392,6 +413,167 @@ describe('practiceStore — outcome recording (§5/§7)', () => {
     s.store.getState().skip()
 
     expect(stats.recentHistory(promptComboKey(prompt))).toBeNull()
+  })
+})
+
+describe('practiceStore — unlock progress (§5)', () => {
+  const sixRoots = presetsOf({
+    kind: 'product',
+    roots: [0, 1, 2, 3, 4, 5],
+    chordTypes: ['maj'],
+  })
+
+  it('starts a fresh preset with the initial chords unlocked', () => {
+    const s = setup({ presets: sixRoots })
+    expect(s.store.getState().progress).toEqual({
+      unlocked: INITIAL_UNLOCK_COUNT,
+      total: 6,
+    })
+    expect(s.store.getState().justUnlocked).toBe(false)
+  })
+
+  it('draws prompts and previews only from unlocked chords', () => {
+    const s = setup({ presets: sixRoots })
+    const unlockedRoots = [0, 1, 2] // pool order: chromatic roots
+    for (let i = 0; i < 30; i++) {
+      expect(unlockedRoots).toContain(s.store.getState().prompt!.chord.root)
+      s.store.getState().upcoming.forEach((u) => {
+        expect(unlockedRoots).toContain(Number(u.key.split(':')[0]))
+      })
+      s.store.getState().skip() // skips never master anything
+    }
+    expect(s.store.getState().progress.unlocked).toBe(INITIAL_UNLOCK_COUNT)
+  })
+
+  it('mastering every unlocked chord unlocks the next batch', () => {
+    const progress = new InMemoryPresetProgress()
+    const s = setup({ presets: sixRoots, progress })
+
+    // Every prompt is a fast first-try; the three unlocked chords are all
+    // mastered within a handful of prompts.
+    let advances = 0
+    while (
+      s.store.getState().progress.unlocked === INITIAL_UNLOCK_COUNT &&
+      advances < 10
+    ) {
+      playCorrectAndAdvance(s, s.store.getState().prompt!)
+      advances++
+    }
+
+    expect(s.store.getState().progress).toEqual({
+      unlocked: INITIAL_UNLOCK_COUNT + UNLOCK_BATCH_SIZE,
+      total: 6,
+    })
+    expect(s.store.getState().justUnlocked).toBe(true)
+    expect(progress.get('test')?.unlockedCount).toBe(
+      INITIAL_UNLOCK_COUNT + UNLOCK_BATCH_SIZE,
+    )
+
+    vi.advanceTimersByTime(JUST_UNLOCKED_FLASH_MS)
+    expect(s.store.getState().justUnlocked).toBe(false)
+  })
+
+  it('a slow first-try success does not master', () => {
+    const s = setup({ presets: sixRoots })
+    for (let i = 0; i < 6; i++) {
+      vi.advanceTimersByTime(3000) // over FAST_TIME_MS before answering
+      playCorrectAndAdvance(s, s.store.getState().prompt!)
+    }
+    expect(s.store.getState().progress.unlocked).toBe(INITIAL_UNLOCK_COUNT)
+  })
+
+  it('a missed-then-corrected prompt does not master', () => {
+    const s = setup({ presets: sixRoots })
+    for (let i = 0; i < 6; i++) {
+      const prompt = s.store.getState().prompt!
+      s.press(61, 62, 63)
+      s.releaseAll()
+      playCorrectAndAdvance(s, prompt)
+    }
+    expect(s.store.getState().progress.unlocked).toBe(INITIAL_UNLOCK_COUNT)
+  })
+
+  it('Learn mode never advances mastery', () => {
+    const s = setup({ presets: sixRoots })
+    s.store.getState().setMode('learn')
+    for (let i = 0; i < 10; i++) {
+      playCorrectAndAdvance(s, s.store.getState().prompt!)
+    }
+    expect(s.store.getState().progress.unlocked).toBe(INITIAL_UNLOCK_COUNT)
+  })
+
+  it('progress persists across store instances via the progress source', () => {
+    const progress = new InMemoryPresetProgress()
+    progress.set('test', { unlockedCount: 5, masteredIndices: [0] })
+    const s = setup({ presets: sixRoots, progress })
+    expect(s.store.getState().progress).toEqual({ unlocked: 5, total: 6 })
+  })
+
+  it('a stored record larger than the pool reconciles down', () => {
+    const progress = new InMemoryPresetProgress()
+    progress.set('test', { unlockedCount: 40, masteredIndices: [0, 20] })
+    const s = setup({ presets: sixRoots, progress })
+    expect(s.store.getState().progress).toEqual({ unlocked: 6, total: 6 })
+    expect(progress.get('test')).toEqual({
+      unlockedCount: 6,
+      masteredIndices: [0],
+    })
+  })
+
+  it('resetPresetProgress returns the active preset to the initial count', () => {
+    const progress = fullyUnlocked('test', 6)
+    const s = setup({ presets: sixRoots, progress })
+    expect(s.store.getState().progress.unlocked).toBe(6)
+
+    s.store.getState().resetPresetProgress('test')
+    expect(s.store.getState().progress).toEqual({
+      unlocked: INITIAL_UNLOCK_COUNT,
+      total: 6,
+    })
+    // The live prompt was redealt from the narrowed pool.
+    expect([0, 1, 2]).toContain(s.store.getState().prompt!.chord.root)
+    expect(progress.get('test')).toBeNull()
+  })
+
+  it('resetPresetProgress on an inactive preset leaves the session alone', () => {
+    const progress = new InMemoryPresetProgress()
+    progress.set('other', { unlockedCount: 9, masteredIndices: [] })
+    const s = setup({ presets: sixRoots, progress })
+    const prompt = s.store.getState().prompt
+
+    s.store.getState().resetPresetProgress('other')
+    expect(progress.get('other')).toBeNull()
+    expect(s.store.getState().prompt).toBe(prompt)
+  })
+
+  it('a diatonic key change keeps the preset progress (index-keyed)', () => {
+    const diatonic = (key: PitchClass): readonly Preset[] => [
+      {
+        id: 'test-diatonic',
+        name: 'Test diatonic',
+        pool: { kind: 'diatonic', key },
+        voicingIds: ['any'],
+      },
+    ]
+    const progress = new InMemoryPresetProgress()
+    progress.set('test-diatonic', { unlockedCount: 5, masteredIndices: [1] })
+    const { store } = setup({ presets: diatonic, progress })
+    expect(store.getState().progress).toEqual({ unlocked: 5, total: 7 })
+
+    store.getState().setDiatonicKey(7) // G major
+    expect(store.getState().progress).toEqual({ unlocked: 5, total: 7 })
+    expect(progress.get('test-diatonic')?.masteredIndices).toEqual([1])
+  })
+
+  it('Song mode draws from the full pool, not the unlocked subset', () => {
+    const s = setup({ presets: sixRoots, rng: () => 0.999 })
+    s.store.getState().setMode('song')
+    // rng ≈ 1 picks from the top of the remaining pool — roots beyond the
+    // unlocked first three appear because Song isn't gated (§6.5).
+    const roots = s.store
+      .getState()
+      .songChords.map((c) => Number(c.key.split(':')[0]))
+    expect(roots.some((r) => r > 2)).toBe(true)
   })
 })
 

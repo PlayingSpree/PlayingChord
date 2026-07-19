@@ -6,7 +6,9 @@ import {
   sanitizeDevice,
   sanitizePresetSelection,
   sanitizeStateV1,
+  sanitizeStateV2,
   SCHEMA_VERSION,
+  type PersistedState,
   type PersistedStateV1,
 } from './schema'
 import { sanitizeSettings } from '../practice'
@@ -26,6 +28,12 @@ export interface LegacySnapshot {
   preset?: unknown
 }
 
+// v1 → v2: unlock progress (§5) starts empty — every preset opens at the
+// initial unlock count on first use.
+export function migrateV1ToV2(state: PersistedStateV1): PersistedState {
+  return { ...state, version: SCHEMA_VERSION, presetProgress: {} }
+}
+
 // `raw` is the parsed value at STATE_STORAGE_KEY. Version upgrades chain
 // here (v1 → v2 → … before the final sanitize) as the schema evolves. An
 // unrecognized version — i.e. a *newer* build's state read by an older one —
@@ -34,13 +42,15 @@ export interface LegacySnapshot {
 export function migrateState(
   raw: unknown,
   legacy: LegacySnapshot = {},
-): PersistedStateV1 {
+): PersistedState {
   if (typeof raw === 'object' && raw !== null && !Array.isArray(raw)) {
     const state = raw as Record<string, unknown>
-    if (state.version === SCHEMA_VERSION) return sanitizeStateV1(state)
+    if (state.version === SCHEMA_VERSION) return sanitizeStateV2(state)
+    if (state.version === 1) return migrateV1ToV2(sanitizeStateV1(state))
   }
   // Nothing versioned yet: fold in the Phase 2–5 plain keys (each may be
-  // absent or junk — sanitizers fall back per slice).
+  // absent or junk — sanitizers fall back per slice). defaultState() is
+  // already current-version, so no upgrade chain is needed here.
   return {
     ...defaultState(),
     settings: sanitizeSettings(legacy.settings),

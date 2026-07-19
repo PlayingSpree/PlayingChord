@@ -4,7 +4,11 @@ A web app for practicing piano chords with a MIDI keyboard. The app shows a rand
 from a chosen preset, the user plays it on their connected MIDI keyboard, and the app
 validates the input and moves on to the next chord.
 
-Status: **Draft v7** — Song mode now draws its progression from the **active preset's
+Status: **Draft v8** — flashcard-style **chord unlocking** (2026-07-19): each preset
+starts with only its first 3 chords in play, and a fast first-try success on every
+unlocked chord opens 2 more, until the whole pool is available (§5). Learn/Practice
+generate only from unlocked chords; Song mode stays full-pool. Draft v7 made Song mode
+draw its progression from the **active preset's
 chord pool** instead of a separate key selection (2026-07-18), so all three modes share
 one preset picker; a diatonic preset keeps the starts-on-I / no-vii° / Roman-numeral
 behavior (§6.5). Draft v6 (2026-07-17) added **Song mode**: a third session
@@ -37,6 +41,9 @@ first) is intentionally left outside this document.
   bar boundary judges, not the player's success; §6.5). Practice-mode settings: an optional **session
   timer** (with end-of-session summary) and a **worst chords only** toggle (replacing
   the old review mode) — plus subtle miss-weighting always.
+- **Chord unlocking**: flashcard-style progression per preset — start with 3 chords,
+  master them all (first-try, under 2 s) to unlock 2 more, repeating until the pool is
+  open (§5). Gates Learn/Practice generation only; Song mode uses the full pool.
 - **Goals & streaks**: a daily practice-*time* goal with streak tracking, persisted
   locally alongside the existing stats history.
 - Sound: a **correct chime**, plus an optional **key-press piano tone**
@@ -325,6 +332,33 @@ or machines.
   than dealing from the weighted queue (§6.5). Its bar results do feed the per-combo
   stats, so Song-mode misses raise those combos' weights in Practice.
 
+### 5.1 Chord unlocking (flashcard progression)
+
+Every preset tracks its own **unlock progress**, so learning proceeds in small
+flashcard-style batches instead of the whole pool at once:
+
+- **Unlock order** is the pool's own order: chromatic-root order for `product` pools,
+  scale-degree order (I → vii°) for `diatonic`, declared order for `explicit`/custom.
+  A chord whose every combo is unsatisfiable (rule/type mismatch, §4) is skipped —
+  it can never be attempted, so it must never occupy an unlock slot.
+- A fresh preset starts with the **first 3** chords unlocked (clamped to the pool).
+- A chord is **mastered** by one Practice-mode attempt that is both **first-try
+  correct** and **under 2000 ms** time-to-correct. All the chord's voicing combos
+  count toward the same chord; Learn-mode prompts, skips, and Song-mode bars never
+  master anything (they record no self-paced outcome).
+- Once **every** unlocked chord is mastered, the **next 2** unlock, repeating until
+  the whole pool is open — after which generation behaves exactly as above. The
+  upcoming-preview queue is rebuilt at the moment of an unlock (the pool changed,
+  like any other pool change), so new chords can appear in the very next preview.
+- **Scope:** the gate applies to Learn and Practice generation (worst-chords-only
+  then narrows *within* the unlocked set). **Song mode is deliberately not gated** —
+  it draws from the preset's full pool (§6.5); revisit if that proves confusing.
+- **Persistence:** one record per preset id — the unlocked count plus the mastered
+  chords as *indices into the unlock order*, not chord identities, so the diatonic
+  preset's progress means "scale degree N" and survives a key change. A custom
+  preset's pool shrinking under its saved record reconciles (clamps) on load.
+  Progress can be reset per preset in Settings.
+
 ---
 
 ## 6. Input Handling & Matching
@@ -543,6 +577,9 @@ keys, and the stricter down-by-beat-1 judging variant.
 - **Feedback**: correct flash + reaction time + optional chime, auto-advance (default
   800 ms). Misses are always **visual-only** (§9). Skip button available (excluded from
   stats and weighting).
+- **Unlock chip** (top bar): `N/total` chords unlocked for the active preset (§5.1),
+  with a brief highlight when a batch unlocks; hidden in Song mode, which isn't
+  gated. Full state in the tooltip.
 - **Goals & streaks**: daily goal = **active practice minutes** (default 10,
   configurable). Streak = consecutive days (local timezone) meeting the goal. Shown
   compactly in the top bar; detailed in History.
@@ -557,7 +594,9 @@ keys, and the stricter down-by-beat-1 judging variant.
   from bass/span/doubling primitives, save it to the shared library, and use it in any
   preset.
 - **Preset editor** (settings): create/edit/delete presets (pool + voicing refs, §4)
-  with rule-compatibility validation; import/export as JSON.
+  with rule-compatibility validation; import/export as JSON. Each preset row (built-in
+  and custom) also offers **Reset progress**, restarting its §5.1 unlocks at the
+  initial count.
 - **Settings**: preset editor, voicing builder, doubling toggle, strict-extra-notes
   toggle, chord name size (small/medium/large/extra-large, default large), staff
   on/off, staff key signature on/off (chord root as key, §3.5), correct-chime on/off,
@@ -576,9 +615,11 @@ src/
                   #   matcher, realizeVoicing (pure, unit-tested)
   practice/       # session engine: attempt lifecycle (§6.2), prompt generation, weighted
                   #   selection, session modes (Learn/Practice + timer/worst-chords,
-                  #   Song progression + bar clock §6.5), hint staging
+                  #   Song progression + bar clock §6.5), hint staging, unlock
+                  #   progress (§5.1, progress.ts)
   storage/        # localStorage persistence: presets, custom voicing rules, per-combo
-                  #   stats history, daily practice totals + goal/streak state
+                  #   stats history, daily practice totals + goal/streak state,
+                  #   per-preset unlock progress (§5.1)
                   #   (versioned schema, import/export)
   audio/          # Web Audio: correct-chime, key-press piano synth, metronome click
                   #   (shared context)
@@ -593,7 +634,8 @@ is simulated for development without hardware.
 
 Per-combo stat record (keyed `(root, typeId, voicingId)`, §5): attempts, first-try
 successes, recent-miss window, time-to-correct samples. Daily record: date, active
-minutes, prompts, first-try successes.
+minutes, prompts, first-try successes. Preset progress record (keyed by preset id,
+schema v2, §5.1): unlocked count + mastered chord indices.
 
 ---
 

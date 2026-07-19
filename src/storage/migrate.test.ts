@@ -8,7 +8,7 @@ describe('migrateState', () => {
     expect(migrateState(undefined)).toEqual(defaultState())
   })
 
-  it('passes a valid v1 state through, sanitized', () => {
+  it('passes a valid current-version state through, sanitized', () => {
     const state = {
       ...defaultState(),
       comboStats: {
@@ -19,11 +19,34 @@ describe('migrateState', () => {
           timeToCorrectMs: [4000, 1500],
         },
       },
+      presetProgress: {
+        'major-triads': { unlockedCount: 5, masteredIndices: [0, 2] },
+      },
     }
     expect(migrateState(JSON.parse(JSON.stringify(state)))).toEqual(state)
   })
 
-  it('folds the Phase 2–5 plain keys into a fresh v1 state', () => {
+  it('upgrades a v1 state to v2, keeping its data and adding empty progress', () => {
+    const v1 = {
+      ...defaultState(),
+      version: 1,
+      comboStats: {
+        '0:maj:any': {
+          attempts: 2,
+          firstTrySuccesses: 1,
+          recentOutcomes: ['missed', 'first-try'],
+          timeToCorrectMs: [4000, 1500],
+        },
+      },
+    } as Record<string, unknown>
+    delete v1.presetProgress
+    const state = migrateState(v1)
+    expect(state.version).toBe(2)
+    expect(state.comboStats).toEqual(v1.comboStats)
+    expect(state.presetProgress).toEqual({})
+  })
+
+  it('folds the Phase 2–5 plain keys into a fresh state', () => {
     const state = migrateState(undefined, {
       settings: { ...DEFAULT_PRACTICE_SETTINGS, judgmentDelayMs: 750 },
       device: { id: 'dev-1', name: 'Stage Piano' },
@@ -50,7 +73,7 @@ describe('migrateState', () => {
   })
 
   it('resets on an unrecognized (newer) version instead of guessing', () => {
-    const newer = { version: 2, settings: { judgmentDelayMs: 750 } }
+    const newer = { version: 3, settings: { judgmentDelayMs: 750 } }
     expect(migrateState(newer)).toEqual(defaultState())
   })
 

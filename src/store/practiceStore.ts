@@ -4,19 +4,26 @@ import {
   ActiveTimeTracker,
   AttemptLifecycle,
   builtInPresets,
+  chordOrderOf,
   comboKey,
   comboLabel,
   createPrompt,
   DEFAULT_DIATONIC_KEY,
   expandPreset,
   fillQueue,
+  filterUnlockedCombos,
+  initialProgress,
+  poolChordKey,
   rankWorstCombos,
   RECENT_WINDOW,
+  reconcileProgress,
+  recordChordAttempt,
   romanNumeral,
   sanitizeTimerMinutes,
   songChordLabel,
   SongEngine,
   UPCOMING_COUNT,
+  unlockedChordKeys,
   summarizeSession,
   wrongHeldKeys,
   type AttemptPhase,
@@ -25,6 +32,7 @@ import {
   type Hint,
   type PracticeSettings,
   type Preset,
+  type PresetProgressRecord,
   type Prompt,
   type PromptOutcome,
   type Rng,
@@ -47,7 +55,9 @@ import {
   localDateKey,
   PersistedComboStats,
   PersistedDailyActivity,
+  PersistedPresetProgress,
   type DailyActivitySource,
+  type PresetProgressSource,
 } from '../storage'
 import { settingsStore } from './settingsStore'
 import { libraryStore } from './libraryStore'
@@ -133,6 +143,15 @@ export interface GoalProgress {
   streak: number
 }
 
+// The active preset's §5 unlock progress, mirrored for the top-bar chip.
+export interface UnlockProgress {
+  unlocked: number
+  total: number
+}
+
+// How long the top-bar chip celebrates a fresh unlock before settling.
+export const JUST_UNLOCKED_FLASH_MS = 2_500
+
 // Buffered active time is persisted once this much accrues — every held-note
 // change would rewrite the whole state blob for single-digit ms gains.
 export const ACTIVE_FLUSH_MS = 5_000
@@ -175,6 +194,10 @@ export interface PracticeStoreState {
   // pool changes.
   upcoming: readonly UpcomingChord[]
   goal: GoalProgress
+  // The active preset's §5 unlock state, plus a transient celebration flag
+  // set for JUST_UNLOCKED_FLASH_MS when a batch unlocks.
+  progress: UnlockProgress
+  justUnlocked: boolean
   start(): void
   onHeldChange(held: ReadonlySet<number>): void
   skip(): void
@@ -193,6 +216,8 @@ export interface PracticeStoreState {
   // Re-resolve presets/rules after the custom library changes (Phase 9):
   // a deleted active preset falls back, an edited one re-expands.
   refreshLibrary(): void
+  // Wipe a preset's §5 unlock progress back to the initial unlock count.
+  resetPresetProgress(presetId: string): void
 }
 
 export interface PracticeStoreDeps {
@@ -200,6 +225,7 @@ export interface PracticeStoreDeps {
   voicings?: () => VoicingLibrary
   stats?: ComboStatsSource
   activity?: DailyActivitySource
+  progress?: PresetProgressSource
   memory?: PresetMemory
   rng?: Rng
   now?: () => number
@@ -211,6 +237,7 @@ export function createPracticeStore({
   voicings = () => BUILT_IN_VOICING_LIBRARY,
   stats = new PersistedComboStats(appStorage),
   activity = new PersistedDailyActivity(appStorage),
+  progress: progressStore = new PersistedPresetProgress(appStorage),
   memory = persistedPresetMemory,
   rng = Math.random,
   now = Date.now,
@@ -267,6 +294,83 @@ export function createPracticeStore({
     // everything else generates from the expansion.
     let { preset: activePreset, expansion } = resolve(initialId, initialKey)
 
+    // The §5 unlock state for the active preset, kept in lockstep with the
+    // expansion by reloadProgress(): the pool's chord order, the persisted
+    // record (reconciled against the real pool size — a custom pool can
+    // shrink under its saved progress), and the unlocked chord-key set the
+    // generator filters by.
+    let chordOrder: string[] = []
+    let progressRecord: PresetProgressRecord = initialProgress(1)
+    let unlocked: ReadonlySet<string> = new Set()
+    let justUnlockedTimer: ReturnType<typeof setTimeout> | null = null
+
+    const reloadProgress = () => {
+      chordOrder = chordOrderOf(expansion.combos)
+      const stored = progressStore.get(activePreset.id)
+      progressRecord = reconcileProgress(
+        stored ?? initialProgress(chordOrder.length),
+        chordOrder.length,
+      )
+      // Persist a reconciliation that changed a stored record, so the
+      // self-heal happens once instead of on every load.
+      if (
+        stored !== null &&
+        JSON.stringify(stored) !== JSON.stringify(progressRecord)
+      ) {
+        progressStore.set(activePreset.id, progressRecord)
+      }
+      unlocked = unlockedChordKeys(chordOrder, progressRecord)
+    }
+    reloadProgress()
+
+    const progressSnapshot = (): UnlockProgress => ({
+      unlocked: progressRecord.unlockedCount,
+      total: chordOrder.length,
+    })
+
+    const clearUnlockFlash = () => {
+      if (justUnlockedTimer !== null) {
+        clearTimeout(justUnlockedTimer)
+        justUnlockedTimer = null
+      }
+    }
+
+    const flashJustUnlocked = () => {
+      clearUnlockFlash()
+      set({ justUnlocked: true })
+      justUnlockedTimer = setTimeout(() => {
+        justUnlockedTimer = null
+        set({ justUnlocked: false })
+      }, JUST_UNLOCKED_FLASH_MS)
+    }
+
+    // Feeds a completed Practice prompt into the §5 unlock progress. On an
+    // unlock, the queue is dropped so newly opened chords can enter the very
+    // next preview refill (the pool changed, same rule as every other pool
+    // change).
+    const applyProgress = (
+      combo: Combo,
+      outcome: PromptOutcome,
+      timeToCorrectMs: number,
+    ) => {
+      const update = recordChordAttempt(
+        chordOrder,
+        progressRecord,
+        poolChordKey(combo),
+        outcome,
+        timeToCorrectMs,
+      )
+      if (!update.changed) return
+      progressRecord = update.record
+      unlocked = unlockedChordKeys(chordOrder, progressRecord)
+      progressStore.set(activePreset.id, progressRecord)
+      set({ progress: progressSnapshot() })
+      if (update.justUnlocked) {
+        queue = []
+        flashJustUnlocked()
+      }
+    }
+
     // The §7 worst-chords list for the current pool, from persisted records.
     const worstChords = (): WorstChordEntry[] =>
       rankWorstCombos(expansion.combos, stats).map(({ combo, record }) => ({
@@ -279,20 +383,19 @@ export function createPracticeStore({
         accuracy: record.firstTrySuccesses / record.attempts,
       }))
 
-    // "Worst chords only" (§5/§7) narrows generation to the preset's
-    // qualifying combos; an empty ranking (nothing missed yet — possible
-    // right after a preset switch) falls back to the whole pool.
+    // Learn/Practice generate only from unlocked chords (§5); Song bypasses
+    // this entirely (it draws from the preset's raw pool). "Worst chords
+    // only" (§5/§7) then narrows generation within the unlocked set; an
+    // empty ranking (nothing missed yet — possible right after a preset
+    // switch) falls back to the whole unlocked pool.
     const pickPool = (): readonly Combo[] => {
       const state = get()
+      const available = filterUnlockedCombos(expansion.combos, unlocked)
       if (state.mode === 'practice' && state.worstOnly) {
-        const worst = rankWorstCombos(
-          expansion.combos,
-          stats,
-          expansion.combos.length,
-        )
+        const worst = rankWorstCombos(available, stats, available.length)
         if (worst.length > 0) return worst.map((w) => w.combo)
       }
-      return expansion.combos
+      return available
     }
 
     const nextPrompt = () => {
@@ -336,6 +439,7 @@ export function createPracticeStore({
       const timeToCorrectMs = machine.state.reactionMs ?? 0
       const key = comboKey(currentCombo)
       stats.record(key, outcome, timeToCorrectMs)
+      applyProgress(currentCombo, outcome, timeToCorrectMs)
       sessionEvents.push({
         key,
         label: comboLabel(
@@ -507,8 +611,16 @@ export function createPracticeStore({
       expansion = next
       recentKeys = []
       queue = []
+      reloadProgress()
+      clearUnlockFlash()
       memory.save({ presetId: preset.id, diatonicKey })
-      set({ presets: list, presetId: preset.id, diatonicKey })
+      set({
+        presets: list,
+        presetId: preset.id,
+        diatonicKey,
+        progress: progressSnapshot(),
+        justUnlocked: false,
+      })
       // A live song rebuilds from the new pool with a fresh count-in; a
       // paused one (no clock) picks the pool up on the next start().
       if (get().mode === 'song') {
@@ -539,6 +651,8 @@ export function createPracticeStore({
       worstChords: [],
       upcoming: [],
       goal: currentGoal(),
+      progress: progressSnapshot(),
+      justUnlocked: false,
 
       start() {
         // React StrictMode mounts effects twice; a paused store re-prompts,
@@ -681,13 +795,21 @@ export function createPracticeStore({
         // expansion they were drawn from; a library edit can change rules
         // or spellings even when the preset itself is unchanged.
         queue = []
+        // An edit can also grow/shrink the pool under its saved unlock
+        // progress — re-derive and reconcile (§5).
+        reloadProgress()
         if (preset.id !== current.presetId) {
           // The active preset vanished (deleted, or now empty) — the
           // resolver fell back; remember the fallback like any selection.
           recentKeys = []
           memory.save({ presetId: preset.id, diatonicKey: current.diatonicKey })
         }
-        set({ presets: list, presetId: preset.id, worstChords: worstChords() })
+        set({
+          presets: list,
+          presetId: preset.id,
+          worstChords: worstChords(),
+          progress: progressSnapshot(),
+        })
         // Paused (settings/History open) means no prompt to refresh; a live
         // prompt/song is redealt so it can't reference deleted content.
         if (get().mode === 'song') {
@@ -696,6 +818,23 @@ export function createPracticeStore({
           recordOutcome()
           nextPrompt()
         }
+      },
+
+      resetPresetProgress(presetId: string) {
+        // A pending ✔ on the active preset counts (and may master a chord)
+        // before the wipe, like every other pool change.
+        if (presetId === activePreset.id) recordOutcome()
+        progressStore.reset(presetId)
+        if (presetId !== activePreset.id) return
+        reloadProgress()
+        clearUnlockFlash()
+        queue = []
+        recentKeys = []
+        set({ progress: progressSnapshot(), justUnlocked: false })
+        // Song isn't gated (§6.5) and a paused store has no prompt to
+        // re-deal; a live Learn/Practice prompt redeals from the narrowed
+        // pool so a now-locked chord isn't left on screen.
+        if (get().mode !== 'song' && get().prompt !== null) nextPrompt()
       },
     }
   })

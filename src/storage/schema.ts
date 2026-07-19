@@ -1,4 +1,4 @@
-// The versioned localStorage schema (DESIGN.md §8), v1. Pure TS: types,
+// The versioned localStorage schema (DESIGN.md §8), currently v2. Pure TS: types,
 // defaults, and sanitizers that coerce unknown persisted data (hand-edited,
 // stale, corrupted) into a valid state. Reading/writing localStorage happens
 // only in localStorageAdapter.ts.
@@ -15,6 +15,7 @@ import {
   type PoolChord,
   type PracticeSettings,
   type Preset,
+  type PresetProgressRecord,
   type PromptOutcome,
 } from '../practice'
 import {
@@ -27,7 +28,7 @@ import {
   type VoicingRule,
 } from '../theory'
 
-export const SCHEMA_VERSION = 1
+export const SCHEMA_VERSION = 2
 
 // The single versioned key. The version lives *inside* the payload so
 // migrations read one blob, check `version`, and upgrade in a chain.
@@ -59,7 +60,7 @@ export interface DailyRecord {
 }
 
 export interface PersistedStateV1 {
-  version: typeof SCHEMA_VERSION
+  version: 1
   settings: PracticeSettings
   lastMidiDevice: PersistedDevice | null
   presetSelection: PersistedPresetSelection | null
@@ -72,7 +73,16 @@ export interface PersistedStateV1 {
   customPresets: Preset[]
 }
 
-export function defaultState(): PersistedStateV1 {
+// v2 adds flashcard unlock progress (§5), keyed by preset id.
+export interface PersistedStateV2 extends Omit<PersistedStateV1, 'version'> {
+  version: typeof SCHEMA_VERSION
+  presetProgress: Record<string, PresetProgressRecord>
+}
+
+// The current schema — what AppStorage holds and every consumer reads.
+export type PersistedState = PersistedStateV2
+
+export function defaultState(): PersistedState {
   return {
     version: SCHEMA_VERSION,
     settings: sanitizeSettings(undefined),
@@ -82,6 +92,7 @@ export function defaultState(): PersistedStateV1 {
     dailyRecords: {},
     customVoicingRules: [],
     customPresets: [],
+    presetProgress: {},
   }
 }
 
@@ -468,7 +479,7 @@ export function sanitizeStateV1(
 ): PersistedStateV1 {
   const customVoicingRules = sanitizeCustomVoicingRules(raw.customVoicingRules)
   return {
-    version: SCHEMA_VERSION,
+    version: 1,
     settings: sanitizeSettings(raw.settings),
     lastMidiDevice: sanitizeDevice(raw.lastMidiDevice),
     presetSelection: sanitizePresetSelection(raw.presetSelection),
@@ -476,5 +487,47 @@ export function sanitizeStateV1(
     dailyRecords: sanitizeDailyRecords(raw.dailyRecords),
     customVoicingRules,
     customPresets: sanitizeCustomPresets(raw.customPresets, customVoicingRules),
+  }
+}
+
+// ——— Preset unlock progress (v2, §5) ———
+//
+// Like stat records, a garbled record is dropped whole — losing one just
+// restarts that preset at the initial unlock count. Indices are filtered
+// (not fatal) and can only be clamped to the *real* pool size later, by
+// reconcileProgress in the store, since pool sizes aren't known here.
+export function sanitizePresetProgress(
+  value: unknown,
+): Record<string, PresetProgressRecord> {
+  const raw = asRecord(value)
+  if (!raw) return {}
+  const progress: Record<string, PresetProgressRecord> = {}
+  for (const [presetId, entry] of Object.entries(raw)) {
+    const record = asRecord(entry)
+    if (!record) continue
+    const unlockedCount = asCount(record.unlockedCount)
+    if (unlockedCount === null || unlockedCount === 0) continue
+    if (!Array.isArray(record.masteredIndices)) continue
+    const masteredIndices = [
+      ...new Set(
+        record.masteredIndices.filter(
+          (i): i is number =>
+            typeof i === 'number' &&
+            Number.isInteger(i) &&
+            i >= 0 &&
+            i < unlockedCount,
+        ),
+      ),
+    ].sort((a, b) => a - b)
+    progress[presetId] = { unlockedCount, masteredIndices }
+  }
+  return progress
+}
+
+export function sanitizeStateV2(raw: Record<string, unknown>): PersistedState {
+  return {
+    ...sanitizeStateV1(raw),
+    version: SCHEMA_VERSION,
+    presetProgress: sanitizePresetProgress(raw.presetProgress),
   }
 }
