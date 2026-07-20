@@ -29,9 +29,15 @@ export interface LegacySnapshot {
 }
 
 // v1 → v2: unlock progress (§5) starts empty — every preset opens at the
-// initial unlock count on first use.
+// initial unlock count on first use; the lifetime best combo streak (also
+// new in v2) starts at 0, same as a fresh install.
 export function migrateV1ToV2(state: PersistedStateV1): PersistedState {
-  return { ...state, version: SCHEMA_VERSION, presetProgress: {} }
+  return {
+    ...state,
+    version: SCHEMA_VERSION,
+    presetProgress: {},
+    bestComboStreak: 0,
+  }
 }
 
 // `raw` is the parsed value at STATE_STORAGE_KEY. Version upgrades chain

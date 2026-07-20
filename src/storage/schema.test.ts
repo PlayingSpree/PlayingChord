@@ -4,6 +4,7 @@ import {
   localDateKey,
   MAX_BASS_DEGREE,
   MAX_LIBRARY_NAME_LENGTH,
+  sanitizeBestComboStreak,
   sanitizeComboStats,
   sanitizeCustomPresets,
   sanitizeCustomVoicingRules,
@@ -367,6 +368,7 @@ describe('sanitizeStateV2', () => {
         comboStats: null,
         dailyRecords: 7,
         presetProgress: 'junk',
+        bestComboStreak: 'not a number',
       }),
     ).toEqual(defaultState())
   })
@@ -401,6 +403,20 @@ describe('sanitizeStateV2', () => {
     expect(state.customVoicingRules.map((r) => r.id)).toEqual(['rule-ok'])
     // The garbled rule was dropped, so the reference to it goes too.
     expect(state.customPresets[0]?.voicingIds).toEqual(['rule-ok'])
+  })
+})
+
+describe('sanitizeBestComboStreak (v2, §7)', () => {
+  it('keeps a valid non-negative integer', () => {
+    expect(sanitizeBestComboStreak(12)).toBe(12)
+    expect(sanitizeBestComboStreak(0)).toBe(0)
+  })
+
+  it('defaults garbled or absent values to 0', () => {
+    expect(sanitizeBestComboStreak(undefined)).toBe(0)
+    expect(sanitizeBestComboStreak(-3)).toBe(0)
+    expect(sanitizeBestComboStreak('12')).toBe(0)
+    expect(sanitizeBestComboStreak(1.5)).toBe(0)
   })
 })
 

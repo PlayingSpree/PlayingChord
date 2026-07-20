@@ -77,6 +77,10 @@ export interface PersistedStateV1 {
 export interface PersistedStateV2 extends Omit<PersistedStateV1, 'version'> {
   version: typeof SCHEMA_VERSION
   presetProgress: Record<string, PresetProgressRecord>
+  // Added within v2 (§7 History): the longest combo streak (consecutive
+  // first-try prompts) ever reached, across all sessions. Absent in early-v2
+  // states, so it defaults to 0 rather than invalidating the record.
+  bestComboStreak: number
 }
 
 // The current schema — what AppStorage holds and every consumer reads.
@@ -93,6 +97,7 @@ export function defaultState(): PersistedState {
     customVoicingRules: [],
     customPresets: [],
     presetProgress: {},
+    bestComboStreak: 0,
   }
 }
 
@@ -524,10 +529,17 @@ export function sanitizePresetProgress(
   return progress
 }
 
+// A garbled or absent value defaults to 0 rather than dropping anything —
+// unlike a stat record, "no lifetime best yet" is a valid, common state.
+export function sanitizeBestComboStreak(value: unknown): number {
+  return asCount(value) ?? 0
+}
+
 export function sanitizeStateV2(raw: Record<string, unknown>): PersistedState {
   return {
     ...sanitizeStateV1(raw),
     version: SCHEMA_VERSION,
     presetProgress: sanitizePresetProgress(raw.presetProgress),
+    bestComboStreak: sanitizeBestComboStreak(raw.bestComboStreak),
   }
 }

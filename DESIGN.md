@@ -600,7 +600,10 @@ keys, and the stricter down-by-beat-1 judging variant.
   shape wider than the drawn range folds the leftover notes per note.
 - **Feedback**: correct flash + reaction time + optional chime, auto-advance (default
   800 ms). Misses are always **visual-only** (§9). Skip button available (excluded from
-  stats and weighting).
+  stats and weighting). A **combo streak** (consecutive first-try correct prompts, reset
+  by any miss; skips leave it untouched) rides the same flash once it reaches 10
+  ("🔥 10 combo"). Session-only — not shown elsewhere — but the longest streak ever
+  reached is tracked lifetime (§7 History).
 - **Unlock chip** (top bar): `N/total` chords unlocked for the active preset (§5.1),
   with a brief highlight when a batch unlocks; hidden in Song mode, which isn't
   gated. Full state in the tooltip. The unlock moment also shows a transient
@@ -614,8 +617,10 @@ keys, and the stricter down-by-beat-1 judging variant.
   attempt ÷ prompts (skips and Learn-mode prompts excluded); *time-to-correct* = prompt
   shown → correct match, retries included.
 - **History tab** (separate view, top bar): persisted trends across all sessions —
-  accuracy over time, time-to-correct trend, most-improved/worst chords, streak calendar
-  and goal history. Reachable independently of the practice screen.
+  accuracy over time, time-to-correct trend, most-improved/worst chords, streak calendar,
+  goal history, and the lifetime **best combo streak** (the longest run of consecutive
+  first-try prompts ever reached, across all sessions). Reachable independently of the
+  practice screen.
 - **Voicing builder** (settings): dedicated form UI to compose a custom `VoicingRule`
   from bass/span/doubling primitives, save it to the shared library, and use it in any
   preset.
@@ -662,7 +667,8 @@ is simulated for development without hardware.
 Per-combo stat record (keyed `(root, typeId, voicingId)`, §5): attempts, first-try
 successes, recent-miss window, time-to-correct samples. Daily record: date, active
 minutes, prompts, first-try successes. Preset progress record (keyed by preset id,
-schema v2, §5.1): unlocked count + mastered chord indices.
+schema v2, §5.1): unlocked count + mastered chord indices. Best combo streak (schema
+v2, §7): a single lifetime integer, raised whenever a session's live streak beats it.
 
 ---
 

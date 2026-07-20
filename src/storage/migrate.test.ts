@@ -22,6 +22,7 @@ describe('migrateState', () => {
       presetProgress: {
         'major-triads': { unlockedCount: 5, masteredIndices: [0, 2] },
       },
+      bestComboStreak: 7,
     }
     expect(migrateState(JSON.parse(JSON.stringify(state)))).toEqual(state)
   })
@@ -40,10 +41,12 @@ describe('migrateState', () => {
       },
     } as Record<string, unknown>
     delete v1.presetProgress
+    delete v1.bestComboStreak
     const state = migrateState(v1)
     expect(state.version).toBe(2)
     expect(state.comboStats).toEqual(v1.comboStats)
     expect(state.presetProgress).toEqual({})
+    expect(state.bestComboStreak).toBe(0)
   })
 
   it('folds the Phase 2–5 plain keys into a fresh state', () => {

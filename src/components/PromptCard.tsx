@@ -33,6 +33,7 @@ export function PromptCard() {
   const prompt = usePractice((s) => s.prompt)
   const phase = usePractice((s) => s.phase)
   const reactionMs = usePractice((s) => s.reactionMs)
+  const comboStreak = usePractice((s) => s.comboStreak)
   const hint = usePractice((s) => s.hint)
   const upcoming = usePractice((s) => s.upcoming)
   const song = usePractice((s) => s.song)
@@ -113,6 +114,11 @@ export function PromptCard() {
         ) : phase === 'advancing' && reactionMs !== null ? (
           <span className="text-emerald-400">
             ✔ Correct! ({(reactionMs / 1000).toFixed(1)}s)
+            {comboStreak >= 10 && (
+              <span className="ml-2 text-base font-medium text-amber-300">
+                🔥 {comboStreak} combo
+              </span>
+            )}
           </span>
         ) : hint !== null ? (
           <span className="text-rose-400">✘ {hintText(hint)}</span>

@@ -23,8 +23,9 @@ import { useLibrary } from '../store/libraryStore'
 
 // The §7 History view: persisted trends across all sessions — accuracy and
 // time-to-correct per day, most-improved/worst chords over every recorded
-// combo (not just the active preset), and the streak calendar. Reads the
-// persisted records once per mount; practice is paused while it's open.
+// combo (not just the active preset), the streak calendar, and the lifetime
+// best combo streak. Reads the persisted records once per mount; practice is
+// paused while it's open.
 
 const TREND_DAYS = 30
 const CALENDAR_WEEKS = 12
@@ -55,7 +56,7 @@ export function HistoryView({ onBack }: { onBack: () => void }) {
 
   const data = useMemo(() => {
     const library = voicingLibrary(customRules)
-    const { dailyRecords, comboStats } = appStorage.state
+    const { dailyRecords, comboStats, bestComboStreak } = appStorage.state
     const todayKey = localDateKey(new Date())
     const trendKeys = lastDateKeys(todayKey, TREND_DAYS)
 
@@ -97,6 +98,7 @@ export function HistoryView({ onBack }: { onBack: () => void }) {
       dailyRecords,
       streak: computeStreak(dailyRecords, goalMinutes, todayKey),
       bestStreak: computeBestStreak(dailyRecords, goalMinutes),
+      bestComboStreak,
       daysPracticed: allRecords.filter(
         (r) => r.prompts > 0 || r.activeMinutes > 0,
       ).length,
@@ -144,6 +146,10 @@ export function HistoryView({ onBack }: { onBack: () => void }) {
           <section className="flex flex-wrap gap-8">
             <HistoryStat label="Current streak" value={`🔥 ${data.streak}`} />
             <HistoryStat label="Best streak" value={String(data.bestStreak)} />
+            <HistoryStat
+              label="Best combo"
+              value={String(data.bestComboStreak)}
+            />
             <HistoryStat
               label="Days practiced"
               value={String(data.daysPracticed)}

@@ -15,7 +15,11 @@ import {
   type Preset,
   type Prompt,
 } from '../practice'
-import { InMemoryDailyActivity, InMemoryPresetProgress } from '../storage'
+import {
+  InMemoryBestCombo,
+  InMemoryDailyActivity,
+  InMemoryPresetProgress,
+} from '../storage'
 import {
   createPracticeStore,
   JUST_UNLOCKED_FLASH_MS,
@@ -62,6 +66,7 @@ function setup(deps: Parameters<typeof createPracticeStore>[0] = {}) {
     stats: new InMemoryComboStats(), // never the shared appStorage singleton
     activity: new InMemoryDailyActivity(),
     progress: new InMemoryPresetProgress(),
+    bestCombo: new InMemoryBestCombo(),
     ...deps,
   })
   let held = new Set<number>()
@@ -680,6 +685,28 @@ describe('practiceStore — session stats & worst chords (§7)', () => {
       firstTrySuccesses: 1,
       totalTimeToCorrectMs: 3000,
     })
+  })
+
+  it('tracks consecutive first-try correct prompts, reset by a miss', () => {
+    const bestCombo = new InMemoryBestCombo()
+    const s = setup({ presets: onePreset, bestCombo })
+
+    playCorrectAndAdvance(s, s.store.getState().prompt!) // first-try
+    expect(s.store.getState().comboStreak).toBe(1)
+
+    playCorrectAndAdvance(s, s.store.getState().prompt!) // first-try
+    expect(s.store.getState().comboStreak).toBe(2)
+
+    const prompt = s.store.getState().prompt!
+    s.press(61, 62, 63) // miss…
+    s.releaseAll()
+    playCorrectAndAdvance(s, prompt) // …then correct: breaks the streak
+    expect(s.store.getState().comboStreak).toBe(0)
+    expect(bestCombo.best()).toBe(2) // the lifetime high mark stays
+
+    playCorrectAndAdvance(s, s.store.getState().prompt!) // first-try again
+    expect(s.store.getState().comboStreak).toBe(1)
+    expect(bestCombo.best()).toBe(2)
   })
 
   it('skips leave the session tallies untouched', () => {

@@ -168,3 +168,37 @@ export class InMemoryDailyActivity implements DailyActivitySource {
     return this.byDate
   }
 }
+
+// The lifetime §7 combo-streak high score (History tab): a single persisted
+// number, raised whenever a session's live streak beats it. Unlike the
+// per-combo/daily records, it has no history of its own to derive a "best"
+// from — the running max has to be kept.
+export interface BestComboSource {
+  record(streak: number): void
+}
+
+export class PersistedBestCombo implements BestComboSource {
+  private readonly storage: AppStorage
+
+  constructor(storage: AppStorage) {
+    this.storage = storage
+  }
+
+  record(streak: number): void {
+    if (streak <= this.storage.state.bestComboStreak) return
+    this.storage.update((state) => ({ ...state, bestComboStreak: streak }))
+  }
+}
+
+// Test double for stores that shouldn't touch the appStorage singleton.
+export class InMemoryBestCombo implements BestComboSource {
+  private value = 0
+
+  record(streak: number): void {
+    this.value = Math.max(this.value, streak)
+  }
+
+  best(): number {
+    return this.value
+  }
+}

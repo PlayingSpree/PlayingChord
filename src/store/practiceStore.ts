@@ -54,9 +54,11 @@ import {
   appStorage,
   computeStreak,
   localDateKey,
+  PersistedBestCombo,
   PersistedComboStats,
   PersistedDailyActivity,
   PersistedPresetProgress,
+  type BestComboSource,
   type DailyActivitySource,
   type PresetProgressSource,
 } from '../storage'
@@ -192,6 +194,10 @@ export interface PracticeStoreState {
   timerEndsAt: number | null // epoch ms, for the countdown display
   summary: SessionSummary | null
   session: SessionStats
+  // Consecutive first-try correct prompts (§7 combo text); resets on any
+  // miss and whenever the session itself resets. Skips leave it untouched,
+  // same as the session tallies.
+  comboStreak: number
   // Worst combos of the current preset from the *persisted* records, so the
   // list survives reloads (Milestone B) unlike the session tallies.
   worstChords: readonly WorstChordEntry[]
@@ -237,6 +243,7 @@ export interface PracticeStoreDeps {
   stats?: ComboStatsSource
   activity?: DailyActivitySource
   progress?: PresetProgressSource
+  bestCombo?: BestComboSource
   memory?: PresetMemory
   rng?: Rng
   now?: () => number
@@ -249,6 +256,7 @@ export function createPracticeStore({
   stats = new PersistedComboStats(appStorage),
   activity = new PersistedDailyActivity(appStorage),
   progress: progressStore = new PersistedPresetProgress(appStorage),
+  bestCombo = new PersistedBestCombo(appStorage),
   memory = persistedPresetMemory,
   rng = Math.random,
   now = Date.now,
@@ -495,15 +503,21 @@ export function createPracticeStore({
         outcome,
         timeToCorrectMs,
       })
-      set((state) => ({
-        session: {
-          prompts: state.session.prompts + 1,
-          firstTrySuccesses:
-            state.session.firstTrySuccesses + (outcome === 'first-try' ? 1 : 0),
-          totalTimeToCorrectMs:
-            state.session.totalTimeToCorrectMs + timeToCorrectMs,
-        },
-      }))
+      set((state) => {
+        const comboStreak = outcome === 'first-try' ? state.comboStreak + 1 : 0
+        return {
+          session: {
+            prompts: state.session.prompts + 1,
+            firstTrySuccesses:
+              state.session.firstTrySuccesses +
+              (outcome === 'first-try' ? 1 : 0),
+            totalTimeToCorrectMs:
+              state.session.totalTimeToCorrectMs + timeToCorrectMs,
+          },
+          comboStreak,
+        }
+      })
+      bestCombo.record(get().comboStreak)
     }
 
     const machine = new AttemptLifecycle({
@@ -621,7 +635,7 @@ export function createPracticeStore({
 
     const resetSession = () => {
       sessionEvents = []
-      set({ session: FRESH_SESSION })
+      set({ session: FRESH_SESSION, comboStreak: 0 })
     }
 
     const clearTimer = () => {
@@ -695,6 +709,7 @@ export function createPracticeStore({
       timerEndsAt: null,
       summary: null,
       session: FRESH_SESSION,
+      comboStreak: 0,
       worstChords: [],
       upcoming: [],
       goal: currentGoal(),
