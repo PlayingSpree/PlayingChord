@@ -13,6 +13,7 @@ import {
   fillQueue,
   filterUnlockedCombos,
   initialProgress,
+  notMasteredChordKeys,
   poolChordKey,
   rankWorstCombos,
   RECENT_WINDOW,
@@ -146,6 +147,7 @@ export interface GoalProgress {
 // The active preset's §5 unlock progress, mirrored for the top-bar chip.
 export interface UnlockProgress {
   unlocked: number
+  mastered: number
   total: number
 }
 
@@ -183,6 +185,9 @@ export interface PracticeStoreState {
   // Practice-mode settings (§7): they live beside the mode picker, not in
   // the settings panel, and reset with the app load.
   worstOnly: boolean
+  // Learn-mode setting (§5.1/§7), same lifecycle as worstOnly: narrows
+  // generation to unlocked chords not yet mastered.
+  notMasteredOnly: boolean
   timerMinutes: number | null // running timer's duration; null = off
   timerEndsAt: number | null // epoch ms, for the countdown display
   summary: SessionSummary | null
@@ -207,6 +212,7 @@ export interface PracticeStoreState {
   setDiatonicKey(key: PitchClass): void
   setMode(mode: SessionMode): void
   setWorstOnly(on: boolean): void
+  setNotMasteredOnly(on: boolean): void
   startTimer(minutes: number): void
   cancelTimer(): void
   dismissSummary(): void
@@ -337,6 +343,7 @@ export function createPracticeStore({
 
     const progressSnapshot = (): UnlockProgress => ({
       unlocked: progressRecord.unlockedCount,
+      mastered: progressRecord.masteredIndices.length,
       total: chordOrder.length,
     })
 
@@ -414,15 +421,24 @@ export function createPracticeStore({
 
     // Learn/Practice generate only from unlocked chords (§5); Song bypasses
     // this entirely (it draws from the preset's raw pool). "Worst chords
-    // only" (§5/§7) then narrows generation within the unlocked set; an
-    // empty ranking (nothing missed yet — possible right after a preset
-    // switch) falls back to the whole unlocked pool.
+    // only" (Practice, §5/§7) and "not mastered only" (Learn, §5.1/§7) then
+    // each narrow generation within the unlocked set; an empty result
+    // (nothing missed yet, or everything unlocked is already mastered —
+    // both possible right after a preset switch) falls back to the whole
+    // unlocked pool.
     const pickPool = (): readonly Combo[] => {
       const state = get()
       const available = filterUnlockedCombos(expansion.combos, unlocked)
       if (state.mode === 'practice' && state.worstOnly) {
         const worst = rankWorstCombos(available, stats, available.length)
         if (worst.length > 0) return worst.map((w) => w.combo)
+      }
+      if (state.mode === 'learn' && state.notMasteredOnly) {
+        const notMastered = notMasteredChordKeys(chordOrder, progressRecord)
+        const filtered = available.filter((combo) =>
+          notMastered.has(poolChordKey(combo)),
+        )
+        if (filtered.length > 0) return filtered
       }
       return available
     }
@@ -674,6 +690,7 @@ export function createPracticeStore({
       songChords: [],
       songSummary: null,
       worstOnly: false,
+      notMasteredOnly: false,
       timerMinutes: null,
       timerEndsAt: null,
       summary: null,
@@ -740,7 +757,7 @@ export function createPracticeStore({
         // Learn reveal can't be answered for Practice credit.
         recordOutcome()
         clearTimer() // Learn/Song are untimed (§7); leaving ends a timer
-        queue = [] // the pool can change (worstOnly only applies in practice)
+        queue = [] // the pool can change (worstOnly/notMasteredOnly are per-mode)
         if (mode === 'song') {
           machine.stop() // clears phase/hint/reactionMs via onState
           set({ mode, upcoming: [] })
@@ -758,6 +775,15 @@ export function createPracticeStore({
         recordOutcome()
         queue = []
         set({ worstOnly: on })
+        nextPrompt()
+      },
+
+      setNotMasteredOnly(on: boolean) {
+        if (on === get().notMasteredOnly) return
+        if (get().mode === 'song') return // not rendered in Song; stay safe
+        recordOutcome()
+        queue = []
+        set({ notMasteredOnly: on })
         nextPrompt()
       },
 

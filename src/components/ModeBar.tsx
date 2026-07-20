@@ -11,9 +11,9 @@ import {
 } from '../practice'
 
 // Top-bar session-mode picker (§7) with the mode-specific settings beside
-// it: Practice gets the session timer and the worst-chords-only toggle;
-// Song (§6.5) gets tempo, progression length and the show-example toggle.
-// Learn has neither (untimed, always the whole pool).
+// it: Learn gets the not-mastered-only toggle; Practice gets the session
+// timer and the worst-chords-only toggle; Song (§6.5) gets tempo,
+// progression length and the show-example toggle.
 export function ModeBar() {
   const mode = usePractice((s) => s.mode)
   const setMode = usePractice((s) => s.setMode)
@@ -35,6 +35,7 @@ export function ModeBar() {
           Song
         </ModeButton>
       </div>
+      {mode === 'learn' && <NotMasteredOnlyToggle />}
       {mode === 'practice' && (
         <>
           <TimerControl />
@@ -204,6 +205,36 @@ function TimerControl() {
         </>
       )}
     </div>
+  )
+}
+
+// The §5.1/§7 Learn-mode setting: narrows generation to unlocked chords not
+// yet mastered. Disabled once every unlocked chord is mastered — nothing
+// left to narrow to (mirrors WorstOnlyToggle's empty-list disable below).
+function NotMasteredOnlyToggle() {
+  const notMasteredOnly = usePractice((s) => s.notMasteredOnly)
+  const setNotMasteredOnly = usePractice((s) => s.setNotMasteredOnly)
+  const progress = usePractice((s) => s.progress)
+  const disabled = progress.unlocked === progress.mastered && !notMasteredOnly
+
+  return (
+    <label
+      className={`flex items-center gap-1.5 text-sm ${
+        disabled
+          ? 'cursor-not-allowed text-slate-600'
+          : 'cursor-pointer text-slate-300'
+      }`}
+      title={disabled ? 'No unmastered chords in this preset yet' : undefined}
+    >
+      <input
+        type="checkbox"
+        checked={notMasteredOnly}
+        disabled={disabled}
+        onChange={(e) => setNotMasteredOnly(e.target.checked)}
+        className="h-4 w-4 accent-amber-500"
+      />
+      Not mastered only
+    </label>
   )
 }
 

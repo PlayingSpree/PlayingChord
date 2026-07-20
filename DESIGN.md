@@ -9,7 +9,10 @@ starts with only its first 3 chords in play, and a fast first-try success on eve
 unlocked chord opens 2 more, until the whole pool is available (§5). Learn/Practice
 generate only from unlocked chords; Song mode stays full-pool. A same-day revision
 added an optional **circle-of-fifths unlock order** for root-ordered pools and an
-unlock **toast** naming the newly opened chords (§5.1, §7). Draft v7 made Song mode
+unlock **toast** naming the newly opened chords (§5.1, §7). A 2026-07-20 revision
+added a Learn-mode **"Not mastered only"** setting, mirroring Practice's worst-chords
+toggle, that narrows generation to unlocked-but-not-yet-mastered chords (§5.1, §7).
+Draft v7 made Song mode
 draw its progression from the **active preset's
 chord pool** instead of a separate key selection (2026-07-18), so all three modes share
 one preset picker; a diatonic preset keeps the starts-on-I / no-vii° / Roman-numeral
@@ -359,9 +362,15 @@ flashcard-style batches instead of the whole pool at once:
   the whole pool is open — after which generation behaves exactly as above. The
   upcoming-preview queue is rebuilt at the moment of an unlock (the pool changed,
   like any other pool change), so new chords can appear in the very next preview.
-- **Scope:** the gate applies to Learn and Practice generation (worst-chords-only
-  then narrows *within* the unlocked set). **Song mode is deliberately not gated** —
-  it draws from the preset's full pool (§6.5); revisit if that proves confusing.
+- **Scope:** the gate applies to Learn and Practice generation (worst-chords-only,
+  Practice-only, and not-mastered-only, Learn-only, then each narrow *within* the
+  unlocked set — see the §7 settings). **Song mode is deliberately not gated** — it
+  draws from the preset's full pool (§6.5); revisit if that proves confusing.
+- **"Not mastered only"** (a Learn-mode setting, §7, off by default, session-only like
+  its Practice counterpart): narrows generation to unlocked chords not yet mastered.
+  If every unlocked chord is already mastered, generation falls back to the whole
+  unlocked pool rather than starving (mirrors "Worst chords only"'s empty-ranking
+  fallback).
 - **Persistence:** one record per preset id — the unlocked count plus the mastered
   chords as *indices into the unlock order*, not chord identities, so the diatonic
   preset's progress means "scale degree N" and survives a key change. A custom
@@ -540,7 +549,10 @@ keys, and the stricter down-by-beat-1 judging variant.
     the on-screen keyboard, and drawn on the grand staff when the staff setting is on
     (§3.4) — for the user to copy (any voicing satisfying the rule still counts).
     Untimed. Attempts are excluded from stats and weighting (§5); active minutes still
-    count toward the daily goal.
+    count toward the daily goal. Learn-mode setting (shown with the picker when Learn
+    is active):
+    - **Not mastered only**: narrows generation to the selected preset's unlocked
+      chords not yet mastered (§5.1).
   - **Practice** (default): the voicing is hidden from the keyboard — recall from the
     name, keyboard hints escalate per §6.4 — but the grand staff (if its setting is on)
     is visible from the first prompt, independent of misses. Endless unless the timer is

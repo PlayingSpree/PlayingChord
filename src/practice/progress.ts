@@ -103,6 +103,21 @@ export function unlockedChordKeys(
   return new Set(chordOrder.slice(0, record.unlockedCount))
 }
 
+// The unlocked chords that are *not yet* mastered, as poolChordKeys — for
+// Learn mode's "not mastered only" setting (§5.1/§7), which narrows
+// generation to chords still being learned within the unlocked set.
+export function notMasteredChordKeys(
+  chordOrder: readonly string[],
+  record: PresetProgressRecord,
+): ReadonlySet<string> {
+  const mastered = new Set(record.masteredIndices)
+  return new Set(
+    chordOrder
+      .slice(0, record.unlockedCount)
+      .filter((_, index) => !mastered.has(index)),
+  )
+}
+
 export function isFullyUnlocked(
   chordOrder: readonly string[],
   record: PresetProgressRecord,

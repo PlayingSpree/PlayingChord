@@ -8,6 +8,7 @@ import {
   INITIAL_UNLOCK_COUNT,
   initialProgress,
   isFullyUnlocked,
+  notMasteredChordKeys,
   poolChordKey,
   recordChordAttempt,
   reconcileProgress,
@@ -148,6 +149,36 @@ describe('unlockedChordKeys / filterUnlockedCombos (§5 gating)', () => {
     const order = orderOf(3)
     expect(isFullyUnlocked(order, initialProgress(3))).toBe(true)
     expect(isFullyUnlocked(orderOf(4), initialProgress(4))).toBe(false)
+  })
+})
+
+describe('notMasteredChordKeys (§5.1 Learn-mode gating)', () => {
+  it('excludes mastered chords from the unlocked set', () => {
+    const order = orderOf(6)
+    const record = masteredExcept(
+      { unlockedCount: 6, masteredIndices: [] },
+      1,
+      4,
+    )
+    expect([...notMasteredChordKeys(order, record)]).toEqual(['1:maj', '4:maj'])
+  })
+
+  it('excludes locked chords too, like unlockedChordKeys', () => {
+    const order = orderOf(6)
+    const record: PresetProgressRecord = {
+      unlockedCount: 3,
+      masteredIndices: [0],
+    }
+    expect([...notMasteredChordKeys(order, record)]).toEqual(['1:maj', '2:maj'])
+  })
+
+  it('is empty once every unlocked chord is mastered', () => {
+    const order = orderOf(3)
+    const record: PresetProgressRecord = {
+      unlockedCount: 3,
+      masteredIndices: [0, 1, 2],
+    }
+    expect(notMasteredChordKeys(order, record).size).toBe(0)
   })
 })
 
