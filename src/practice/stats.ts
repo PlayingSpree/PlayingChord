@@ -4,6 +4,7 @@
 // storage/ behind the same interface. Skips are never recorded (§6.2 step 4).
 
 import { comboKey, parseComboKey, type Combo } from './combos'
+import { FAST_TIME_MS } from './progress'
 import type { VoicingLibrary } from '../theory'
 
 export type PromptOutcome = 'first-try' | 'missed'
@@ -37,6 +38,11 @@ export interface ComboStatRecord {
 export interface ComboRecentHistory {
   misses: number
   total: number // outcomes in the window (≤ RECENT_OUTCOME_WINDOW)
+  // Recent time-to-correct average feeding comboScore below — its own
+  // window (RECENT_TIME_WINDOW), the same split comboMetrics uses since
+  // more time samples are kept per combo than outcomes. Null when every
+  // sample is a Song-mode bar, or there's no time history yet.
+  avgTimeToCorrectMs: number | null
 }
 
 export interface RecentStatsSource {
@@ -94,7 +100,47 @@ export function recentHistoryOf(
   return {
     misses: record.recentOutcomes.filter((o) => o === 'missed').length,
     total: record.recentOutcomes.length,
+    avgTimeToCorrectMs: average(
+      record.timeToCorrectMs.slice(-RECENT_TIME_WINDOW),
+    ),
   }
+}
+
+// The proficiency score behind both §5 prioritization and the §7 chord
+// stats grade: recent accuracy scaled down by how far the recent average
+// time-to-correct sits above the mastery speed bar (FAST_TIME_MS, §5.1) —
+// full credit at or under it, decaying smoothly past it. Multiplicative,
+// not averaged, so being fast can't offset being wrong or vice versa — the
+// same AND logic the mastery gate itself uses. No time data (Song-mode-only
+// combos, or no history at all) gets full speed credit — never penalize for
+// data that isn't there.
+function scoreOf(accuracy: number, avgTimeToCorrectMs: number | null): number {
+  const speedFactor =
+    avgTimeToCorrectMs === null
+      ? 1
+      : Math.min(1, FAST_TIME_MS / avgTimeToCorrectMs)
+  return accuracy * speedFactor
+}
+
+// A combo with no recent history scores at the uniform baseline (1), same
+// as comboWeight's old no-history case — a fresh combo is neither penalized
+// nor favored.
+export function comboScore(history: ComboRecentHistory | null): number {
+  if (history === null || history.total === 0) return 1
+  return scoreOf(1 - history.misses / history.total, history.avgTimeToCorrectMs)
+}
+
+export type ComboGrade = 'A' | 'B' | 'C' | 'D' | 'F'
+
+// Letter tiers over comboScore for the §7 chord stats page — a compact,
+// sortable read on "how's this combo doing" that folds accuracy and speed
+// into one glance.
+export function comboGrade(score: number): ComboGrade {
+  if (score >= 0.9) return 'A'
+  if (score >= 0.75) return 'B'
+  if (score >= 0.55) return 'C'
+  if (score >= 0.35) return 'D'
+  return 'F'
 }
 
 // A per-combo metrics snapshot for the §7 chord stats page — every persisted
@@ -112,6 +158,10 @@ export interface ComboMetrics {
   // time-to-correct span.
   lifetimeAvgTimeToCorrectMs: number | null
   recentAvgTimeToCorrectMs: number | null
+  // comboScore(recentAccuracy, recentAvgTimeToCorrectMs) and its letter
+  // tier — the same figure that drives §5 weighting.
+  score: number
+  grade: ComboGrade
 }
 
 function average(samples: readonly number[]): number | null {
@@ -122,14 +172,19 @@ function average(samples: readonly number[]): number | null {
 
 export function comboMetrics(record: ComboStatRecord): ComboMetrics {
   const recent = recentHistoryOf(record)
+  const recentAccuracy = recent === null ? 1 : 1 - recent.misses / recent.total
+  const recentAvgTimeToCorrectMs = average(
+    record.timeToCorrectMs.slice(-RECENT_TIME_WINDOW),
+  )
+  const score = scoreOf(recentAccuracy, recentAvgTimeToCorrectMs)
   return {
     attempts: record.attempts,
     lifetimeAccuracy: record.firstTrySuccesses / record.attempts,
-    recentAccuracy: recent === null ? 1 : 1 - recent.misses / recent.total,
+    recentAccuracy,
     lifetimeAvgTimeToCorrectMs: average(record.timeToCorrectMs),
-    recentAvgTimeToCorrectMs: average(
-      record.timeToCorrectMs.slice(-RECENT_TIME_WINDOW),
-    ),
+    recentAvgTimeToCorrectMs,
+    score,
+    grade: comboGrade(score),
   }
 }
 
@@ -185,10 +240,12 @@ export interface WorstCombo {
 
 // The §7 "worst chords" of a pool, from persisted records so the list
 // survives reloads (Milestone B) — unlike the rest of the stats bar, which
-// is session-scoped. Ranked by recent-miss rate (the same window that drives
-// weighting), then lifetime first-try miss rate, then attempts (more
-// evidence ranks worse), then key for determinism. Combos never practiced or
-// never missed don't qualify — "worst" implies a miss somewhere.
+// is session-scoped. Ranked by chord score (accuracy scaled by speed, same
+// figure as §5 weighting), then recent-miss rate, then lifetime first-try
+// miss rate, then attempts (more evidence ranks worse), then key for
+// determinism. Combos never practiced or never missed don't qualify —
+// "worst" implies a miss somewhere, so a combo that's merely slow (but
+// always correct) still doesn't show up here even though it scores below 1.
 // A pool for the §7 "worst chords only" Practice setting: every combo in
 // the preset that qualifies as "worst" (missed somewhere), in worst-first
 // order — the display list is the limit-3 head of the same ranking.
@@ -204,10 +261,12 @@ export function rankWorstCombos(
     const recentMissRate = recent === null ? 0 : recent.misses / recent.total
     const lifetimeMissRate = 1 - record.firstTrySuccesses / record.attempts
     if (recentMissRate === 0 && lifetimeMissRate === 0) return []
-    return [{ combo, record, recentMissRate, lifetimeMissRate }]
+    const score = comboScore(recent)
+    return [{ combo, record, score, recentMissRate, lifetimeMissRate }]
   })
   scored.sort(
     (a, b) =>
+      a.score - b.score ||
       b.recentMissRate - a.recentMissRate ||
       b.lifetimeMissRate - a.lifetimeMissRate ||
       b.record.attempts - a.record.attempts ||

@@ -1,5 +1,6 @@
 import { comboKey, type Combo } from './combos'
 import {
+  comboScore,
   NO_HISTORY,
   type ComboRecentHistory,
   type RecentStatsSource,
@@ -17,10 +18,12 @@ export const MISS_WEIGHT_BOOST = 3
 export type Rng = () => number // [0, 1), Math.random-compatible
 
 // Baseline 1 for no history keeps a fresh preset uniform-random (§5); a
-// clean recent record also stays at baseline — success never down-weights.
+// clean, on-time recent record also stays at baseline — success never
+// down-weights. Driven by comboScore (recent accuracy scaled by recent
+// speed, §5) rather than raw miss rate, so a combo that's accurate but
+// consistently slow also earns a bit of extra repetition.
 export function comboWeight(history: ComboRecentHistory | null): number {
-  if (history === null || history.total === 0) return 1
-  return 1 + MISS_WEIGHT_BOOST * (history.misses / history.total)
+  return 1 + MISS_WEIGHT_BOOST * (1 - comboScore(history))
 }
 
 // Miss-weighted random pick with no immediate repeat. `recentKeys` is the

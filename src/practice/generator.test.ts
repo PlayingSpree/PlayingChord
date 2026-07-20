@@ -123,12 +123,50 @@ describe('comboWeight (§5)', () => {
   })
 
   it('a clean recent record stays at baseline — success never down-weights', () => {
-    expect(comboWeight({ misses: 0, total: 5 })).toBe(1)
+    expect(comboWeight({ misses: 0, total: 5, avgTimeToCorrectMs: null })).toBe(
+      1,
+    )
   })
 
   it('scales linearly with the recent-miss rate', () => {
-    expect(comboWeight({ misses: 5, total: 5 })).toBe(1 + MISS_WEIGHT_BOOST)
-    expect(comboWeight({ misses: 1, total: 2 })).toBe(1 + MISS_WEIGHT_BOOST / 2)
+    expect(comboWeight({ misses: 5, total: 5, avgTimeToCorrectMs: null })).toBe(
+      1 + MISS_WEIGHT_BOOST,
+    )
+    expect(comboWeight({ misses: 1, total: 2, avgTimeToCorrectMs: null })).toBe(
+      1 + MISS_WEIGHT_BOOST / 2,
+    )
+  })
+
+  it('also scales with recent average time-to-correct, independent of accuracy', () => {
+    const atThreshold = comboWeight({
+      misses: 0,
+      total: 5,
+      avgTimeToCorrectMs: 1000, // at/under the mastery bar — full credit
+    })
+    const slow = comboWeight({
+      misses: 0,
+      total: 5,
+      avgTimeToCorrectMs: 6000,
+    })
+    expect(atThreshold).toBe(1)
+    expect(slow).toBeGreaterThan(1)
+  })
+
+  it('a combo missed and slow weighs more than either alone', () => {
+    const missedOnly = comboWeight({
+      misses: 5,
+      total: 5,
+      avgTimeToCorrectMs: 1000,
+    })
+    const missedAndSlow = comboWeight({
+      misses: 5,
+      total: 5,
+      avgTimeToCorrectMs: 6000,
+    })
+    // Accuracy is already 0, so speed can't push the weight past the boost
+    // cap — both land at the same maximum.
+    expect(missedAndSlow).toBe(missedOnly)
+    expect(missedOnly).toBe(1 + MISS_WEIGHT_BOOST)
   })
 })
 
@@ -149,7 +187,9 @@ describe('pickWeightedCombo (§5)', () => {
     const missed = pool[0]!
     // missed at 100% recent miss rate → weight 4; the other three → 1 each,
     // so the expected share is 4/7 ≈ 0.571.
-    const stats = statsOf({ [comboKey(missed)]: { misses: 5, total: 5 } })
+    const stats = statsOf({
+      [comboKey(missed)]: { misses: 5, total: 5, avgTimeToCorrectMs: null },
+    })
     const rng = seededRng(7)
     let hits = 0
     const draws = 5000
@@ -166,7 +206,9 @@ describe('pickWeightedCombo (§5)', () => {
   it('still never repeats within the recent window, even when the missed combo is excluded', () => {
     const pool = poolOf(5)
     const missed = pool[0]!
-    const stats = statsOf({ [comboKey(missed)]: { misses: 5, total: 5 } })
+    const stats = statsOf({
+      [comboKey(missed)]: { misses: 5, total: 5, avgTimeToCorrectMs: null },
+    })
     const recent: string[] = []
     const rng = seededRng(3)
     for (let i = 0; i < 300; i++) {
@@ -178,7 +220,9 @@ describe('pickWeightedCombo (§5)', () => {
 
   it('rng of ~1 stays in range under weights', () => {
     const pool = poolOf(4)
-    const stats = statsOf({ [comboKey(pool[0]!)]: { misses: 5, total: 5 } })
+    const stats = statsOf({
+      [comboKey(pool[0]!)]: { misses: 5, total: 5, avgTimeToCorrectMs: null },
+    })
     expect(pool).toContainEqual(
       pickWeightedCombo(pool, [], stats, () => 0.9999999),
     )
@@ -227,7 +271,9 @@ describe('fillQueue (§5 upcoming preview)', () => {
 
   it('the first pick from an empty queue matches pickWeightedCombo with the same rng', () => {
     const pool = poolOf(12)
-    const stats = statsOf({ [comboKey(pool[0]!)]: { misses: 5, total: 5 } })
+    const stats = statsOf({
+      [comboKey(pool[0]!)]: { misses: 5, total: 5, avgTimeToCorrectMs: null },
+    })
     const rngA = seededRng(11)
     const rngB = seededRng(11)
     const [head] = fillQueue([], 1, pool, [], stats, rngA)

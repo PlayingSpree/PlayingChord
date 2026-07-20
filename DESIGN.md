@@ -313,10 +313,18 @@ or machines.
 - A preset's pool expands to **combos** of (chord × voicingId). Stats are keyed per combo
   — `(root, typeId, voicingId)` — so missing "C maj7, 2nd inversion" doesn't up-weight
   root-position C maj7 (§8).
-- **Weighted pick**: combos with a higher recent-miss rate are more likely to be
-  selected. Combos with no history get a uniform baseline weight, so a fresh preset
-  behaves as uniform-random; a new preset containing already-practiced combos inherits
-  their history.
+- **Chord score**: a combo's recent accuracy scaled down by how far its recent average
+  time-to-correct sits above the mastery speed bar (§5.1's 2000 ms) — full credit at or
+  under it, decaying smoothly past it, multiplicatively (being fast can't offset being
+  wrong, or vice versa — the same AND logic the mastery gate itself uses). Combos with
+  no time samples (Song-mode-only, or no history) get full speed credit. A combo with no
+  recent history scores at the uniform baseline (1). Drives both weighted pick below and
+  the §7 chord stats grade.
+- **Weighted pick**: combos with a lower chord score are more likely to be selected —
+  so both a higher recent-miss rate and a slower recent average time-to-correct pull a
+  combo toward the front. Combos with no history get a uniform baseline weight, so a
+  fresh preset behaves as uniform-random; a new preset containing already-practiced
+  combos inherits their history.
 - **No immediate repeat**: the last `min(3, poolSize − 1)` combos are excluded, so small
   custom pools (≤ 3 combos) still generate.
 - **Upcoming preview**: generation keeps a queue of the next 4 combos, dealt in
@@ -621,11 +629,12 @@ keys, and the stricter down-by-beat-1 judging variant.
   goal history, and the lifetime **best combo streak** (the longest run of consecutive
   first-try prompts ever reached, across all sessions). Reachable independently of the
   practice screen. A **chord stats** drill-down (its own screen, linked from History)
-  lists every practiced combo — not just the top-3 worst/most-improved — with attempts,
-  lifetime and recent accuracy, and lifetime and recent avg time-to-correct, sortable by
-  any column. *Recent* windows differently per metric: accuracy uses the same window
-  that drives weighting (§5, the most outcomes ever kept per combo); avg time uses its
-  own wider window, since more time samples are kept per combo than outcomes.
+  lists every practiced combo — not just the top-3 worst/most-improved — with a letter
+  **grade** (A–F, from the combo's chord score, §5), attempts, lifetime and recent
+  accuracy, and lifetime and recent avg time-to-correct, sortable by any column. *Recent*
+  windows differently per metric: accuracy uses the same window that drives weighting
+  (§5, the most outcomes ever kept per combo); avg time uses its own wider window, since
+  more time samples are kept per combo than outcomes.
 - **Voicing builder** (settings): dedicated form UI to compose a custom `VoicingRule`
   from bass/span/doubling primitives, save it to the shared library, and use it in any
   preset.

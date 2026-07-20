@@ -389,6 +389,7 @@ describe('practiceStore — outcome recording (§5/§7)', () => {
     expect(stats.recentHistory(promptComboKey(prompt))).toEqual({
       misses: 0,
       total: 1,
+      avgTimeToCorrectMs: 0,
     })
   })
 
@@ -405,6 +406,7 @@ describe('practiceStore — outcome recording (§5/§7)', () => {
     expect(stats.recentHistory(promptComboKey(prompt))).toEqual({
       misses: 1,
       total: 1,
+      avgTimeToCorrectMs: 0,
     })
   })
 
@@ -822,6 +824,7 @@ describe('practiceStore — preset selection (§4)', () => {
     expect(stats.recentHistory(promptComboKey(prompt))).toEqual({
       misses: 0,
       total: 1,
+      avgTimeToCorrectMs: 0,
     })
     // The dead advance timer must not fire a second advance later.
     const next = s.store.getState().prompt

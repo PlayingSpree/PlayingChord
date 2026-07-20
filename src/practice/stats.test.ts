@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { comboKey, type Combo } from './combos'
+import { FAST_TIME_MS } from './progress'
 import {
   allComboRows,
   applyOutcome,
+  comboGrade,
   comboMetrics,
+  comboScore,
   IMPROVED_MIN_ATTEMPTS,
   InMemoryComboStats,
   NO_HISTORY,
@@ -84,8 +87,16 @@ describe('recentHistoryOf / InMemoryComboStats (§5 weighting view)', () => {
     stats.record('a', 'missed', 3000)
     stats.record('a', 'first-try', 1000)
     stats.record('b', 'first-try', 900)
-    expect(stats.recentHistory('a')).toEqual({ misses: 1, total: 2 })
-    expect(stats.recentHistory('b')).toEqual({ misses: 0, total: 1 })
+    expect(stats.recentHistory('a')).toEqual({
+      misses: 1,
+      total: 2,
+      avgTimeToCorrectMs: 2000,
+    })
+    expect(stats.recentHistory('b')).toEqual({
+      misses: 0,
+      total: 1,
+      avgTimeToCorrectMs: 900,
+    })
   })
 
   it('only the most recent window of outcomes counts', () => {
@@ -96,6 +107,7 @@ describe('recentHistoryOf / InMemoryComboStats (§5 weighting view)', () => {
     expect(stats.recentHistory('a')).toEqual({
       misses: RECENT_OUTCOME_WINDOW,
       total: RECENT_OUTCOME_WINDOW,
+      avgTimeToCorrectMs: 1000,
     })
 
     // Successes push the old misses out one by one.
@@ -105,11 +117,63 @@ describe('recentHistoryOf / InMemoryComboStats (§5 weighting view)', () => {
     expect(stats.recentHistory('a')).toEqual({
       misses: 0,
       total: RECENT_OUTCOME_WINDOW,
+      avgTimeToCorrectMs: 1000,
     })
   })
 
   it('NO_HISTORY reports null for everything', () => {
     expect(NO_HISTORY.recentHistory('anything')).toBeNull()
+  })
+})
+
+describe('comboScore / comboGrade (§5 prioritization, §7 chord stats grade)', () => {
+  it('no history, or an empty window, scores at the uniform baseline', () => {
+    expect(comboScore(null)).toBe(1)
+    expect(comboScore({ misses: 0, total: 0, avgTimeToCorrectMs: null })).toBe(
+      1,
+    )
+  })
+
+  it('is pure recent accuracy when there is no time data', () => {
+    expect(comboScore({ misses: 1, total: 4, avgTimeToCorrectMs: null })).toBe(
+      0.75,
+    )
+  })
+
+  it('gives full speed credit at or under the mastery bar', () => {
+    expect(
+      comboScore({ misses: 0, total: 5, avgTimeToCorrectMs: FAST_TIME_MS }),
+    ).toBe(1)
+    expect(
+      comboScore({
+        misses: 0,
+        total: 5,
+        avgTimeToCorrectMs: FAST_TIME_MS / 2,
+      }),
+    ).toBe(1) // faster than the bar caps at full credit, never a bonus
+  })
+
+  it('decays past the mastery bar, multiplicatively with accuracy', () => {
+    const score = comboScore({
+      misses: 1,
+      total: 4, // 75% accuracy
+      avgTimeToCorrectMs: FAST_TIME_MS * 2, // half credit on speed
+    })
+    expect(score).toBeCloseTo(0.75 * 0.5)
+  })
+
+  it('a miss floors the score at 0 regardless of speed', () => {
+    expect(comboScore({ misses: 5, total: 5, avgTimeToCorrectMs: 1 })).toBe(0)
+  })
+
+  it('grades bucket the score into letter tiers', () => {
+    expect(comboGrade(1)).toBe('A')
+    expect(comboGrade(0.9)).toBe('A')
+    expect(comboGrade(0.8)).toBe('B')
+    expect(comboGrade(0.6)).toBe('C')
+    expect(comboGrade(0.4)).toBe('D')
+    expect(comboGrade(0.1)).toBe('F')
+    expect(comboGrade(0)).toBe('F')
   })
 })
 
@@ -265,6 +329,19 @@ describe('comboMetrics (§7 chord stats page)', () => {
     expect(metrics.attempts).toBe(2)
     expect(metrics.lifetimeAvgTimeToCorrectMs).toBeNull()
     expect(metrics.recentAvgTimeToCorrectMs).toBeNull()
+    // No time data → pure accuracy score (1 of 2 recent outcomes missed).
+    expect(metrics.score).toBe(0.5)
+    expect(metrics.grade).toBe('D')
+  })
+
+  it('folds recent accuracy and recent speed into a score and grade', () => {
+    let record: ComboStatRecord | null = null
+    for (let i = 0; i < 4; i++) {
+      record = applyOutcome(record, 'first-try', FAST_TIME_MS)
+    }
+    const metrics = comboMetrics(record!)
+    expect(metrics.score).toBe(1)
+    expect(metrics.grade).toBe('A')
   })
 })
 

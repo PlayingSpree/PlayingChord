@@ -67,7 +67,11 @@ describe('PersistedComboStats', () => {
       recentOutcomes: ['missed', 'first-try'],
       timeToCorrectMs: [4200, 1300],
     })
-    expect(stats.recentHistory(KEY)).toEqual({ misses: 1, total: 2 })
+    expect(stats.recentHistory(KEY)).toEqual({
+      misses: 1,
+      total: 2,
+      avgTimeToCorrectMs: 2750,
+    })
     expect(storage.state.dailyRecords['2026-07-16']).toEqual({
       date: '2026-07-16',
       activeMinutes: 0,
@@ -119,7 +123,11 @@ describe('PersistedComboStats', () => {
     before.record(KEY, 'missed', 6000)
 
     const after = new PersistedComboStats(new AppStorage(kv))
-    expect(after.recentHistory(KEY)).toEqual({ misses: 2, total: 2 })
+    expect(after.recentHistory(KEY)).toEqual({
+      misses: 2,
+      total: 2,
+      avgTimeToCorrectMs: 5500,
+    })
     expect(comboWeight(after.recentHistory(KEY))).toBeGreaterThan(1)
     expect(rankWorstCombos([COMBO], after).map((w) => w.combo)).toEqual([COMBO])
   })

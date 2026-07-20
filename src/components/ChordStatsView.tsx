@@ -25,6 +25,7 @@ interface Row {
 }
 
 type ColumnId =
+  | 'grade'
   | 'attempts'
   | 'lifetimeAccuracy'
   | 'recentAccuracy'
@@ -47,6 +48,13 @@ const formatTime = (v: number | null) =>
 // "Worst/slowest/most-evidence first" is the default direction per column —
 // the same actionable-first stance as the History worst-chords list.
 const COLUMNS: ColumnDef[] = [
+  {
+    id: 'grade',
+    label: 'Grade',
+    defaultDir: 'asc',
+    value: (row) => row.metrics.score,
+    format: (row) => row.metrics.grade,
+  },
   {
     id: 'attempts',
     label: 'Attempts',
@@ -166,7 +174,8 @@ export function ChordStatsView({ onBack }: { onBack: () => void }) {
             Every combo practiced so far, lifetime across all presets. Recent
             accuracy is the last {RECENT_OUTCOME_WINDOW} attempts (the same
             window that drives weighting); recent avg time is the last{' '}
-            {RECENT_TIME_WINDOW}.
+            {RECENT_TIME_WINDOW}. Grade (A–F) folds recent accuracy and speed
+            into one figure, the same one that drives weighting.
           </p>
           <div className="overflow-x-auto rounded-lg border border-slate-800">
             <table className="w-full min-w-[640px] text-left text-sm">
