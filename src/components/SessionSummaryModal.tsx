@@ -32,6 +32,10 @@ export function SessionSummaryModal() {
     summary.prompts > 0
       ? `${(summary.totalTimeToCorrectMs / summary.prompts / 1000).toFixed(1)}s`
       : '—'
+  const bestTime =
+    summary.bestAvgTimeToCorrectMs !== null
+      ? `${(summary.bestAvgTimeToCorrectMs / 1000).toFixed(1)}s`
+      : '—'
 
   return (
     <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-950/80 px-4">
@@ -42,10 +46,11 @@ export function SessionSummaryModal() {
         className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-900 p-6 shadow-2xl"
       >
         <h2 className="text-xl font-bold">⏱ Time&#39;s up!</h2>
-        <div className="mt-4 flex gap-8">
+        <div className="mt-4 grid grid-cols-2 gap-4">
           <SummaryStat label="Prompts" value={String(summary.prompts)} />
           <SummaryStat label="First-try" value={accuracy} />
           <SummaryStat label="Avg time" value={avgTime} />
+          <SummaryStat label="Best time" value={bestTime} />
         </div>
         <div className="mt-5 grid grid-cols-2 gap-6 text-sm">
           <ChordList

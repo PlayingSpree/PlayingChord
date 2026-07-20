@@ -45,6 +45,9 @@ export interface SessionSummary {
   prompts: number
   firstTrySuccesses: number
   totalTimeToCorrectMs: number
+  // The fastest chord's per-chord average time-to-correct — not the single
+  // fastest raw sample, so one lucky rep on an easy chord can't win "best".
+  bestAvgTimeToCorrectMs: number | null
   slowest: SummaryChordEntry[]
   worst: SummaryChordEntry[]
 }
@@ -97,10 +100,16 @@ export function summarizeSession(
         a.key.localeCompare(b.key),
     )
 
+  const bestAvgTimeToCorrectMs =
+    entries.length > 0
+      ? Math.min(...entries.map((e) => e.avgTimeToCorrectMs))
+      : null
+
   return {
     prompts: events.length,
     firstTrySuccesses,
     totalTimeToCorrectMs,
+    bestAvgTimeToCorrectMs,
     slowest: slowest.slice(0, SUMMARY_CHORDS_LIMIT),
     worst: worst.slice(0, SUMMARY_CHORDS_LIMIT),
   }

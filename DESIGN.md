@@ -558,7 +558,10 @@ keys, and the stricter down-by-beat-1 judging variant.
     is visible from the first prompt, independent of misses. Endless unless the timer is
     set. Practice-mode settings (shown with the picker when Practice is active):
     - **Timer**: off (default) or 5 / 10 / 15 min / custom — countdown in the UI, then
-      an end-of-session summary (prompts played, accuracy, slowest/worst chords).
+      an end-of-session summary (prompts played, accuracy, average time-to-correct,
+      best chord average, slowest/worst chords). *Best* is the fastest chord's
+      per-chord average, not the single fastest raw sample, so one lucky rep can't
+      set it.
     - **Worst chords only**: drills the selected preset's worst combos (§5).
   - **Song**: a looped progression from the active preset against a metronome —
     clock-paced judging per §6.5. The preset picker (and, for the diatonic preset,

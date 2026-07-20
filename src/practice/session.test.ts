@@ -17,6 +17,7 @@ describe('summarizeSession (§7 end-of-session summary)', () => {
       prompts: 0,
       firstTrySuccesses: 0,
       totalTimeToCorrectMs: 0,
+      bestAvgTimeToCorrectMs: null,
       slowest: [],
       worst: [],
     })
@@ -59,6 +60,19 @@ describe('summarizeSession (§7 end-of-session summary)', () => {
       'missed-once',
     ])
     expect(summary.worst[1]?.accuracy).toBe(0.5)
+  })
+
+  it('picks best by per-chord average, not the single fastest raw sample', () => {
+    const summary = summarizeSession([
+      // One lucky rep (100ms) dragged down by a slow second rep — a fluke,
+      // not a consistently fast chord.
+      event('lucky', 'first-try', 100),
+      event('lucky', 'first-try', 5000),
+      // Consistently quick across both reps, never the single fastest.
+      event('consistent', 'first-try', 1000),
+      event('consistent', 'first-try', 1200),
+    ])
+    expect(summary.bestAvgTimeToCorrectMs).toBe(1100)
   })
 
   it('caps both lists at 3 entries', () => {
