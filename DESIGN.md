@@ -620,7 +620,12 @@ keys, and the stricter down-by-beat-1 judging variant.
   accuracy over time, time-to-correct trend, most-improved/worst chords, streak calendar,
   goal history, and the lifetime **best combo streak** (the longest run of consecutive
   first-try prompts ever reached, across all sessions). Reachable independently of the
-  practice screen.
+  practice screen. A **chord stats** drill-down (its own screen, linked from History)
+  lists every practiced combo — not just the top-3 worst/most-improved — with attempts,
+  lifetime and recent accuracy, and lifetime and recent avg time-to-correct, sortable by
+  any column. *Recent* windows differently per metric: accuracy uses the same window
+  that drives weighting (§5, the most outcomes ever kept per combo); avg time uses its
+  own wider window, since more time samples are kept per combo than outcomes.
 - **Voicing builder** (settings): dedicated form UI to compose a custom `VoicingRule`
   from bass/span/doubling primitives, save it to the shared library, and use it in any
   preset.

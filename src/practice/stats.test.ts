@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import type { Combo } from './combos'
+import { comboKey, type Combo } from './combos'
 import {
+  allComboRows,
   applyOutcome,
+  comboMetrics,
   IMPROVED_MIN_ATTEMPTS,
   InMemoryComboStats,
   NO_HISTORY,
@@ -9,6 +11,7 @@ import {
   rankWorstCombos,
   recentHistoryOf,
   RECENT_OUTCOME_WINDOW,
+  RECENT_TIME_WINDOW,
   TIME_TO_CORRECT_SAMPLE_CAP,
   type ComboStatRecord,
 } from './stats'
@@ -213,5 +216,77 @@ describe('rankMostImproved (§7 History)', () => {
       stats.record(key(0), 'first-try', 1000) // clean: nothing to improve on
     }
     expect(rankMostImproved(pool, stats)).toEqual([])
+  })
+})
+
+describe('comboMetrics (§7 chord stats page)', () => {
+  it('computes lifetime and recent accuracy separately', () => {
+    let record: ComboStatRecord | null = null
+    for (let i = 0; i < 3; i++) record = applyOutcome(record, 'missed', 5000)
+    for (let i = 0; i < RECENT_OUTCOME_WINDOW; i++) {
+      record = applyOutcome(record, 'first-try', 1000)
+    }
+    const metrics = comboMetrics(record!)
+    expect(metrics.attempts).toBe(3 + RECENT_OUTCOME_WINDOW)
+    expect(metrics.lifetimeAccuracy).toBeCloseTo(5 / 8)
+    expect(metrics.recentAccuracy).toBe(1) // old misses fell out of the window
+  })
+
+  it('windows the recent average separately from the lifetime average', () => {
+    let record: ComboStatRecord | null = null
+    for (let i = 0; i < 3; i++) {
+      record = applyOutcome(record, 'first-try', 5000)
+    }
+    for (let i = 0; i < RECENT_TIME_WINDOW; i++) {
+      record = applyOutcome(record, 'first-try', 1000)
+    }
+    const metrics = comboMetrics(record!)
+    expect(metrics.lifetimeAvgTimeToCorrectMs).toBeCloseTo(
+      (3 * 5000 + RECENT_TIME_WINDOW * 1000) / (3 + RECENT_TIME_WINDOW),
+    )
+    expect(metrics.recentAvgTimeToCorrectMs).toBe(1000)
+  })
+
+  it('the recent average matches the lifetime average under the window size', () => {
+    let record: ComboStatRecord | null = null
+    for (const ms of [500, 700, 900]) {
+      record = applyOutcome(record, 'first-try', ms)
+    }
+    const metrics = comboMetrics(record!)
+    expect(metrics.recentAvgTimeToCorrectMs).toBe(
+      metrics.lifetimeAvgTimeToCorrectMs,
+    )
+  })
+
+  it('both time fields are null when every sample is a Song-mode bar', () => {
+    let record: ComboStatRecord | null = applyOutcome(null, 'first-try', null)
+    record = applyOutcome(record, 'missed', null)
+    const metrics = comboMetrics(record!)
+    expect(metrics.attempts).toBe(2)
+    expect(metrics.lifetimeAvgTimeToCorrectMs).toBeNull()
+    expect(metrics.recentAvgTimeToCorrectMs).toBeNull()
+  })
+})
+
+describe('allComboRows (§7 chord stats page)', () => {
+  const combo = (root: number): Combo => ({
+    root: root as Combo['root'],
+    typeId: 'maj',
+    voicingId: 'any',
+  })
+
+  it('resolves persisted keys back into combos', () => {
+    const record = applyOutcome(null, 'first-try', 1000)
+    const rows = allComboRows({ [comboKey(combo(0))]: record })
+    expect(rows).toEqual([{ key: comboKey(combo(0)), combo: combo(0), record }])
+  })
+
+  it('drops keys that no longer resolve (removed type / deleted custom rule)', () => {
+    const record = applyOutcome(null, 'first-try', 1000)
+    const rows = allComboRows({
+      '0:not-a-real-type:any': record,
+      [comboKey(combo(1))]: record,
+    })
+    expect(rows.map((r) => r.key)).toEqual([comboKey(combo(1))])
   })
 })

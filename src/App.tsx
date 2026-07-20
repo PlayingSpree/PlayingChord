@@ -16,6 +16,7 @@ import { UnlockChip } from './components/UnlockChip'
 import { UnlockToast } from './components/UnlockToast'
 import { SessionSummaryModal } from './components/SessionSummaryModal'
 import { HistoryView } from './components/HistoryView'
+import { ChordStatsView } from './components/ChordStatsView'
 import {
   SimulatedMidiSource,
   WebMidiSource,
@@ -44,9 +45,9 @@ function createSource(): MidiSource {
 const midiSource = createSource()
 
 export default function App() {
-  const [view, setView] = useState<'practice' | 'history' | 'settings'>(
-    'practice',
-  )
+  const [view, setView] = useState<
+    'practice' | 'history' | 'chordStats' | 'settings'
+  >('practice')
 
   useEffect(() => {
     void midiStore.getState().initialize(midiSource)
@@ -128,7 +129,12 @@ export default function App() {
           onSettings={() => setView('settings')}
         />
       ) : view === 'history' ? (
-        <HistoryView onBack={() => setView('practice')} />
+        <HistoryView
+          onBack={() => setView('practice')}
+          onChordStats={() => setView('chordStats')}
+        />
+      ) : view === 'chordStats' ? (
+        <ChordStatsView onBack={() => setView('history')} />
       ) : (
         <SettingsView onBack={() => setView('practice')} />
       )}

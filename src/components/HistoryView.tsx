@@ -11,11 +11,10 @@ import {
   type DailyRecord,
 } from '../storage'
 import {
+  allComboRows,
   comboLabel,
-  parseComboKey,
   rankMostImproved,
   rankWorstCombos,
-  type Combo,
 } from '../practice'
 import { voicingLibrary } from '../theory'
 import { useSettings } from '../store/settingsStore'
@@ -48,7 +47,13 @@ function shortDate(key: string): string {
   })
 }
 
-export function HistoryView({ onBack }: { onBack: () => void }) {
+export function HistoryView({
+  onBack,
+  onChordStats,
+}: {
+  onBack: () => void
+  onChordStats: () => void
+}) {
   const goalMinutes = useSettings((s) => s.settings.dailyGoalMinutes)
   // Stat keys may reference custom voicing rules (Phase 9) — resolve labels
   // against the full library; keys for since-deleted rules parse to null.
@@ -85,9 +90,7 @@ export function HistoryView({ onBack }: { onBack: () => void }) {
       })
     }
 
-    const combos = Object.keys(comboStats)
-      .map((key) => parseComboKey(key, library))
-      .filter((combo): combo is Combo => combo !== null)
+    const combos = allComboRows(comboStats, library).map((row) => row.combo)
     const stats = new PersistedComboStats(appStorage)
 
     const allRecords = Object.values(dailyRecords)
@@ -191,6 +194,14 @@ export function HistoryView({ onBack }: { onBack: () => void }) {
               rows={data.worst}
             />
           </section>
+
+          <button
+            type="button"
+            onClick={onChordStats}
+            className="self-start text-sm font-medium text-sky-400 transition-colors hover:text-sky-300"
+          >
+            View every chord's stats →
+          </button>
         </div>
       )}
     </main>

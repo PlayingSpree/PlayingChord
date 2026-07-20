@@ -1,6 +1,6 @@
 [] Timer start from first input
 [x] Add recent avg and best to summary
-[] Chord stat page
+[x] Chord stat page
 [x] Add not mastered to learn mode
 [] Add chord score from recent acc + time, use it to prioritize
   [] Add practice grade

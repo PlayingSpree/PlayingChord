@@ -3,7 +3,8 @@
 // in-memory source serves tests, the persisted one (Phase 6) lives in
 // storage/ behind the same interface. Skips are never recorded (§6.2 step 4).
 
-import { comboKey, type Combo } from './combos'
+import { comboKey, parseComboKey, type Combo } from './combos'
+import type { VoicingLibrary } from '../theory'
 
 export type PromptOutcome = 'first-try' | 'missed'
 
@@ -13,6 +14,15 @@ export const RECENT_OUTCOME_WINDOW = 5
 // How many time-to-correct samples are kept per combo — enough for a stable
 // per-combo average without letting persisted records grow unbounded.
 export const TIME_TO_CORRECT_SAMPLE_CAP = 20
+
+// How many of those samples count as "recent" for the §7 chord stats page's
+// recent-average time-to-correct. Deliberately its own constant rather than
+// RECENT_OUTCOME_WINDOW: that window is sized for weighting (and is the most
+// outcomes ever persisted per combo, so accuracy can't recover a bigger
+// one), while time samples have room up to TIME_TO_CORRECT_SAMPLE_CAP. Half
+// the cap smooths out one lucky/unlucky rep while still reading as "recent"
+// against the full lifetime average.
+export const RECENT_TIME_WINDOW = TIME_TO_CORRECT_SAMPLE_CAP / 2
 
 // One stat record per combo (§8), keyed by comboKey. `attempts` counts
 // completed prompts (skips excluded); time-to-correct is prompt shown →
@@ -85,6 +95,62 @@ export function recentHistoryOf(
     misses: record.recentOutcomes.filter((o) => o === 'missed').length,
     total: record.recentOutcomes.length,
   }
+}
+
+// A per-combo metrics snapshot for the §7 chord stats page — every persisted
+// combo, not just the top-N worst/most-improved lists. Lifetime figures use
+// the full stored history. The two recent figures use different windows:
+// recentAccuracy uses RECENT_OUTCOME_WINDOW, the same one that drives
+// weighting and rankWorstCombos, because that's the most outcomes ever kept
+// per combo; recentAvgTimeToCorrectMs uses the wider RECENT_TIME_WINDOW,
+// since time samples have more room to work with (see both constants above).
+export interface ComboMetrics {
+  attempts: number
+  lifetimeAccuracy: number
+  recentAccuracy: number
+  // null when every sample is a Song-mode bar (§6.5), which records no
+  // time-to-correct span.
+  lifetimeAvgTimeToCorrectMs: number | null
+  recentAvgTimeToCorrectMs: number | null
+}
+
+function average(samples: readonly number[]): number | null {
+  return samples.length > 0
+    ? samples.reduce((sum, ms) => sum + ms, 0) / samples.length
+    : null
+}
+
+export function comboMetrics(record: ComboStatRecord): ComboMetrics {
+  const recent = recentHistoryOf(record)
+  return {
+    attempts: record.attempts,
+    lifetimeAccuracy: record.firstTrySuccesses / record.attempts,
+    recentAccuracy: recent === null ? 1 : 1 - recent.misses / recent.total,
+    lifetimeAvgTimeToCorrectMs: average(record.timeToCorrectMs),
+    recentAvgTimeToCorrectMs: average(
+      record.timeToCorrectMs.slice(-RECENT_TIME_WINDOW),
+    ),
+  }
+}
+
+export interface ComboRow {
+  key: string
+  combo: Combo
+  record: ComboStatRecord
+}
+
+// Every persisted combo resolved back to a Combo (§7 chord stats page,
+// shared with History's worst/most-improved lists) — stale keys naming a
+// removed chord type or a deleted custom voicing rule are dropped rather
+// than crashing a display path (parseComboKey, §8).
+export function allComboRows(
+  comboStats: Readonly<Record<string, ComboStatRecord>>,
+  library?: VoicingLibrary,
+): ComboRow[] {
+  return Object.entries(comboStats).flatMap(([key, record]) => {
+    const combo = parseComboKey(key, library)
+    return combo === null ? [] : [{ key, combo, record }]
+  })
 }
 
 export class InMemoryComboStats implements ComboStatsSource {
