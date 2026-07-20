@@ -108,10 +108,10 @@ export function recentHistoryOf(
 
 // The proficiency score behind both §5 prioritization and the §7 chord
 // stats grade: recent accuracy scaled down by how far the recent average
-// time-to-correct sits above the mastery speed bar (FAST_TIME_MS, §5.1) —
+// time-to-correct sits above the pass speed bar (FAST_TIME_MS, §5.1) —
 // full credit at or under it, decaying smoothly past it. Multiplicative,
 // not averaged, so being fast can't offset being wrong or vice versa — the
-// same AND logic the mastery gate itself uses. No time data (Song-mode-only
+// same AND logic the pass gate itself uses. No time data (Song-mode-only
 // combos, or no history at all) gets full speed credit — never penalize for
 // data that isn't there.
 function scoreOf(accuracy: number, avgTimeToCorrectMs: number | null): number {

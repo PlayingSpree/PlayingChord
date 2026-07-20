@@ -434,7 +434,7 @@ describe('practiceStore — unlock progress (§5)', () => {
     const s = setup({ presets: sixRoots })
     expect(s.store.getState().progress).toEqual({
       unlocked: INITIAL_UNLOCK_COUNT,
-      mastered: 0,
+      passed: 0,
       total: 6,
     })
     expect(s.store.getState().justUnlocked).toBe(false)
@@ -448,17 +448,17 @@ describe('practiceStore — unlock progress (§5)', () => {
       s.store.getState().upcoming.forEach((u) => {
         expect(unlockedRoots).toContain(Number(u.key.split(':')[0]))
       })
-      s.store.getState().skip() // skips never master anything
+      s.store.getState().skip() // skips never pass anything
     }
     expect(s.store.getState().progress.unlocked).toBe(INITIAL_UNLOCK_COUNT)
   })
 
-  it('mastering every unlocked chord unlocks the next batch', () => {
+  it('passing every unlocked chord unlocks the next batch', () => {
     const progress = new InMemoryPresetProgress()
     const s = setup({ presets: sixRoots, progress })
 
     // Every prompt is a fast first-try; the three unlocked chords are all
-    // mastered within a handful of prompts.
+    // passed within a handful of prompts.
     let advances = 0
     while (
       s.store.getState().progress.unlocked === INITIAL_UNLOCK_COUNT &&
@@ -470,7 +470,7 @@ describe('practiceStore — unlock progress (§5)', () => {
 
     expect(s.store.getState().progress).toEqual({
       unlocked: INITIAL_UNLOCK_COUNT + UNLOCK_BATCH_SIZE,
-      mastered: INITIAL_UNLOCK_COUNT,
+      passed: INITIAL_UNLOCK_COUNT,
       total: 6,
     })
     expect(s.store.getState().justUnlocked).toBe(true)
@@ -543,7 +543,7 @@ describe('practiceStore — unlock progress (§5)', () => {
     }
   })
 
-  it('a slow first-try success does not master', () => {
+  it('a slow first-try success does not pass', () => {
     const s = setup({ presets: sixRoots })
     for (let i = 0; i < 6; i++) {
       vi.advanceTimersByTime(3000) // over FAST_TIME_MS before answering
@@ -552,7 +552,7 @@ describe('practiceStore — unlock progress (§5)', () => {
     expect(s.store.getState().progress.unlocked).toBe(INITIAL_UNLOCK_COUNT)
   })
 
-  it('a missed-then-corrected prompt does not master', () => {
+  it('a missed-then-corrected prompt does not pass', () => {
     const s = setup({ presets: sixRoots })
     for (let i = 0; i < 6; i++) {
       const prompt = s.store.getState().prompt!
@@ -563,7 +563,7 @@ describe('practiceStore — unlock progress (§5)', () => {
     expect(s.store.getState().progress.unlocked).toBe(INITIAL_UNLOCK_COUNT)
   })
 
-  it('Learn mode never advances mastery', () => {
+  it('Learn mode never advances pass progress', () => {
     const s = setup({ presets: sixRoots })
     s.store.getState().setMode('learn')
     for (let i = 0; i < 10; i++) {
@@ -578,7 +578,7 @@ describe('practiceStore — unlock progress (§5)', () => {
     const s = setup({ presets: sixRoots, progress })
     expect(s.store.getState().progress).toEqual({
       unlocked: 5,
-      mastered: 1,
+      passed: 1,
       total: 6,
     })
   })
@@ -589,7 +589,7 @@ describe('practiceStore — unlock progress (§5)', () => {
     const s = setup({ presets: sixRoots, progress })
     expect(s.store.getState().progress).toEqual({
       unlocked: 6,
-      mastered: 1,
+      passed: 1,
       total: 6,
     })
     expect(progress.get('test')).toEqual({
@@ -606,7 +606,7 @@ describe('practiceStore — unlock progress (§5)', () => {
     s.store.getState().resetPresetProgress('test')
     expect(s.store.getState().progress).toEqual({
       unlocked: INITIAL_UNLOCK_COUNT,
-      mastered: 0,
+      passed: 0,
       total: 6,
     })
     // The live prompt was redealt from the narrowed pool.
@@ -639,14 +639,14 @@ describe('practiceStore — unlock progress (§5)', () => {
     const { store } = setup({ presets: diatonic, progress })
     expect(store.getState().progress).toEqual({
       unlocked: 5,
-      mastered: 1,
+      passed: 1,
       total: 7,
     })
 
     store.getState().setDiatonicKey(7) // G major
     expect(store.getState().progress).toEqual({
       unlocked: 5,
-      mastered: 1,
+      passed: 1,
       total: 7,
     })
     expect(progress.get('test-diatonic')?.masteredIndices).toEqual([1])
@@ -974,32 +974,32 @@ describe('practiceStore — worst chords only (§5/§7)', () => {
   })
 })
 
-describe('practiceStore — not mastered only (§5.1/§7)', () => {
+describe('practiceStore — not passed only (§5.1/§7)', () => {
   const sixRoots = presetsOf({
     kind: 'product',
     roots: [0, 1, 2, 3, 4, 5],
     chordTypes: ['maj'],
   })
 
-  // Fully unlocked six-root pool with roots 0 and 3 already mastered
+  // Fully unlocked six-root pool with roots 0 and 3 already passed
   // (chordOrder indices match root order 1:1 for a single-type pool).
-  const partlyMastered = (): InMemoryPresetProgress => {
+  const partlyPassed = (): InMemoryPresetProgress => {
     const progress = new InMemoryPresetProgress()
     progress.set('test', { unlockedCount: 6, masteredIndices: [0, 3] })
     return progress
   }
 
-  it('draws only from unlocked chords not yet mastered', () => {
-    const s = setup({ presets: sixRoots, progress: partlyMastered() })
+  it('draws only from unlocked chords not yet passed', () => {
+    const s = setup({ presets: sixRoots, progress: partlyPassed() })
     s.store.getState().setMode('learn')
-    s.store.getState().setNotMasteredOnly(true)
+    s.store.getState().setNotPassedOnly(true)
     for (let i = 0; i < 20; i++) {
       expect([1, 2, 4, 5]).toContain(s.store.getState().prompt!.chord.root)
       s.store.getState().skip()
     }
   })
 
-  it('falls back to the whole pool once every unlocked chord is mastered', () => {
+  it('falls back to the whole pool once every unlocked chord is passed', () => {
     const progress = new InMemoryPresetProgress()
     progress.set('test', {
       unlockedCount: 6,
@@ -1007,21 +1007,21 @@ describe('practiceStore — not mastered only (§5.1/§7)', () => {
     })
     const s = setup({ presets: sixRoots, progress })
     s.store.getState().setMode('learn')
-    s.store.getState().setNotMasteredOnly(true)
+    s.store.getState().setNotPassedOnly(true)
     expect(s.store.getState().prompt).not.toBeNull()
-    expect(s.store.getState().notMasteredOnly).toBe(true)
+    expect(s.store.getState().notPassedOnly).toBe(true)
   })
 
   it('Practice mode ignores the toggle', () => {
-    const s = setup({ presets: sixRoots, progress: partlyMastered() })
-    s.store.getState().setNotMasteredOnly(true) // still in Practice (default)
+    const s = setup({ presets: sixRoots, progress: partlyPassed() })
+    s.store.getState().setNotPassedOnly(true) // still in Practice (default)
 
     const seen = new Set<number>()
     for (let i = 0; i < 30; i++) {
       seen.add(s.store.getState().prompt!.chord.root)
       s.store.getState().skip()
     }
-    expect(seen.size).toBeGreaterThan(4) // mastered roots 0/3 still appear
+    expect(seen.size).toBeGreaterThan(4) // passed roots 0/3 still appear
   })
 })
 

@@ -141,7 +141,7 @@ describe('comboWeight (§5)', () => {
     const atThreshold = comboWeight({
       misses: 0,
       total: 5,
-      avgTimeToCorrectMs: 1000, // at/under the mastery bar — full credit
+      avgTimeToCorrectMs: 1000, // at/under the pass bar — full credit
     })
     const slow = comboWeight({
       misses: 0,

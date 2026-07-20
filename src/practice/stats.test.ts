@@ -140,7 +140,7 @@ describe('comboScore / comboGrade (§5 prioritization, §7 chord stats grade)', 
     )
   })
 
-  it('gives full speed credit at or under the mastery bar', () => {
+  it('gives full speed credit at or under the pass bar', () => {
     expect(
       comboScore({ misses: 0, total: 5, avgTimeToCorrectMs: FAST_TIME_MS }),
     ).toBe(1)
@@ -153,7 +153,7 @@ describe('comboScore / comboGrade (§5 prioritization, §7 chord stats grade)', 
     ).toBe(1) // faster than the bar caps at full credit, never a bonus
   })
 
-  it('decays past the mastery bar, multiplicatively with accuracy', () => {
+  it('decays past the pass bar, multiplicatively with accuracy', () => {
     const score = comboScore({
       misses: 1,
       total: 4, // 75% accuracy

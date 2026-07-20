@@ -3,12 +3,13 @@ import { ALL_PITCH_CLASSES } from '../theory'
 import type { Combo } from './combos'
 import {
   chordOrderOf,
+  chordPassList,
   FAST_TIME_MS,
   filterUnlockedCombos,
   INITIAL_UNLOCK_COUNT,
   initialProgress,
   isFullyUnlocked,
-  notMasteredChordKeys,
+  notPassedChordKeys,
   poolChordKey,
   recordChordAttempt,
   reconcileProgress,
@@ -33,8 +34,8 @@ function orderOf(size: number): string[] {
   return chordOrderOf(combosOf(size))
 }
 
-// Masters every unlocked chord except the given indices.
-function masteredExcept(
+// Passes every unlocked chord except the given indices.
+function passedExcept(
   record: PresetProgressRecord,
   ...except: number[]
 ): PresetProgressRecord {
@@ -116,7 +117,7 @@ describe('initialProgress / reconcileProgress (§5)', () => {
     )
   })
 
-  it('reconcile dedupes and sorts mastered indices', () => {
+  it('reconcile dedupes and sorts passed indices', () => {
     const record: PresetProgressRecord = {
       unlockedCount: 5,
       masteredIndices: [3, 1, 3, 0],
@@ -152,15 +153,11 @@ describe('unlockedChordKeys / filterUnlockedCombos (§5 gating)', () => {
   })
 })
 
-describe('notMasteredChordKeys (§5.1 Learn-mode gating)', () => {
-  it('excludes mastered chords from the unlocked set', () => {
+describe('notPassedChordKeys (§5.1 Learn-mode gating)', () => {
+  it('excludes passed chords from the unlocked set', () => {
     const order = orderOf(6)
-    const record = masteredExcept(
-      { unlockedCount: 6, masteredIndices: [] },
-      1,
-      4,
-    )
-    expect([...notMasteredChordKeys(order, record)]).toEqual(['1:maj', '4:maj'])
+    const record = passedExcept({ unlockedCount: 6, masteredIndices: [] }, 1, 4)
+    expect([...notPassedChordKeys(order, record)]).toEqual(['1:maj', '4:maj'])
   })
 
   it('excludes locked chords too, like unlockedChordKeys', () => {
@@ -169,24 +166,37 @@ describe('notMasteredChordKeys (§5.1 Learn-mode gating)', () => {
       unlockedCount: 3,
       masteredIndices: [0],
     }
-    expect([...notMasteredChordKeys(order, record)]).toEqual(['1:maj', '2:maj'])
+    expect([...notPassedChordKeys(order, record)]).toEqual(['1:maj', '2:maj'])
   })
 
-  it('is empty once every unlocked chord is mastered', () => {
+  it('is empty once every unlocked chord is passed', () => {
     const order = orderOf(3)
     const record: PresetProgressRecord = {
       unlockedCount: 3,
       masteredIndices: [0, 1, 2],
     }
-    expect(notMasteredChordKeys(order, record).size).toBe(0)
+    expect(notPassedChordKeys(order, record).size).toBe(0)
   })
 })
 
-describe('recordChordAttempt (§5 mastery and unlocking)', () => {
+describe('chordPassList (§7 unlock chip drill-down)', () => {
+  it('tags each chord locked, unlocked, or passed', () => {
+    const order = orderOf(4)
+    const record = passedExcept({ unlockedCount: 3, masteredIndices: [] }, 1)
+    expect(chordPassList(order, record)).toEqual([
+      { key: '0:maj', unlocked: true, passed: true },
+      { key: '1:maj', unlocked: true, passed: false },
+      { key: '2:maj', unlocked: true, passed: true },
+      { key: '3:maj', unlocked: false, passed: false },
+    ])
+  })
+})
+
+describe('recordChordAttempt (§5 pass and unlock)', () => {
   const order = orderOf(12)
   const fresh = initialProgress(12)
 
-  it('a fast first-try masters the chord', () => {
+  it('a fast first-try passes the chord', () => {
     const { record, changed, justUnlocked } = recordChordAttempt(
       order,
       fresh,
@@ -226,7 +236,7 @@ describe('recordChordAttempt (§5 mastery and unlocking)', () => {
     ).toBe(false)
   })
 
-  it('an already-mastered chord is a no-op', () => {
+  it('an already-passed chord is a no-op', () => {
     const once = recordChordAttempt(order, fresh, '1:maj', 'first-try', 100)
     const twice = recordChordAttempt(
       order,
@@ -238,15 +248,15 @@ describe('recordChordAttempt (§5 mastery and unlocking)', () => {
     expect(twice.changed).toBe(false)
   })
 
-  it('mastering fewer than all unlocked chords does not unlock', () => {
-    const record = masteredExcept(fresh, 1, 2)
+  it('passing fewer than all unlocked chords does not unlock', () => {
+    const record = passedExcept(fresh, 1, 2)
     const update = recordChordAttempt(order, record, '1:maj', 'first-try', 100)
     expect(update.record.unlockedCount).toBe(INITIAL_UNLOCK_COUNT)
     expect(update.justUnlocked).toBe(false)
   })
 
-  it('mastering the last unlocked chord unlocks the next batch', () => {
-    const record = masteredExcept(fresh, 2)
+  it('passing the last unlocked chord unlocks the next batch', () => {
+    const record = passedExcept(fresh, 2)
     const update = recordChordAttempt(order, record, '2:maj', 'first-try', 100)
     expect(update.justUnlocked).toBe(true)
     expect(update.record.unlockedCount).toBe(
@@ -257,15 +267,15 @@ describe('recordChordAttempt (§5 mastery and unlocking)', () => {
 
   it('unlocking clamps at the end of the pool', () => {
     const order4 = orderOf(4)
-    const record = masteredExcept(initialProgress(4), 2)
+    const record = passedExcept(initialProgress(4), 2)
     const update = recordChordAttempt(order4, record, '2:maj', 'first-try', 100)
     expect(update.justUnlocked).toBe(true)
     expect(update.record.unlockedCount).toBe(4)
   })
 
-  it('a fully-unlocked pool still records mastery but never grows', () => {
+  it('a fully-unlocked pool still records a pass but never grows', () => {
     const order3 = orderOf(3)
-    const record = masteredExcept(initialProgress(3), 2)
+    const record = passedExcept(initialProgress(3), 2)
     const update = recordChordAttempt(order3, record, '2:maj', 'first-try', 100)
     expect(update.changed).toBe(true)
     expect(update.justUnlocked).toBe(false)

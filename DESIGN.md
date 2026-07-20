@@ -10,8 +10,11 @@ unlocked chord opens 2 more, until the whole pool is available (§5). Learn/Prac
 generate only from unlocked chords; Song mode stays full-pool. A same-day revision
 added an optional **circle-of-fifths unlock order** for root-ordered pools and an
 unlock **toast** naming the newly opened chords (§5.1, §7). A 2026-07-20 revision
-added a Learn-mode **"Not mastered only"** setting, mirroring Practice's worst-chords
-toggle, that narrows generation to unlocked-but-not-yet-mastered chords (§5.1, §7).
+added a Learn-mode **"Not passed only"** setting, mirroring Practice's worst-chords
+toggle, that narrows generation to unlocked-but-not-yet-passed chords (§5.1, §7). A
+same-day follow-up renamed the unlock concept from "mastered" to **passed** throughout
+(it's one fast first-try success, not real mastery) and added a per-chord breakdown to
+the unlock chip, expandable by clicking it (§5.1, §7).
 Draft v7 made Song mode
 draw its progression from the **active preset's
 chord pool** instead of a separate key selection (2026-07-18), so all three modes share
@@ -47,7 +50,7 @@ first) is intentionally left outside this document.
   timer** (with end-of-session summary) and a **worst chords only** toggle (replacing
   the old review mode) — plus subtle miss-weighting always.
 - **Chord unlocking**: flashcard-style progression per preset — start with 3 chords,
-  master them all (first-try, under 2 s) to unlock 2 more, repeating until the pool is
+  pass them all (first-try, under 2 s) to unlock 2 more, repeating until the pool is
   open (§5). Gates Learn/Practice generation only; Song mode uses the full pool.
 - **Goals & streaks**: a daily practice-*time* goal with streak tracking, persisted
   locally alongside the existing stats history.
@@ -314,9 +317,9 @@ or machines.
   — `(root, typeId, voicingId)` — so missing "C maj7, 2nd inversion" doesn't up-weight
   root-position C maj7 (§8).
 - **Chord score**: a combo's recent accuracy scaled down by how far its recent average
-  time-to-correct sits above the mastery speed bar (§5.1's 2000 ms) — full credit at or
+  time-to-correct sits above the pass speed bar (§5.1's 2000 ms) — full credit at or
   under it, decaying smoothly past it, multiplicatively (being fast can't offset being
-  wrong, or vice versa — the same AND logic the mastery gate itself uses). Combos with
+  wrong, or vice versa — the same AND logic the pass gate itself uses). Combos with
   no time samples (Song-mode-only, or no history) get full speed credit. A combo with no
   recent history scores at the uniform baseline (1). Drives both weighted pick below and
   the §7 chord stats grade.
@@ -359,31 +362,34 @@ flashcard-style batches instead of the whole pool at once:
   classic pedagogy order; a root's chord types keep their relative pool order.
   Diatonic and explicit pools keep their own deliberate order regardless. Toggling
   re-derives the active preset's order in place: the unlocked *count* (and the
-  positional mastered indices, like a diatonic key change) carries onto the new
+  positional passed indices, like a diatonic key change) carries onto the new
   order, so no progress is lost, though which chords are open shifts with it.
 - A fresh preset starts with the **first 3** chords unlocked (clamped to the pool).
-- A chord is **mastered** by one Practice-mode attempt that is both **first-try
-  correct** and **under 2000 ms** time-to-correct. All the chord's voicing combos
-  count toward the same chord; Learn-mode prompts, skips, and Song-mode bars never
-  master anything (they record no self-paced outcome).
-- Once **every** unlocked chord is mastered, the **next 2** unlock, repeating until
+- A chord is **passed** by one Practice-mode attempt that is both **first-try
+  correct** and **under 2000 ms** time-to-correct — one fast success, not real
+  mastery, hence the wording. All the chord's voicing combos count toward the
+  same chord; Learn-mode prompts, skips, and Song-mode bars never pass anything
+  (they record no self-paced outcome).
+- Once **every** unlocked chord is passed, the **next 2** unlock, repeating until
   the whole pool is open — after which generation behaves exactly as above. The
   upcoming-preview queue is rebuilt at the moment of an unlock (the pool changed,
   like any other pool change), so new chords can appear in the very next preview.
 - **Scope:** the gate applies to Learn and Practice generation (worst-chords-only,
-  Practice-only, and not-mastered-only, Learn-only, then each narrow *within* the
+  Practice-only, and not-passed-only, Learn-only, then each narrow *within* the
   unlocked set — see the §7 settings). **Song mode is deliberately not gated** — it
   draws from the preset's full pool (§6.5); revisit if that proves confusing.
-- **"Not mastered only"** (a Learn-mode setting, §7, off by default, session-only like
-  its Practice counterpart): narrows generation to unlocked chords not yet mastered.
-  If every unlocked chord is already mastered, generation falls back to the whole
+- **"Not passed only"** (a Learn-mode setting, §7, off by default, session-only like
+  its Practice counterpart): narrows generation to unlocked chords not yet passed.
+  If every unlocked chord is already passed, generation falls back to the whole
   unlocked pool rather than starving (mirrors "Worst chords only"'s empty-ranking
   fallback).
-- **Persistence:** one record per preset id — the unlocked count plus the mastered
+- **Persistence:** one record per preset id — the unlocked count plus the passed
   chords as *indices into the unlock order*, not chord identities, so the diatonic
   preset's progress means "scale degree N" and survives a key change. A custom
   preset's pool shrinking under its saved record reconciles (clamps) on load.
-  Progress can be reset per preset in Settings.
+  Progress can be reset per preset in Settings. (The persisted field is still named
+  `masteredIndices` in the JSON schema — a wording-only rename isn't worth a schema
+  migration, §8.)
 
 ---
 
@@ -559,8 +565,8 @@ keys, and the stricter down-by-beat-1 judging variant.
     Untimed. Attempts are excluded from stats and weighting (§5); active minutes still
     count toward the daily goal. Learn-mode setting (shown with the picker when Learn
     is active):
-    - **Not mastered only**: narrows generation to the selected preset's unlocked
-      chords not yet mastered (§5.1).
+    - **Not passed only**: narrows generation to the selected preset's unlocked
+      chords not yet passed (§5.1).
   - **Practice** (default): the voicing is hidden from the keyboard — recall from the
     name, keyboard hints escalate per §6.4 — but the grand staff (if its setting is on)
     is visible from the first prompt, independent of misses. Endless unless the timer is
@@ -614,7 +620,9 @@ keys, and the stricter down-by-beat-1 judging variant.
   reached is tracked lifetime (§7 History).
 - **Unlock chip** (top bar): `N/total` chords unlocked for the active preset (§5.1),
   with a brief highlight when a batch unlocks; hidden in Song mode, which isn't
-  gated. Full state in the tooltip. The unlock moment also shows a transient
+  gated. Full state in the tooltip. Clicking the chip expands a per-chord
+  breakdown — every pool chord in unlock order, tagged locked / unlocked-not-yet-passed
+  ("Learning") / **passed**. The unlock moment also shows a transient
   **toast** naming the newly opened chords ("🔓 New chords unlocked: A, E"), for
   the same window as the chip highlight.
 - **Goals & streaks**: daily goal = **active practice minutes** (default 10,
@@ -681,8 +689,9 @@ is simulated for development without hardware.
 Per-combo stat record (keyed `(root, typeId, voicingId)`, §5): attempts, first-try
 successes, recent-miss window, time-to-correct samples. Daily record: date, active
 minutes, prompts, first-try successes. Preset progress record (keyed by preset id,
-schema v2, §5.1): unlocked count + mastered chord indices. Best combo streak (schema
-v2, §7): a single lifetime integer, raised whenever a session's live streak beats it.
+schema v2, §5.1): unlocked count + passed chord indices (still `masteredIndices` in the
+JSON, §5.1). Best combo streak (schema v2, §7): a single lifetime integer, raised
+whenever a session's live streak beats it.
 
 ---
 

@@ -11,7 +11,7 @@ import {
 } from '../practice'
 
 // Top-bar session-mode picker (§7) with the mode-specific settings beside
-// it: Learn gets the not-mastered-only toggle; Practice gets the session
+// it: Learn gets the not-passed-only toggle; Practice gets the session
 // timer and the worst-chords-only toggle; Song (§6.5) gets tempo,
 // progression length and the show-example toggle.
 export function ModeBar() {
@@ -35,7 +35,7 @@ export function ModeBar() {
           Song
         </ModeButton>
       </div>
-      {mode === 'learn' && <NotMasteredOnlyToggle />}
+      {mode === 'learn' && <NotPassedOnlyToggle />}
       {mode === 'practice' && (
         <>
           <TimerControl />
@@ -209,13 +209,13 @@ function TimerControl() {
 }
 
 // The §5.1/§7 Learn-mode setting: narrows generation to unlocked chords not
-// yet mastered. Disabled once every unlocked chord is mastered — nothing
+// yet passed. Disabled once every unlocked chord is passed — nothing
 // left to narrow to (mirrors WorstOnlyToggle's empty-list disable below).
-function NotMasteredOnlyToggle() {
-  const notMasteredOnly = usePractice((s) => s.notMasteredOnly)
-  const setNotMasteredOnly = usePractice((s) => s.setNotMasteredOnly)
+function NotPassedOnlyToggle() {
+  const notPassedOnly = usePractice((s) => s.notPassedOnly)
+  const setNotPassedOnly = usePractice((s) => s.setNotPassedOnly)
   const progress = usePractice((s) => s.progress)
-  const disabled = progress.unlocked === progress.mastered && !notMasteredOnly
+  const disabled = progress.unlocked === progress.passed && !notPassedOnly
 
   return (
     <label
@@ -224,16 +224,16 @@ function NotMasteredOnlyToggle() {
           ? 'cursor-not-allowed text-slate-600'
           : 'cursor-pointer text-slate-300'
       }`}
-      title={disabled ? 'No unmastered chords in this preset yet' : undefined}
+      title={disabled ? 'No unpassed chords in this preset yet' : undefined}
     >
       <input
         type="checkbox"
-        checked={notMasteredOnly}
+        checked={notPassedOnly}
         disabled={disabled}
-        onChange={(e) => setNotMasteredOnly(e.target.checked)}
+        onChange={(e) => setNotPassedOnly(e.target.checked)}
         className="h-4 w-4 accent-amber-500"
       />
-      Not mastered only
+      Not passed only
     </label>
   )
 }

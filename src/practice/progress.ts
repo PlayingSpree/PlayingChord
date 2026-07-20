@@ -1,6 +1,6 @@
 // Flashcard-style unlock progress (DESIGN.md §5): a preset starts with only
 // its first few chords in play, and more unlock once every unlocked chord is
-// mastered — a first-try success under the fast-time threshold. Pure TS; the
+// passed — a first-try success under the fast-time threshold. Pure TS; the
 // persisted record lives in storage/ and the store applies the gating.
 
 import type { Combo } from './combos'
@@ -13,7 +13,7 @@ export const INITIAL_UNLOCK_COUNT = 3
 // How many chords each completed unlock step adds.
 export const UNLOCK_BATCH_SIZE = 2
 
-// A first-try success at or under this time-to-correct masters the chord.
+// A first-try success at or under this time-to-correct passes the chord.
 export const FAST_TIME_MS = 2000
 
 // Progress is tracked per chord (root + type, across all its voicing
@@ -37,7 +37,7 @@ function fifthsIndex(pc: number): number {
 
 // The unlock order: the pool's own order (§4/§5), reconstructed from the
 // expansion rather than poolChords() so chords with no satisfiable combo —
-// which can never be attempted, hence never mastered — don't occupy (and
+// which can never be attempted, hence never passed — don't occupy (and
 // permanently block) an unlock slot. Combos of one chord are contiguous in
 // an expansion, so first-occurrence dedup preserves pool order exactly.
 // 'fifths' mode then stable-sorts by root, keeping one root's chords in
@@ -61,9 +61,12 @@ export function chordOrderOf(
   return chords.map((chord) => chord.key)
 }
 
-// Persisted per preset id (§8). Mastered chords are stored as *indices* into
+// Persisted per preset id (§8). Passed chords are stored as *indices* into
 // the chord order, not chord identity, so the diatonic preset's progress
-// means "scale degree N" and survives a key change (§5).
+// means "scale degree N" and survives a key change (§5). The field is still
+// named masteredIndices in the persisted JSON — renaming it would need a
+// schema migration for existing users, disproportionate for a wording-only
+// change (the concept itself is just "passed", see FAST_TIME_MS).
 export interface PresetProgressRecord {
   unlockedCount: number
   masteredIndices: number[] // sorted ascending, each < unlockedCount
@@ -103,19 +106,40 @@ export function unlockedChordKeys(
   return new Set(chordOrder.slice(0, record.unlockedCount))
 }
 
-// The unlocked chords that are *not yet* mastered, as poolChordKeys — for
-// Learn mode's "not mastered only" setting (§5.1/§7), which narrows
+// The unlocked chords that are *not yet* passed, as poolChordKeys — for
+// Learn mode's "not passed only" setting (§5.1/§7), which narrows
 // generation to chords still being learned within the unlocked set.
-export function notMasteredChordKeys(
+export function notPassedChordKeys(
   chordOrder: readonly string[],
   record: PresetProgressRecord,
 ): ReadonlySet<string> {
-  const mastered = new Set(record.masteredIndices)
+  const passed = new Set(record.masteredIndices)
   return new Set(
     chordOrder
       .slice(0, record.unlockedCount)
-      .filter((_, index) => !mastered.has(index)),
+      .filter((_, index) => !passed.has(index)),
   )
+}
+
+// Per-chord status (§7 unlock chip drill-down): every pool chord in unlock
+// order, tagged locked/unlocked/passed — the same three states the
+// generator itself gates on, just surfaced instead of aggregated into counts.
+export interface ChordPassEntry {
+  key: string
+  unlocked: boolean
+  passed: boolean
+}
+
+export function chordPassList(
+  chordOrder: readonly string[],
+  record: PresetProgressRecord,
+): ChordPassEntry[] {
+  const passed = new Set(record.masteredIndices)
+  return chordOrder.map((key, index) => ({
+    key,
+    unlocked: index < record.unlockedCount,
+    passed: passed.has(index),
+  }))
 }
 
 export function isFullyUnlocked(
@@ -133,7 +157,7 @@ export interface ProgressUpdate {
 }
 
 // Feeds one Practice-mode outcome into the record. Only a fast first-try
-// success on a not-yet-mastered unlocked chord changes anything; mastering
+// success on a not-yet-passed unlocked chord changes anything; passing
 // the last outstanding chord unlocks the next batch (§5).
 export function recordChordAttempt(
   chordOrder: readonly string[],
@@ -157,10 +181,10 @@ export function recordChordAttempt(
     (a, b) => a - b,
   )
   const unlockedInPool = Math.min(record.unlockedCount, chordOrder.length)
-  const allMastered = masteredIndices.length >= unlockedInPool
+  const allPassed = masteredIndices.length >= unlockedInPool
   const canGrow = record.unlockedCount < chordOrder.length
   const unlockedCount =
-    allMastered && canGrow
+    allPassed && canGrow
       ? Math.min(record.unlockedCount + UNLOCK_BATCH_SIZE, chordOrder.length)
       : record.unlockedCount
   return {
