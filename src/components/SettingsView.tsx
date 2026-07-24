@@ -14,13 +14,17 @@ import type { ImportResult } from '../storage'
 import { useSettings } from '../store/settingsStore'
 import { useLibrary } from '../store/libraryStore'
 import { practiceStore } from '../store/practiceStore'
-import { NumberField, SelectField, Toggle } from './fields'
+import { DevicePicker } from './DevicePicker'
 import { VoicingBuilder } from './VoicingBuilder'
 import { PresetEditor } from './PresetEditor'
+import { Card, Chip, RaisedButton, Stepper, Toggle } from './ui'
+import { cx } from './cx'
 
-// The §7 settings screen: every toggle/delay/goal in one place, plus the
-// Phase 9 library — voicing builder, preset editor, JSON import/export —
-// and the Phase 8 staff/chime toggles.
+// The §7.6 settings screen, grouped into cards: Sound / Notation / Matching &
+// timing / Goal & unlocks / Voicing rules / Presets. Mode sub-settings and the
+// session length live in the session sheet (§7.2), not here. The Phase 9
+// library — voicing builder, preset editor, JSON import/export — keeps its
+// behavior; only the chrome is restyled.
 
 type Editing =
   | { kind: 'rule'; rule: VoicingRule | null } // null = new
@@ -31,24 +35,24 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
   const [editing, setEditing] = useState<Editing>(null)
 
   return (
-    <main className="flex min-h-screen flex-col bg-slate-900 text-slate-100">
-      <header className="flex items-center justify-between gap-4 border-b border-slate-800 px-6 py-3">
-        <h1 className="text-lg font-bold tracking-tight">
-          PlayingChord{' '}
-          <span className="font-normal text-slate-400">— Settings</span>
-        </h1>
-        <button
-          type="button"
-          onClick={onBack}
-          className="rounded-md border border-slate-700 px-3 py-1.5 text-sm font-medium text-slate-300 transition-colors hover:border-slate-500 hover:text-slate-100"
-        >
-          ← Practice
-        </button>
-      </header>
+    <main className="min-h-screen bg-surface px-6 py-6 text-ink">
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
+        <header className="flex items-center gap-3.5">
+          <RaisedButton variant="outline" size="sm" onClick={onBack}>
+            ← Home
+          </RaisedButton>
+          <span className="text-2xl font-extrabold">Settings</span>
+          <span className="flex-1" />
+          <DevicePicker />
+        </header>
 
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-6 py-8">
-        <MatchingSection />
-        <NotationSoundSection />
+        <div className="grid gap-3 lg:grid-cols-2">
+          <SoundSection />
+          <NotationSection />
+          <MatchingSection />
+          <GoalSection />
+        </div>
+
         <VoicingRulesSection
           editing={editing?.kind === 'rule' ? editing : null}
           onEdit={(rule) => setEditing({ kind: 'rule', rule })}
@@ -65,7 +69,7 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
   )
 }
 
-function Section({
+function SettingsCard({
   title,
   hint,
   children,
@@ -75,111 +79,196 @@ function Section({
   children: React.ReactNode
 }) {
   return (
-    <section aria-label={title}>
-      <div className="flex items-baseline justify-between gap-2">
-        <h3 className="text-sm font-medium text-slate-300">{title}</h3>
-        {hint && <span className="text-xs text-slate-500">{hint}</span>}
+    <Card className="flex flex-col gap-3 p-[18px]" aria-label={title}>
+      <div>
+        <b className="text-base">{title}</b>
+        {hint && <div className="text-xs text-ink-muted">{hint}</div>}
       </div>
-      <div className="mt-3">{children}</div>
-    </section>
+      {children}
+    </Card>
+  )
+}
+
+function Row({
+  label,
+  disabled = false,
+  children,
+}: {
+  label: string
+  disabled?: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <div
+      className={cx(
+        'flex min-h-8 items-center justify-between gap-3 text-[15px] font-semibold',
+        disabled ? 'text-ink-faint' : 'text-ink-soft',
+      )}
+    >
+      <span>{label}</span>
+      {children}
+    </div>
+  )
+}
+
+function SoundSection() {
+  const settings = useSettings((s) => s.settings)
+  const update = useSettings((s) => s.update)
+  return (
+    <SettingsCard title="Sound" hint="misses are always silent">
+      <Row label="Chime on correct">
+        <Toggle
+          checked={settings.chimeEnabled}
+          onChange={(v) => update({ chimeEnabled: v })}
+          aria-label="Chime on correct"
+        />
+      </Row>
+      <Row label="Piano sound on key press">
+        <Toggle
+          checked={settings.pianoSoundEnabled}
+          onChange={(v) => update({ pianoSoundEnabled: v })}
+          aria-label="Piano sound on key press"
+        />
+      </Row>
+    </SettingsCard>
+  )
+}
+
+const NAME_SIZE_LABEL: Record<ChordNameSize, string> = {
+  sm: 'S',
+  md: 'M',
+  lg: 'L',
+  xl: 'XL',
+}
+
+function NotationSection() {
+  const settings = useSettings((s) => s.settings)
+  const update = useSettings((s) => s.update)
+  return (
+    <SettingsCard
+      title="Notation"
+      hint="the keyboard carries practice — staff is optional"
+    >
+      <Row label="Show staff notation">
+        <Toggle
+          checked={settings.staffEnabled}
+          onChange={(v) => update({ staffEnabled: v })}
+          aria-label="Show staff notation"
+        />
+      </Row>
+      <Row label="Key signature (chord root)">
+        <Toggle
+          checked={settings.staffKeyEnabled}
+          onChange={(v) => update({ staffKeyEnabled: v })}
+          aria-label="Key signature"
+        />
+      </Row>
+      <Row label="Chord name size">
+        <div className="flex gap-1.5">
+          {CHORD_NAME_SIZES.map((size) => (
+            <Chip
+              key={size}
+              selected={settings.chordNameSize === size}
+              onClick={() => update({ chordNameSize: size })}
+              className="px-2.5 py-1 text-[13px]"
+            >
+              {NAME_SIZE_LABEL[size]}
+            </Chip>
+          ))}
+        </div>
+      </Row>
+    </SettingsCard>
   )
 }
 
 function MatchingSection() {
   const settings = useSettings((s) => s.settings)
   const update = useSettings((s) => s.update)
-
   return (
-    <Section title="Matching & timing">
-      <div className="flex max-w-md flex-col gap-3">
+    <SettingsCard
+      title="Matching & timing"
+      hint="how strictly attempts are judged"
+    >
+      <Row label="Allow octave doubling">
         <Toggle
-          label="Allow octave doubling"
           checked={settings.allowOctaveDoubling}
           onChange={(v) => update({ allowOctaveDoubling: v })}
+          aria-label="Allow octave doubling"
         />
+      </Row>
+      <Row label="Strict extra notes">
         <Toggle
-          label="Strict extra notes"
           checked={settings.strictExtraNotes}
           onChange={(v) => update({ strictExtraNotes: v })}
+          aria-label="Strict extra notes"
         />
-        <NumberField
-          label="Judgment delay (ms)"
-          value={settings.judgmentDelayMs}
-          min={0}
-          max={MAX_DELAY_MS}
-          step={50}
-          onChange={(v) => update({ judgmentDelayMs: v })}
+      </Row>
+      <Row label="Judgment delay">
+        <Stepper
+          label="judgment delay"
+          value={`${settings.judgmentDelayMs} ms`}
+          decDisabled={settings.judgmentDelayMs <= 0}
+          incDisabled={settings.judgmentDelayMs >= MAX_DELAY_MS}
+          onDecrement={() =>
+            update({ judgmentDelayMs: settings.judgmentDelayMs - 50 })
+          }
+          onIncrement={() =>
+            update({ judgmentDelayMs: settings.judgmentDelayMs + 50 })
+          }
         />
-        <NumberField
-          label="Auto-advance delay (ms)"
-          value={settings.autoAdvanceMs}
-          min={0}
-          max={MAX_DELAY_MS}
-          step={50}
-          onChange={(v) => update({ autoAdvanceMs: v })}
+      </Row>
+      <Row label="Auto-advance delay">
+        <Stepper
+          label="auto-advance delay"
+          value={`${settings.autoAdvanceMs} ms`}
+          decDisabled={settings.autoAdvanceMs <= 0}
+          incDisabled={settings.autoAdvanceMs >= MAX_DELAY_MS}
+          onDecrement={() =>
+            update({ autoAdvanceMs: settings.autoAdvanceMs - 50 })
+          }
+          onIncrement={() =>
+            update({ autoAdvanceMs: settings.autoAdvanceMs + 50 })
+          }
         />
-        <NumberField
-          label="Daily goal (minutes)"
-          value={settings.dailyGoalMinutes}
-          min={1}
-          max={MAX_DAILY_GOAL_MINUTES}
-          step={5}
-          onChange={(v) => {
-            update({ dailyGoalMinutes: v })
-            // Streak/goal state is derived against the current goal.
-            practiceStore.getState().refreshGoal()
-          }}
-        />
-      </div>
-    </Section>
+      </Row>
+    </SettingsCard>
   )
 }
 
-const CHORD_NAME_SIZE_LABELS: Record<ChordNameSize, string> = {
-  sm: 'Small',
-  md: 'Medium',
-  lg: 'Large (default)',
-  xl: 'Extra large',
-}
-
-function NotationSoundSection() {
+function GoalSection() {
   const settings = useSettings((s) => s.settings)
   const update = useSettings((s) => s.update)
-
+  const setGoal = (minutes: number) => {
+    update({ dailyGoalMinutes: minutes })
+    practiceStore.getState().refreshGoal() // streak is derived against the goal
+  }
   return (
-    <Section title="Notation & sound" hint="misses are always visual-only (§9)">
-      <div className="flex max-w-md flex-col gap-3">
-        <SelectField
-          label="Chord name size"
-          value={settings.chordNameSize}
-          options={CHORD_NAME_SIZES.map((size) => ({
-            value: size,
-            label: CHORD_NAME_SIZE_LABELS[size],
-          }))}
-          onChange={(v) => update({ chordNameSize: v })}
+    <SettingsCard title="Goal & unlocks" hint="what keeps the streak alive">
+      <Row label="Daily goal">
+        <Stepper
+          label="daily goal minutes"
+          value={`${settings.dailyGoalMinutes} min`}
+          decDisabled={settings.dailyGoalMinutes <= 1}
+          incDisabled={settings.dailyGoalMinutes >= MAX_DAILY_GOAL_MINUTES}
+          onDecrement={() => setGoal(settings.dailyGoalMinutes - 5)}
+          onIncrement={() => setGoal(settings.dailyGoalMinutes + 5)}
         />
+      </Row>
+      <Row label="Unlock in circle-of-fifths order">
         <Toggle
-          label="Show staff notation"
-          checked={settings.staffEnabled}
-          onChange={(v) => update({ staffEnabled: v })}
+          checked={settings.unlockByFifths}
+          onChange={(v) => {
+            update({ unlockByFifths: v })
+            practiceStore.getState().refreshUnlockOrder()
+          }}
+          aria-label="Unlock in circle-of-fifths order"
         />
-        <Toggle
-          label="Key signature (chord root)"
-          checked={settings.staffKeyEnabled}
-          onChange={(v) => update({ staffKeyEnabled: v })}
-        />
-        <Toggle
-          label="Chime on correct"
-          checked={settings.chimeEnabled}
-          onChange={(v) => update({ chimeEnabled: v })}
-        />
-        <Toggle
-          label="Piano sound on key press"
-          checked={settings.pianoSoundEnabled}
-          onChange={(v) => update({ pianoSoundEnabled: v })}
-        />
-      </div>
-    </Section>
+      </Row>
+      <p className="text-xs text-ink-muted">
+        C → G → D → A … for root-ordered pools; diatonic and custom lists keep
+        their own order
+      </p>
+    </SettingsCard>
   )
 }
 
@@ -191,50 +280,51 @@ function LibraryRow({
 }: {
   name: string
   detail: string
-  onEdit?: () => void // absent for built-ins
-  onResetProgress?: () => void // presets only (§5 unlock progress)
+  onEdit?: () => void
+  onResetProgress?: () => void
 }) {
   return (
-    <li className="flex items-center justify-between gap-3 py-1.5">
+    <li className="flex items-center justify-between gap-3 border-b border-track py-2 last:border-0 text-sm">
       <div className="min-w-0">
-        <span className="text-sm text-slate-200">{name}</span>
-        <span className="ml-2 text-xs text-slate-500">{detail}</span>
+        <span className="font-semibold text-ink">{name}</span>
+        <span className="ml-2 font-semibold text-ink-muted">· {detail}</span>
       </div>
       <div className="flex items-center gap-2">
         {onResetProgress && (
-          <button
-            type="button"
+          <SmallButton
             onClick={onResetProgress}
             title="Restart this preset's chord unlocks at the first few chords"
-            className="rounded-md border border-slate-700 px-2.5 py-0.5 text-xs text-slate-400 transition-colors hover:border-amber-600 hover:text-amber-300"
           >
             Reset progress
-          </button>
+          </SmallButton>
         )}
         {onEdit ? (
-          <button
-            type="button"
-            onClick={onEdit}
-            className="rounded-md border border-slate-700 px-2.5 py-0.5 text-xs text-slate-300 transition-colors hover:border-slate-500"
-          >
-            Edit
-          </button>
+          <SmallButton onClick={onEdit}>Edit</SmallButton>
         ) : (
-          <span className="text-xs text-slate-600">built-in</span>
+          <span className="text-xs text-ink-faint">built-in</span>
         )}
       </div>
     </li>
   )
 }
 
-function AddButton({ label, onClick }: { label: string; onClick: () => void }) {
+function SmallButton({
+  onClick,
+  title,
+  children,
+}: {
+  onClick: () => void
+  title?: string
+  children: React.ReactNode
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="mt-2 rounded-md border border-slate-700 px-3 py-1 text-sm text-slate-300 transition-colors hover:border-slate-500 hover:text-slate-100"
+      title={title}
+      className="rounded-[10px] border-2 border-muted-border px-3 py-1 text-xs font-semibold text-ink-soft transition-colors hover:text-ink"
     >
-      + {label}
+      {children}
     </button>
   )
 }
@@ -249,17 +339,16 @@ function VoicingRulesSection({
   onClose: () => void
 }) {
   const customRules = useLibrary((s) => s.customRules)
-
   return (
-    <Section
+    <SettingsCard
       title="Voicing rules"
-      hint="two-hand patterns, or reusable bass/span/doubling specs (§3.3)"
+      hint="two-hand patterns or bass/span/doubling specs (§3.3)"
     >
       {editing ? (
         <VoicingBuilder rule={editing.rule} onClose={onClose} />
       ) : (
         <>
-          <ul className="divide-y divide-slate-800">
+          <ul className="flex flex-col">
             {BUILT_IN_VOICING_RULES.map((rule) => (
               <LibraryRow
                 key={rule.id}
@@ -276,10 +365,10 @@ function VoicingRulesSection({
               />
             ))}
           </ul>
-          <AddButton label="New voicing rule" onClick={() => onEdit(null)} />
+          <SmallButton onClick={() => onEdit(null)}>+ New rule</SmallButton>
         </>
       )}
-    </Section>
+    </SettingsCard>
   )
 }
 
@@ -299,34 +388,16 @@ function PresetsSection({
   onClose: () => void
 }) {
   const customPresets = useLibrary((s) => s.customPresets)
-  const unlockByFifths = useSettings((s) => s.settings.unlockByFifths)
-  const update = useSettings((s) => s.update)
   const resetProgress = (presetId: string) =>
     practiceStore.getState().resetPresetProgress(presetId)
 
   return (
-    <Section title="Presets" hint="what the generator draws from (§4)">
+    <SettingsCard title="Presets" hint="what the generator draws from (§4)">
       {editing ? (
         <PresetEditor preset={editing.preset} onClose={onClose} />
       ) : (
         <>
-          <div className="mb-3 max-w-md">
-            <Toggle
-              label="Unlock chords in circle-of-fifths order"
-              checked={unlockByFifths}
-              onChange={(v) => {
-                update({ unlockByFifths: v })
-                // The active preset's unlock order changes under its
-                // saved progress — re-derive it now (§5.1).
-                practiceStore.getState().refreshUnlockOrder()
-              }}
-            />
-            <p className="mt-1 text-xs text-slate-500">
-              C → G → D → A … for root-ordered pools; diatonic and custom chord
-              lists keep their own order
-            </p>
-          </div>
-          <ul className="divide-y divide-slate-800">
+          <ul className="flex flex-col">
             {builtInPresets().map((preset) => (
               <LibraryRow
                 key={preset.id}
@@ -345,10 +416,10 @@ function PresetsSection({
               />
             ))}
           </ul>
-          <AddButton label="New preset" onClick={() => onEdit(null)} />
+          <SmallButton onClick={() => onEdit(null)}>+ New preset</SmallButton>
         </>
       )}
-    </Section>
+    </SettingsCard>
   )
 }
 
@@ -378,27 +449,20 @@ function ImportExportSection() {
   const empty = customRules.length === 0 && customPresets.length === 0
 
   return (
-    <Section
+    <SettingsCard
       title="Import / export"
       hint="custom presets + voicing rules as JSON (§4)"
     >
       <div className="flex items-center gap-2">
-        <button
-          type="button"
+        <SmallButton
           onClick={download}
-          disabled={empty}
           title={empty ? 'Nothing custom to export yet' : undefined}
-          className="rounded-md border border-slate-700 px-3 py-1 text-sm text-slate-300 transition-colors hover:border-slate-500 disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600"
         >
           Export library
-        </button>
-        <button
-          type="button"
-          onClick={() => fileInput.current?.click()}
-          className="rounded-md border border-slate-700 px-3 py-1 text-sm text-slate-300 transition-colors hover:border-slate-500"
-        >
+        </SmallButton>
+        <SmallButton onClick={() => fileInput.current?.click()}>
           Import…
-        </button>
+        </SmallButton>
         <input
           ref={fileInput}
           type="file"
@@ -407,41 +471,41 @@ function ImportExportSection() {
           aria-label="Import library file"
           onChange={(e) => {
             void onFile(e.target.files?.[0])
-            e.target.value = '' // allow re-importing the same file
+            e.target.value = ''
           }}
         />
       </div>
       {result && <ImportReport result={result} />}
-    </Section>
+    </SettingsCard>
   )
 }
 
 function ImportReport({ result }: { result: ImportResult }) {
   if (!result.ok) {
-    return <p className="mt-3 text-sm text-rose-400">✘ {result.error}</p>
+    return <p className="text-sm text-danger">✘ {result.error}</p>
   }
   const { plan } = result
   const added = plan.presets.length + plan.voicingRules.length
   return (
-    <div className="mt-3 flex flex-col gap-1 text-sm">
-      <p className="text-emerald-400">
+    <div className="flex flex-col gap-1 text-sm">
+      <p className="text-primary-light">
         ✔ Imported {plan.presets.length} preset
         {plan.presets.length === 1 ? '' : 's'}, {plan.voicingRules.length}{' '}
         voicing rule{plan.voicingRules.length === 1 ? '' : 's'}
         {added === 0 ? ' (nothing new)' : ''}
       </p>
       {plan.alreadyPresent.length > 0 && (
-        <p className="text-slate-400">
+        <p className="text-ink-muted">
           Already present: {plan.alreadyPresent.join(', ')}
         </p>
       )}
       {plan.conflicts.length > 0 && (
-        <p className="text-amber-400">
+        <p className="text-info-light">
           ⚠ Conflicts (kept your version): {plan.conflicts.join(', ')}
         </p>
       )}
       {plan.invalid > 0 && (
-        <p className="text-slate-400">
+        <p className="text-ink-muted">
           {plan.invalid} invalid entr{plan.invalid === 1 ? 'y' : 'ies'} skipped
         </p>
       )}

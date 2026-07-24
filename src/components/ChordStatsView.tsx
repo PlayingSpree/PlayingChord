@@ -10,6 +10,8 @@ import {
 } from '../practice'
 import { voicingLibrary } from '../theory'
 import { useLibrary } from '../store/libraryStore'
+import { Card, RaisedButton } from './ui'
+import { cx } from './cx'
 
 // The §7 chord stats drill-down (reached from History): every combo ever
 // practiced, not just the top-3 worst/most-improved lists — sortable so any
@@ -145,82 +147,112 @@ export function ChordStatsView({ onBack }: { onBack: () => void }) {
   }
 
   return (
-    <main className="flex min-h-screen flex-col bg-slate-900 text-slate-100">
-      <header className="flex items-center justify-between gap-4 border-b border-slate-800 px-6 py-3">
-        <h1 className="text-lg font-bold tracking-tight">
-          PlayingChord{' '}
-          <span className="font-normal text-slate-400">— Chord stats</span>
-        </h1>
-        <button
-          type="button"
-          onClick={onBack}
-          className="rounded-md border border-slate-700 px-3 py-1.5 text-sm font-medium text-slate-300 transition-colors hover:border-slate-500 hover:text-slate-100"
-        >
-          ← History
-        </button>
-      </header>
+    <main className="min-h-screen bg-surface px-6 py-6 text-ink">
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-5">
+        <header className="flex items-center gap-3.5">
+          <RaisedButton variant="outline" size="sm" onClick={onBack}>
+            ← Progress
+          </RaisedButton>
+          <span className="text-2xl font-extrabold">Chord stats</span>
+          <span className="flex-1" />
+          <span className="text-[13px] text-ink-muted">
+            tap a column to sort
+          </span>
+        </header>
 
-      {rows.length === 0 ? (
-        <div className="flex flex-1 items-center justify-center px-6 text-center text-slate-400">
-          <p>
-            No practiced chords yet.
-            <br />
-            Play a few prompts and this page fills up.
-          </p>
-        </div>
-      ) : (
-        <div className="mx-auto w-full max-w-4xl px-6 py-8">
-          <p className="mb-4 text-sm text-slate-400">
-            Every combo practiced so far, lifetime across all presets. Recent
-            accuracy is the last {RECENT_OUTCOME_WINDOW} attempts (the same
-            window that drives weighting); recent avg time is the last{' '}
-            {RECENT_TIME_WINDOW}. Grade (A–F) folds recent accuracy and speed
-            into one figure, the same one that drives weighting.
-          </p>
-          <div className="overflow-x-auto rounded-lg border border-slate-800">
-            <table className="w-full min-w-[640px] text-left text-sm">
-              <thead>
-                <tr className="border-b border-slate-800 text-xs uppercase tracking-wide text-slate-400">
-                  <th className="px-3 py-2 font-medium">Chord</th>
-                  {COLUMNS.map((col) => (
-                    <th key={col.id} className="px-3 py-2 font-medium">
-                      <button
-                        type="button"
-                        onClick={() => onSortClick(col.id)}
-                        className={`flex items-center gap-1 transition-colors hover:text-slate-200 ${
-                          sort.column === col.id ? 'text-slate-200' : ''
-                        }`}
-                      >
-                        {col.label}
-                        {sort.column === col.id && (
-                          <span aria-hidden>
-                            {sort.dir === 'asc' ? '▲' : '▼'}
-                          </span>
-                        )}
-                      </button>
+        {rows.length === 0 ? (
+          <Card className="p-10 text-center text-ink-muted">
+            No practiced chords yet. Play a few prompts and this page fills up.
+          </Card>
+        ) : (
+          <>
+            <Card className="overflow-x-auto">
+              <table className="w-full min-w-[640px] text-left text-[15px]">
+                <thead>
+                  <tr className="border-b-2 border-track">
+                    <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                      Chord
                     </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {sorted.map((row) => (
-                  <tr
-                    key={row.key}
-                    className="border-b border-slate-800/60 last:border-0"
-                  >
-                    <td className="px-3 py-2 text-slate-200">{row.label}</td>
                     {COLUMNS.map((col) => (
-                      <td key={col.id} className="px-3 py-2 text-slate-300">
-                        {col.format(row)}
-                      </td>
+                      <th key={col.id} className="px-4 py-3">
+                        <button
+                          type="button"
+                          onClick={() => onSortClick(col.id)}
+                          className={cx(
+                            'flex items-center gap-1 text-xs font-semibold uppercase tracking-wide transition-colors hover:text-ink',
+                            sort.column === col.id
+                              ? 'text-ink'
+                              : 'text-ink-muted',
+                          )}
+                        >
+                          {col.label}
+                          {sort.column === col.id && (
+                            <span aria-hidden>
+                              {sort.dir === 'asc' ? '▲' : '▼'}
+                            </span>
+                          )}
+                        </button>
+                      </th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+                </thead>
+                <tbody>
+                  {sorted.map((row) => (
+                    <tr
+                      key={row.key}
+                      className="border-b border-track last:border-0"
+                    >
+                      <td className="px-4 py-2.5 font-semibold text-ink">
+                        {row.label}
+                      </td>
+                      {COLUMNS.map((col) => (
+                        <td key={col.id} className="px-4 py-2.5 text-ink-soft">
+                          {col.id === 'grade' ? (
+                            <GradeBadge grade={row.metrics.grade} />
+                          ) : (
+                            col.format(row)
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Card>
+            <p className="max-w-3xl text-[13px] text-ink-muted">
+              Every combo practiced so far, lifetime across all presets. Recent
+              accuracy is the last {RECENT_OUTCOME_WINDOW} attempts (the same
+              window that drives weighting); recent avg time is the last{' '}
+              {RECENT_TIME_WINDOW}. Grade (A–F) folds recent accuracy and speed
+              into one figure — the same one that drives which chords come up
+              more often, and that gates new unlocks.
+            </p>
+          </>
+        )}
+      </div>
     </main>
+  )
+}
+
+// Grade cell tint (§7.5): A/B green, C neutral, D/F red — the same three tiers
+// the prototype shows, so a glance down the column reads as a heat map.
+const GRADE_TINT: Record<ComboMetrics['grade'], string> = {
+  A: 'bg-primary-tint text-primary-light',
+  B: 'bg-primary-tint text-primary-light',
+  C: 'bg-track text-ink-soft',
+  D: 'bg-danger-tint text-danger',
+  F: 'bg-danger-tint text-danger',
+}
+
+function GradeBadge({ grade }: { grade: ComboMetrics['grade'] }) {
+  return (
+    <span
+      className={cx(
+        'inline-flex h-7 w-7 items-center justify-center rounded-lg text-sm font-extrabold',
+        GRADE_TINT[grade],
+      )}
+    >
+      {grade}
+    </span>
   )
 }

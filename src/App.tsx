@@ -11,7 +11,7 @@ import { UnlockToast } from './components/UnlockToast'
 import { HomeView } from './components/HomeView'
 import { SessionSheet } from './components/SessionSheet'
 import { ReportView } from './components/ReportView'
-import { HistoryView } from './components/HistoryView'
+import { ProgressView } from './components/ProgressView'
 import { ChordStatsView } from './components/ChordStatsView'
 import { Chip, RaisedButton } from './components/ui'
 import {
@@ -168,7 +168,7 @@ export default function App() {
         return <ReportView onGoAgain={startSession} onHome={goHomeFromReport} />
       case 'progress':
         return (
-          <HistoryView
+          <ProgressView
             onBack={() => setView('home')}
             onChordStats={() => setView('chordStats')}
           />
