@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  sanitizeTimerMinutes,
+  sanitizeSessionLength,
   summarizeSession,
   type SessionEvent,
 } from './session'
@@ -8,7 +8,7 @@ import {
 const event = (
   key: string,
   outcome: SessionEvent['outcome'],
-  timeToCorrectMs: number,
+  timeToCorrectMs: number | null,
 ): SessionEvent => ({ key, label: key, outcome, timeToCorrectMs })
 
 describe('summarizeSession (§7 end-of-session summary)', () => {
@@ -17,13 +17,14 @@ describe('summarizeSession (§7 end-of-session summary)', () => {
       prompts: 0,
       firstTrySuccesses: 0,
       totalTimeToCorrectMs: 0,
+      avgTimeToCorrectMs: null,
       bestAvgTimeToCorrectMs: null,
       slowest: [],
       worst: [],
     })
   })
 
-  it('tallies prompts, first-try successes and total time', () => {
+  it('tallies prompts, first-try successes and total/avg time', () => {
     const summary = summarizeSession([
       event('a', 'first-try', 1000),
       event('a', 'missed', 3000),
@@ -32,6 +33,7 @@ describe('summarizeSession (§7 end-of-session summary)', () => {
     expect(summary.prompts).toBe(3)
     expect(summary.firstTrySuccesses).toBe(2)
     expect(summary.totalTimeToCorrectMs).toBe(6000)
+    expect(summary.avgTimeToCorrectMs).toBe(2000)
   })
 
   it('ranks slowest by average time-to-correct, worst by accuracy', () => {
@@ -75,6 +77,26 @@ describe('summarizeSession (§7 end-of-session summary)', () => {
     expect(summary.bestAvgTimeToCorrectMs).toBe(1100)
   })
 
+  it('excludes Song bars (null time) from time stats but counts accuracy', () => {
+    const summary = summarizeSession([
+      event('song', 'first-try', null),
+      event('song', 'missed', null),
+      event('timed', 'first-try', 1500),
+    ])
+    // All three count as prompts and toward accuracy…
+    expect(summary.prompts).toBe(3)
+    expect(summary.firstTrySuccesses).toBe(2)
+    // …but only the timed prompt feeds the time figures.
+    expect(summary.totalTimeToCorrectMs).toBe(1500)
+    expect(summary.avgTimeToCorrectMs).toBe(1500)
+    expect(summary.bestAvgTimeToCorrectMs).toBe(1500)
+    // A Song-only chord has no time to be "slow".
+    expect(summary.slowest.map((e) => e.key)).toEqual(['timed'])
+    // But it can still be "worst" on accuracy.
+    expect(summary.worst.map((e) => e.key)).toEqual(['song'])
+    expect(summary.worst[0]?.avgTimeToCorrectMs).toBeNull()
+  })
+
   it('caps both lists at 3 entries', () => {
     const events = ['a', 'b', 'c', 'd', 'e'].map((k) => event(k, 'missed', 1))
     const summary = summarizeSession(events)
@@ -83,17 +105,21 @@ describe('summarizeSession (§7 end-of-session summary)', () => {
   })
 })
 
-describe('sanitizeTimerMinutes', () => {
-  it('rounds valid minutes and clamps to the maximum', () => {
-    expect(sanitizeTimerMinutes(5)).toBe(5)
-    expect(sanitizeTimerMinutes(7.6)).toBe(8)
-    expect(sanitizeTimerMinutes(999)).toBe(180)
+describe('sanitizeSessionLength (§7.2)', () => {
+  it('keeps null as ∞', () => {
+    expect(sanitizeSessionLength(null)).toBeNull()
   })
 
-  it('rejects junk', () => {
-    expect(sanitizeTimerMinutes(0)).toBeNull()
-    expect(sanitizeTimerMinutes(-5)).toBeNull()
-    expect(sanitizeTimerMinutes(NaN)).toBeNull()
-    expect(sanitizeTimerMinutes('10')).toBeNull()
+  it('rounds positive counts', () => {
+    expect(sanitizeSessionLength(10)).toBe(10)
+    expect(sanitizeSessionLength(20)).toBe(20)
+    expect(sanitizeSessionLength(40.4)).toBe(40)
+  })
+
+  it('falls back to the default on junk', () => {
+    expect(sanitizeSessionLength(0)).toBe(20)
+    expect(sanitizeSessionLength(-5)).toBe(20)
+    expect(sanitizeSessionLength(NaN)).toBe(20)
+    expect(sanitizeSessionLength('10')).toBe(20)
   })
 })

@@ -130,6 +130,18 @@ export function comboScore(history: ComboRecentHistory | null): number {
   return scoreOf(1 - history.misses / history.total, history.avgTimeToCorrectMs)
 }
 
+// The §7.4 session grade reuses the very same accuracy-scaled-by-speed math
+// as the per-combo score, fed a whole session's first-try accuracy and mean
+// time-to-correct — so a session grade and a chord grade mean the same thing.
+// A null time (a Song-only session) gets full speed credit, exactly as §5
+// scores such combos.
+export function sessionScore(
+  accuracy: number,
+  avgTimeToCorrectMs: number | null,
+): number {
+  return scoreOf(accuracy, avgTimeToCorrectMs)
+}
+
 export type ComboGrade = 'A' | 'B' | 'C' | 'D' | 'F'
 
 // Letter tiers over comboScore for the §7 chord stats page — a compact,

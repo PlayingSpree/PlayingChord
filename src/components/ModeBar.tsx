@@ -3,17 +3,15 @@ import { usePractice } from '../store/practiceStore'
 import { settingsStore, useSettings } from '../store/settingsStore'
 import {
   MAX_SONG_TEMPO_BPM,
-  MAX_TIMER_MINUTES,
   MIN_SONG_TEMPO_BPM,
   SONG_CHORD_COUNTS,
-  TIMER_PRESET_MINUTES,
   type SessionMode,
 } from '../practice'
 
 // Top-bar session-mode picker (§7) with the mode-specific settings beside
-// it: Learn gets the not-passed-only toggle; Practice gets the session
-// timer and the worst-chords-only toggle; Song (§6.5) gets tempo,
-// progression length and the show-example toggle.
+// it: Learn gets the not-passed-only toggle; Practice gets the worst-chords-
+// only toggle; Song (§6.5) gets tempo, progression length and the
+// show-example toggle. (Session length lives in the sheet now, §7.2.)
 export function ModeBar() {
   const mode = usePractice((s) => s.mode)
   const setMode = usePractice((s) => s.setMode)
@@ -36,12 +34,7 @@ export function ModeBar() {
         </ModeButton>
       </div>
       {mode === 'learn' && <NotPassedOnlyToggle />}
-      {mode === 'practice' && (
-        <>
-          <TimerControl />
-          <WorstOnlyToggle />
-        </>
-      )}
+      {mode === 'practice' && <WorstOnlyToggle />}
       {mode === 'song' && <SongControls />}
     </div>
   )
@@ -130,81 +123,6 @@ function ModeButton({
     >
       {children}
     </button>
-  )
-}
-
-// The §7 timer setting: off / presets / custom. Picking a duration starts
-// the countdown immediately; "off" cancels a running timer without a
-// summary. The countdown itself is shown in the prompt area.
-function TimerControl() {
-  const timerMinutes = usePractice((s) => s.timerMinutes)
-  const startTimer = usePractice((s) => s.startTimer)
-  const cancelTimer = usePractice((s) => s.cancelTimer)
-  const [customOpen, setCustomOpen] = useState(false)
-  const [customMinutes, setCustomMinutes] = useState(20)
-
-  const presetValue =
-    timerMinutes === null
-      ? 'off'
-      : TIMER_PRESET_MINUTES.includes(timerMinutes)
-        ? String(timerMinutes)
-        : 'custom'
-
-  return (
-    <div className="flex items-center gap-1.5">
-      <select
-        className="rounded-md border border-slate-700 bg-slate-800 px-2 py-1 text-sm"
-        aria-label="Session timer"
-        value={customOpen ? 'custom' : presetValue}
-        onChange={(e) => {
-          const value = e.target.value
-          if (value === 'off') {
-            setCustomOpen(false)
-            cancelTimer()
-          } else if (value === 'custom') {
-            setCustomOpen(true)
-          } else {
-            setCustomOpen(false)
-            startTimer(Number(value))
-          }
-        }}
-      >
-        <option value="off">Timer off</option>
-        {TIMER_PRESET_MINUTES.map((minutes) => (
-          <option key={minutes} value={minutes}>
-            {minutes} min
-          </option>
-        ))}
-        <option value="custom">Custom…</option>
-      </select>
-      {customOpen && (
-        <>
-          <input
-            type="number"
-            min={1}
-            max={MAX_TIMER_MINUTES}
-            value={customMinutes}
-            aria-label="Custom timer minutes"
-            onChange={(e) => {
-              if (Number.isFinite(e.target.valueAsNumber)) {
-                setCustomMinutes(e.target.valueAsNumber)
-              }
-            }}
-            className="w-16 rounded border border-slate-700 bg-slate-900 px-2 py-1 text-right text-sm text-slate-100"
-          />
-          <button
-            type="button"
-            onClick={() => {
-              setCustomOpen(false)
-              startTimer(customMinutes)
-            }}
-            className="rounded-md border border-slate-700 px-2 py-1 text-sm text-slate-300 transition-colors hover:border-slate-500 hover:text-slate-100"
-          >
-            Start
-          </button>
-        </>
-      )}
-    </div>
   )
 }
 

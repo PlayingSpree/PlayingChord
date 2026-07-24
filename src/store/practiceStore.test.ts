@@ -83,6 +83,9 @@ function setup(deps: Parameters<typeof createPracticeStore>[0] = {}) {
     store.getState().onHeldChange(held)
   }
   store.getState().start()
+  // Default to ∞ so length-agnostic tests can drill as many prompts as they
+  // like; the session-length suite sets its own length explicitly.
+  store.getState().setSessionLength(null)
   return { store, press, release, releaseAll }
 }
 
@@ -909,25 +912,6 @@ describe('practiceStore — Learn mode (§7)', () => {
     expect(s.store.getState().prompt).not.toBe(before)
     expect(s.store.getState().mode).toBe('learn')
   })
-
-  it('switching to Learn cancels a running timer without a summary', () => {
-    const s = setup()
-    s.store.getState().startTimer(5)
-    expect(s.store.getState().timerEndsAt).not.toBeNull()
-
-    s.store.getState().setMode('learn')
-    expect(s.store.getState().timerEndsAt).toBeNull()
-    expect(s.store.getState().timerMinutes).toBeNull()
-    vi.advanceTimersByTime(5 * 60_000)
-    expect(s.store.getState().summary).toBeNull() // dead timer never fires
-  })
-
-  it('starting a timer in Learn mode is a no-op (Learn is untimed)', () => {
-    const s = setup()
-    s.store.getState().setMode('learn')
-    s.store.getState().startTimer(5)
-    expect(s.store.getState().timerEndsAt).toBeNull()
-  })
 })
 
 describe('practiceStore — worst chords only (§5/§7)', () => {
@@ -1025,112 +1009,119 @@ describe('practiceStore — not passed only (§5.1/§7)', () => {
   })
 })
 
-describe('practiceStore — session timer & summary (§7)', () => {
+describe('practiceStore — session length & report (§7.2/§7.4)', () => {
   const onePreset = presetsOf({
     kind: 'explicit',
     chords: [{ root: 0, typeId: 'maj' }],
   })
 
-  it('starting a timer begins a fresh session', () => {
+  it('reaching the length ends the session and builds a report', () => {
     const s = setup({ presets: onePreset })
-    playCorrectAndAdvance(s, s.store.getState().prompt!)
-    expect(s.store.getState().session.prompts).toBe(1)
-
-    s.store.getState().startTimer(5)
-    expect(s.store.getState().session.prompts).toBe(0)
-    expect(s.store.getState().timerMinutes).toBe(5)
-    expect(s.store.getState().timerEndsAt).toBe(Date.now() + 5 * 60_000)
-  })
-
-  it('presents a summary of the timed window when time runs out', () => {
-    const s = setup({ presets: onePreset })
-    s.store.getState().startTimer(5)
-
-    vi.advanceTimersByTime(1000)
-    playCorrectAndAdvance(s, s.store.getState().prompt!) // first-try, 1000 ms
-    const second = s.store.getState().prompt!
-    s.press(61, 62, 63) // miss…
-    s.releaseAll()
-    playCorrectAndAdvance(s, second) // …corrected
-
-    vi.advanceTimersByTime(5 * 60_000)
+    s.store.getState().setSessionLength(3)
+    for (let i = 0; i < 3; i++) {
+      playCorrectAndAdvance(s, s.store.getState().prompt!)
+    }
     const state = s.store.getState()
-    expect(state.summary).toMatchObject({
-      prompts: 2,
-      firstTrySuccesses: 1,
-    })
-    expect(state.summary!.worst.map((e) => e.key)).toEqual(['0:maj:any'])
-    expect(state.summary!.slowest).toHaveLength(1)
+    expect(state.report).not.toBeNull()
+    expect(state.report!.promptsPlayed).toBe(3)
+    expect(state.report!.recordedPrompts).toBe(3)
+    expect(state.report!.accuracy).toBe(1)
     expect(state.prompt).toBeNull()
     expect(state.phase).toBe('idle')
-    expect(state.timerMinutes).toBeNull()
   })
 
-  it('a ✔ still waiting out its advance window counts at expiry', () => {
+  it('a skip still consumes a length slot', () => {
+    const s = setup({ presets: onePreset })
+    s.store.getState().setSessionLength(2)
+    s.store.getState().skip() // slot 1 — records nothing
+    expect(s.store.getState().report).toBeNull()
+    expect(s.store.getState().done).toBe(1)
+
+    s.store.getState().skip() // slot 2 — reaches the length
+    const report = s.store.getState().report
+    expect(report).not.toBeNull()
+    expect(report!.promptsPlayed).toBe(2)
+    expect(report!.recordedPrompts).toBe(0) // skips aren't recorded
+    expect(report!.accuracy).toBeNull()
+  })
+
+  it('∞ length never auto-ends', () => {
+    const s = setup({ presets: onePreset })
+    s.store.getState().setSessionLength(null)
+    for (let i = 0; i < 25; i++) {
+      playCorrectAndAdvance(s, s.store.getState().prompt!)
+    }
+    expect(s.store.getState().report).toBeNull()
+    expect(s.store.getState().prompt).not.toBeNull()
+    expect(s.store.getState().done).toBe(25)
+  })
+
+  it('End builds a report immediately, counting a pending ✔', () => {
     const stats = new InMemoryComboStats()
     const s = setup({ presets: onePreset, stats })
-    s.store.getState().startTimer(1)
-
-    vi.advanceTimersByTime(59_900)
     s.press(...correctNotes(s.store.getState().prompt!))
     expect(s.store.getState().phase).toBe('advancing')
 
-    vi.advanceTimersByTime(100) // timer fires before the advance window ends
-    expect(s.store.getState().summary!.prompts).toBe(1)
+    s.store.getState().endSession()
+    const report = s.store.getState().report
+    expect(report).not.toBeNull()
+    expect(report!.recordedPrompts).toBe(1)
     expect(stats.get('0:maj:any')?.attempts).toBe(1)
-    // The dead advance timer must not deal a prompt over the summary.
+    // The dead advance timer must not deal a prompt over the report.
     vi.advanceTimersByTime(ADVANCE)
     expect(s.store.getState().prompt).toBeNull()
     s.releaseAll()
   })
 
-  it('input is ignored while the summary is open', () => {
+  it('ending with zero prompts played returns no report (§7.2)', () => {
     const s = setup({ presets: onePreset })
-    s.store.getState().startTimer(1)
-    vi.advanceTimersByTime(60_000)
-    expect(s.store.getState().summary).not.toBeNull()
+    s.store.getState().endSession()
+    expect(s.store.getState().report).toBeNull()
+    expect(s.store.getState().prompt).toBeNull()
+  })
+
+  it('input and start are ignored while a report is open', () => {
+    const s = setup({ presets: onePreset })
+    s.store.getState().setSessionLength(1)
+    playCorrectAndAdvance(s, s.store.getState().prompt!)
+    expect(s.store.getState().report).not.toBeNull()
 
     s.press(60, 64, 67)
     expect(s.store.getState().phase).toBe('idle')
-    s.store.getState().skip()
+    s.store.getState().start()
     expect(s.store.getState().prompt).toBeNull()
     s.releaseAll()
   })
 
-  it('dismissing the summary resumes endless practice as a fresh session', () => {
+  it('dismissing the report and starting again begins a fresh session', () => {
     const s = setup({ presets: onePreset })
-    s.store.getState().startTimer(1)
+    s.store.getState().setSessionLength(1)
     playCorrectAndAdvance(s, s.store.getState().prompt!)
-    vi.advanceTimersByTime(60_000)
+    expect(s.store.getState().report).not.toBeNull()
 
-    s.store.getState().dismissSummary()
+    s.store.getState().dismissReport()
+    s.store.getState().start() // Go again
     const state = s.store.getState()
-    expect(state.summary).toBeNull()
+    expect(state.report).toBeNull()
     expect(state.prompt).not.toBeNull()
     expect(state.phase).toBe('armed')
+    expect(state.done).toBe(0)
     expect(state.session.prompts).toBe(0)
-    expect(state.timerEndsAt).toBeNull()
   })
 
-  it('cancelling the timer returns to endless with no summary', () => {
+  it('a Learn session reports prompts played but no grade (§7.4)', () => {
     const s = setup({ presets: onePreset })
-    s.store.getState().startTimer(5)
-    playCorrectAndAdvance(s, s.store.getState().prompt!)
-
-    s.store.getState().cancelTimer()
-    expect(s.store.getState().timerEndsAt).toBeNull()
-    expect(s.store.getState().session.prompts).toBe(1) // session continues
-
-    vi.advanceTimersByTime(5 * 60_000)
-    expect(s.store.getState().summary).toBeNull()
-  })
-
-  it('rejects junk durations', () => {
-    const s = setup({ presets: onePreset })
-    s.store.getState().startTimer(0)
-    s.store.getState().startTimer(-5)
-    s.store.getState().startTimer(NaN)
-    expect(s.store.getState().timerEndsAt).toBeNull()
+    s.store.getState().setMode('learn')
+    s.store.getState().setSessionLength(2)
+    for (let i = 0; i < 2; i++) {
+      playCorrectAndAdvance(s, s.store.getState().prompt!)
+    }
+    const report = s.store.getState().report
+    expect(report).not.toBeNull()
+    expect(report!.mode).toBe('learn')
+    expect(report!.grade).toBeNull()
+    expect(report!.promptsPlayed).toBe(2)
+    expect(report!.recordedPrompts).toBe(0) // Learn is stats-neutral (§5)
   })
 })
 
@@ -1213,11 +1204,11 @@ describe('practiceStore — pause/resume (Phase 7 History nav)', () => {
     s.releaseAll()
   })
 
-  it('start never deals a prompt over an open summary', () => {
+  it('start never deals a prompt over an open report', () => {
     const s = setup({ presets: onePreset })
-    s.store.getState().startTimer(1)
-    vi.advanceTimersByTime(60_000)
-    expect(s.store.getState().summary).not.toBeNull()
+    s.store.getState().setSessionLength(1)
+    playCorrectAndAdvance(s, s.store.getState().prompt!) // reaches length → report
+    expect(s.store.getState().report).not.toBeNull()
 
     s.store.getState().start()
     expect(s.store.getState().prompt).toBeNull()
@@ -1350,7 +1341,7 @@ describe('practiceStore — Song mode (§6.5)', () => {
     s.releaseAll()
   })
 
-  it('records hits and misses per bar with no time sample or session tally', () => {
+  it('records hits and misses per bar with no time sample, feeding the session', () => {
     const stats = new InMemoryComboStats()
     const s = enterSong({ stats })
     s.press(60, 64, 67) // hold C maj through the count-in (legato)
@@ -1369,7 +1360,13 @@ describe('practiceStore — Song mode (§6.5)', () => {
     s.releaseAll()
     vi.advanceTimersByTime(BAR) // bar 1 untouched → miss
     expect(stats.get('2:min:any')?.recentOutcomes).toEqual(['missed'])
-    expect(s.store.getState().session.prompts).toBe(0) // stats bar untouched
+    // A Song bar counts as a played prompt in the session (§7.4) — hit or
+    // miss — but carries no time sample.
+    const state = s.store.getState()
+    expect(state.session.prompts).toBe(2)
+    expect(state.session.firstTrySuccesses).toBe(1)
+    expect(state.session.totalTimeToCorrectMs).toBe(0)
+    expect(state.done).toBe(2)
   })
 
   it('marks foreign held keys without ever escalating', () => {

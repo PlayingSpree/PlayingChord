@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense } from 'react'
 import { usePractice } from '../store/practiceStore'
 import { useSettings } from '../store/settingsStore'
 import type { ChordNameSize, Hint } from '../practice'
@@ -124,20 +124,16 @@ export function PromptCard() {
           <span className="text-rose-400">✘ {hintText(hint)}</span>
         ) : null}
       </p>
-      {/* Skip advances without counting against stats or weighting (§6.2);
-          the session-timer countdown rides the same row (§7 sketch). Song
-          is clock-paced — no skipping, no timer (§6.5). */}
+      {/* Skip advances without counting against stats or weighting (§6.2).
+          Song is clock-paced — no skipping (§6.5). */}
       {song === null && (
-        <div className="flex items-center gap-4">
-          <button
-            type="button"
-            onClick={skip}
-            className="rounded-md border border-slate-700 px-4 py-1.5 text-sm font-medium text-slate-300 transition-colors hover:border-slate-500 hover:text-slate-100"
-          >
-            Skip →
-          </button>
-          <Countdown />
-        </div>
+        <button
+          type="button"
+          onClick={skip}
+          className="rounded-md border border-slate-700 px-4 py-1.5 text-sm font-medium text-slate-300 transition-colors hover:border-slate-500 hover:text-slate-100"
+        >
+          Skip →
+        </button>
       )}
     </section>
   )
@@ -211,29 +207,6 @@ function SongCountIn() {
           {entry.label} {entry.hits}/{entry.loops}
         </span>
       ))}
-    </span>
-  )
-}
-
-// Live countdown for the §7 session timer; the store owns expiry, this only
-// displays the remaining time.
-function Countdown() {
-  const timerEndsAt = usePractice((s) => s.timerEndsAt)
-  const [nowMs, setNowMs] = useState(() => Date.now())
-
-  useEffect(() => {
-    if (timerEndsAt === null) return
-    const tick = setInterval(() => setNowMs(Date.now()), 250)
-    return () => clearInterval(tick)
-  }, [timerEndsAt])
-
-  if (timerEndsAt === null) return null
-  const remaining = Math.max(0, timerEndsAt - nowMs)
-  const minutes = Math.floor(remaining / 60_000)
-  const seconds = Math.floor((remaining % 60_000) / 1000)
-  return (
-    <span className="text-sm font-medium tabular-nums text-slate-300">
-      ⏱ {minutes}:{String(seconds).padStart(2, '0')}
     </span>
   )
 }

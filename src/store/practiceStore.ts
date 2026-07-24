@@ -21,12 +21,13 @@ import {
   reconcileProgress,
   recordChordAttempt,
   romanNumeral,
-  sanitizeTimerMinutes,
+  sanitizeSessionLength,
+  DEFAULT_SESSION_LENGTH,
   songChordLabel,
   SongEngine,
   UPCOMING_COUNT,
   unlockedChordKeys,
-  summarizeSession,
+  buildSessionReport,
   wrongHeldKeys,
   type AttemptPhase,
   type Combo,
@@ -40,7 +41,7 @@ import {
   type Rng,
   type SessionEvent,
   type SessionMode,
-  type SessionSummary,
+  type SessionReport,
   type SongChord,
   type SongState,
 } from '../practice'
@@ -93,10 +94,10 @@ function sanitizeDiatonicKey(value: unknown): PitchClass {
     : DEFAULT_DIATONIC_KEY
 }
 
-// Live session tallies for the §7 stats bar. A "session" is one app load —
-// until a session timer starts or its summary is dismissed, both of which
-// begin a fresh one. Skips and Learn-mode prompts never count (§7);
-// time-to-correct includes retries.
+// Live session tallies (§7). A "session" runs from start() to endSession()
+// (§7.2); each fresh session zeroes these. Skips and Learn-mode prompts never
+// count toward accuracy (§7); time-to-correct includes retries. Song bars
+// count as prompts with no time sample (§6.5).
 export interface SessionStats {
   prompts: number
   firstTrySuccesses: number
@@ -200,9 +201,15 @@ export interface PracticeStoreState {
   // Learn-mode setting (§5.1/§7), same lifecycle as worstOnly: narrows
   // generation to unlocked chords not yet passed.
   notPassedOnly: boolean
-  timerMinutes: number | null // running timer's duration; null = off
-  timerEndsAt: number | null // epoch ms, for the countdown display
-  summary: SessionSummary | null
+  // Session length in prompts (§7.2): reaching it ends the session. null = ∞;
+  // session-only (not persisted). Applies to Learn/Practice; Song ignores it.
+  sessionLength: number | null
+  // Prompts advanced past this session — correct + skip + Learn — the Stage's
+  // done/length readout and the report's zero-prompt guard.
+  done: number
+  // The end-of-session Report (§7.4); null while a session is live or after
+  // it's dismissed. Zero-prompt sessions end with no report (§7.2).
+  report: SessionReport | null
   session: SessionStats
   // Consecutive first-try correct prompts (§7 combo text); resets on any
   // miss and whenever the session itself resets. Skips leave it untouched,
@@ -229,11 +236,14 @@ export interface PracticeStoreState {
   setMode(mode: SessionMode): void
   setWorstOnly(on: boolean): void
   setNotPassedOnly(on: boolean): void
-  startTimer(minutes: number): void
-  cancelTimer(): void
-  dismissSummary(): void
-  // Leaving the practice view (History tab): halt judging and drop the
-  // prompt so start() deals a fresh one on return.
+  setSessionLength(length: number | null): void
+  // End the session now (§7.2 End button, or auto at the length): build the
+  // Report and freeze practice. A zero-prompt session ends with report = null
+  // (the caller returns Home).
+  endSession(): void
+  dismissReport(): void
+  // Leaving the Stage (StrictMode churn): halt judging and drop the prompt so
+  // start() deals a fresh one on return.
   pause(): void
   // Re-derive goal/streak state (e.g. after the goal setting changes).
   refreshGoal(): void
@@ -282,8 +292,13 @@ export function createPracticeStore({
   let queue: Combo[] = []
   let currentCombo: Combo | null = null
   let sessionEvents: SessionEvent[] = []
+  // Chords passed / newly unlocked this session (§5.1) and the session's own
+  // accrued active ms — the Report's passed/unlock lists and time increment
+  // (§7.4). Reset alongside sessionEvents at each session start.
+  let sessionPassedLabels: string[] = []
+  let sessionUnlockedLabels: string[] = []
+  let sessionActiveMs = 0
   let pendingActiveMs = 0
-  let timerHandle: ReturnType<typeof setTimeout> | null = null
   const activeTime = new ActiveTimeTracker()
 
   const remembered = memory.load()
@@ -413,6 +428,11 @@ export function createPracticeStore({
         timeToCorrectMs,
       )
       if (!update.changed) return
+      // The chord just passed this attempt (§5.1) — collect it for the Report.
+      const passedLabel = chordKeyLabel(poolChordKey(combo))
+      if (!sessionPassedLabels.includes(passedLabel)) {
+        sessionPassedLabels.push(passedLabel)
+      }
       const previousCount = progressRecord.unlockedCount
       progressRecord = update.record
       unlocked = unlockedChordKeys(chordOrder, progressRecord)
@@ -420,11 +440,15 @@ export function createPracticeStore({
       set({ progress: progressSnapshot() })
       if (update.justUnlocked) {
         queue = []
-        flashJustUnlocked(
-          chordOrder
-            .slice(previousCount, progressRecord.unlockedCount)
-            .map(chordKeyLabel),
-        )
+        const newLabels = chordOrder
+          .slice(previousCount, progressRecord.unlockedCount)
+          .map(chordKeyLabel)
+        for (const label of newLabels) {
+          if (!sessionUnlockedLabels.includes(label)) {
+            sessionUnlockedLabels.push(label)
+          }
+        }
+        flashJustUnlocked(newLabels)
       }
     }
 
@@ -493,13 +517,21 @@ export function createPracticeStore({
       machine.promptShown(prompt)
     }
 
+    // Advance the session's played-prompt count (§7.2): every prompt that
+    // advances counts a slot — correct, skip, or Learn.
+    const bumpDone = () => set((state) => ({ done: state.done + 1 }))
+
     // A prompt only completes through the 'advancing' phase — skip advances
     // from any other phase and stays out of stats and weighting (§6.2 step 4).
     // Learn-mode prompts complete but feed nothing either (§5): not the
-    // per-combo records, not the session tallies or summary log.
-    const recordOutcome = () => {
-      if (currentCombo === null || machine.state.phase !== 'advancing') return
-      if (get().mode === 'learn') return
+    // per-combo records, not the session tallies or the report log. Returns
+    // whether a recorded prompt was logged (a ✔ that counts a done slot on its
+    // own — the caller only bumps done for the skip/Learn cases).
+    const recordOutcome = (): boolean => {
+      if (currentCombo === null || machine.state.phase !== 'advancing') {
+        return false
+      }
+      if (get().mode === 'learn') return false
       const outcome: PromptOutcome =
         machine.state.missCount > 0 ? 'missed' : 'first-try'
       const timeToCorrectMs = machine.state.reactionMs ?? 0
@@ -516,6 +548,9 @@ export function createPracticeStore({
         outcome,
         timeToCorrectMs,
       })
+      // Defensive: a ✔ is recorded exactly once — clear the combo so a stray
+      // second recordOutcome (still 'advancing') can't double-count it.
+      currentCombo = null
       set((state) => {
         const comboStreak = outcome === 'first-try' ? state.comboStreak + 1 : 0
         return {
@@ -528,9 +563,11 @@ export function createPracticeStore({
               state.session.totalTimeToCorrectMs + timeToCorrectMs,
           },
           comboStreak,
+          done: state.done + 1,
         }
       })
       bestCombo.record(get().comboStreak)
+      return true
     }
 
     const machine = new AttemptLifecycle({
@@ -541,7 +578,13 @@ export function createPracticeStore({
       revealOnMisses: () => get().mode !== 'learn',
       onState: (state) => set(state),
       onAdvance: () => {
-        recordOutcome()
+        // A skip or a Learn prompt records nothing but still consumes a slot.
+        if (!recordOutcome()) bumpDone()
+        const length = get().sessionLength
+        if (length !== null && get().done >= length) {
+          concludeSession() // reached the §7.2 length → Report
+          return
+        }
         nextPrompt()
       },
     })
@@ -614,8 +657,28 @@ export function createPracticeStore({
       },
       // Each judged bar feeds the per-combo record — hit = first-try, miss =
       // attempt — with no time sample (§6.5); Practice weighting inherits it.
+      // A bar also counts as a played prompt in the session (§7.4): it logs a
+      // (timeless) session event and ticks the tallies, so a Song session
+      // produces a Report like any other. Song ignores the length (§7.2), so
+      // there's no end check here — it runs until the End button.
       onBarResult: (chord, hit) => {
-        stats.record(songComboKey(chord), hit ? 'first-try' : 'missed', null)
+        const key = songComboKey(chord)
+        const outcome: PromptOutcome = hit ? 'first-try' : 'missed'
+        stats.record(key, outcome, null)
+        sessionEvents.push({
+          key,
+          label: songLabel(chord),
+          outcome,
+          timeToCorrectMs: null,
+        })
+        set((state) => ({
+          session: {
+            prompts: state.session.prompts + 1,
+            firstTrySuccesses: state.session.firstTrySuccesses + (hit ? 1 : 0),
+            totalTimeToCorrectMs: state.session.totalTimeToCorrectMs,
+          },
+          done: state.done + 1,
+        }))
       },
     })
 
@@ -642,36 +705,61 @@ export function createPracticeStore({
     }
 
     const touchActivity = () => {
-      pendingActiveMs += activeTime.touch(now())
+      const delta = activeTime.touch(now())
+      pendingActiveMs += delta
+      sessionActiveMs += delta // this session's share, for the report increment
       if (pendingActiveMs >= ACTIVE_FLUSH_MS) flushActivity()
     }
 
     const resetSession = () => {
       sessionEvents = []
-      set({ session: FRESH_SESSION, comboStreak: 0 })
+      sessionPassedLabels = []
+      sessionUnlockedLabels = []
+      sessionActiveMs = 0
+      set({ session: FRESH_SESSION, comboStreak: 0, done: 0 })
     }
 
-    const clearTimer = () => {
-      if (timerHandle !== null) {
-        clearTimeout(timerHandle)
-        timerHandle = null
+    // Assemble the §7.4 Report from the just-ended session's tallies plus the
+    // persisted lifetime totals. Called only when at least one prompt played.
+    const buildReport = (): SessionReport => {
+      const records = activity.records()
+      let lifetimePrompts = 0
+      let lifetimeActiveMinutes = 0
+      for (const record of Object.values(records)) {
+        lifetimePrompts += record.prompts
+        lifetimeActiveMinutes += record.activeMinutes
       }
-      set({ timerMinutes: null, timerEndsAt: null })
+      return buildSessionReport({
+        mode: get().mode,
+        promptsPlayed: get().done,
+        events: sessionEvents,
+        records,
+        todayKey: localDateKey(new Date(now())),
+        lifetime: {
+          prompts: lifetimePrompts,
+          activeMinutes: lifetimeActiveMinutes,
+        },
+        increment: {
+          prompts: sessionEvents.length,
+          activeMinutes: sessionActiveMs / 60_000,
+        },
+        passedLabels: sessionPassedLabels,
+        unlocked:
+          sessionUnlockedLabels.length > 0
+            ? { labels: [...sessionUnlockedLabels], ...progressSnapshot() }
+            : null,
+        goal: currentGoal(),
+      })
     }
 
-    // The session timer ran out (§7): freeze practice and present the
-    // summary. A ✔ still waiting out its advance window counts first.
-    const timerExpired = () => {
-      timerHandle = null
-      recordOutcome()
+    // End the current session (§7.2): freeze practice and show the Report — or
+    // return with no report when zero prompts played. The caller/endSession has
+    // already recorded any pending ✔.
+    const concludeSession = () => {
+      if (get().mode === 'song') leaveSong()
       machine.stop()
       flushActivity()
-      set({
-        prompt: null,
-        timerMinutes: null,
-        timerEndsAt: null,
-        summary: summarizeSession(sessionEvents),
-      })
+      set({ prompt: null, report: get().done > 0 ? buildReport() : null })
     }
 
     const applySelection = (presetId: string, diatonicKey: PitchClass) => {
@@ -718,9 +806,9 @@ export function createPracticeStore({
       songSummary: null,
       worstOnly: false,
       notPassedOnly: false,
-      timerMinutes: null,
-      timerEndsAt: null,
-      summary: null,
+      sessionLength: DEFAULT_SESSION_LENGTH,
+      done: 0,
+      report: null,
       session: FRESH_SESSION,
       comboStreak: 0,
       worstChords: [],
@@ -731,9 +819,11 @@ export function createPracticeStore({
       justUnlockedLabels: [],
 
       start() {
-        // React StrictMode mounts effects twice; a paused store re-prompts,
-        // but never over an open summary.
-        if (get().prompt !== null || get().summary !== null) return
+        // Entering the Stage begins a fresh session (§7.2). Idempotent under
+        // StrictMode's double-mount (a live prompt/song short-circuits) and
+        // never runs over an open Report.
+        if (get().report !== null || get().prompt !== null) return
+        resetSession()
         if (get().mode === 'song') {
           songEngine.start(activePreset.pool)
           return
@@ -784,7 +874,6 @@ export function createPracticeStore({
         // still sees the old mode); the current prompt is replaced so a
         // Learn reveal can't be answered for Practice credit.
         recordOutcome()
-        clearTimer() // Learn/Song are untimed (§7); leaving ends a timer
         queue = [] // the pool can change (worstOnly/notPassedOnly are per-mode)
         if (mode === 'song') {
           machine.stop() // clears phase/hint/reactionMs via onState
@@ -815,36 +904,20 @@ export function createPracticeStore({
         nextPrompt()
       },
 
-      startTimer(minutes: number) {
-        const sanitized = sanitizeTimerMinutes(minutes)
-        if (
-          sanitized === null ||
-          get().mode !== 'practice' ||
-          get().summary !== null
-        ) {
-          return
-        }
-        recordOutcome() // a pending ✔ belongs to the ending session
-        if (timerHandle !== null) clearTimeout(timerHandle)
-        resetSession() // the timed window is a fresh session (§7 summary)
-        const durationMs = sanitized * 60_000
-        timerHandle = setTimeout(timerExpired, durationMs)
-        set({ timerMinutes: sanitized, timerEndsAt: now() + durationMs })
-        nextPrompt()
+      setSessionLength(length: number | null) {
+        set({ sessionLength: sanitizeSessionLength(length) })
       },
 
-      cancelTimer() {
-        clearTimer() // back to endless; the session continues, no summary
+      endSession() {
+        // The End button (§7.2), any mode, any time. A pending ✔ counts toward
+        // the ending session; then build the Report (or none if nothing played).
+        if (get().report !== null) return
+        recordOutcome()
+        concludeSession()
       },
 
-      dismissSummary() {
-        if (get().summary === null) return
-        resetSession() // endless practice resumes as a fresh session
-        set({ summary: null })
-        // A summary can be dismissed after switching into Song (the timer
-        // expired earlier) — the song is already running, nothing to deal.
-        if (get().mode === 'song') return
-        nextPrompt()
+      dismissReport() {
+        set({ report: null })
       },
 
       pause() {
