@@ -155,6 +155,21 @@ export function comboGrade(score: number): ComboGrade {
   return 'F'
 }
 
+// A chord's grade for Home's "In play" row (§7.1) when it spans several
+// voicing combos: the *worst* (lowest-scoring) combo's grade, surfacing the
+// weakest voicing rather than averaging it away. null when no combo has any
+// history yet (the chord reads as "learning" instead of graded).
+export function worstChordGrade(
+  records: readonly ComboStatRecord[],
+): ComboGrade | null {
+  let worstScore: number | null = null
+  for (const record of records) {
+    const { score } = comboMetrics(record)
+    worstScore = worstScore === null ? score : Math.min(worstScore, score)
+  }
+  return worstScore === null ? null : comboGrade(worstScore)
+}
+
 // A per-combo metrics snapshot for the §7 chord stats page — every persisted
 // combo, not just the top-N worst/most-improved lists. Lifetime figures use
 // the full stored history. The two recent figures use different windows:

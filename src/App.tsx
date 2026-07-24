@@ -1,27 +1,27 @@
 import { useEffect, useState } from 'react'
 import { midiStore } from './store/midiStore'
-import { practiceStore } from './store/practiceStore'
-import { settingsStore } from './store/settingsStore'
+import { practiceStore, usePractice } from './store/practiceStore'
+import { settingsStore, useSettings } from './store/settingsStore'
 import { chime, metronome, piano, primeOnFirstGesture } from './audio'
 import { MidiGate } from './components/MidiGate'
-import { DevicePicker } from './components/DevicePicker'
-import { PresetPicker } from './components/PresetPicker'
 import { PromptCard } from './components/PromptCard'
 import { KeyboardView } from './components/KeyboardView'
 import { SettingsView } from './components/SettingsView'
-import { StatsBar } from './components/StatsBar'
-import { ModeBar } from './components/ModeBar'
-import { GoalChip } from './components/GoalChip'
-import { UnlockChip } from './components/UnlockChip'
 import { UnlockToast } from './components/UnlockToast'
+import { HomeView } from './components/HomeView'
+import { SessionSheet } from './components/SessionSheet'
+import { ReportView } from './components/ReportView'
 import { HistoryView } from './components/HistoryView'
 import { ChordStatsView } from './components/ChordStatsView'
+import { Chip, RaisedButton } from './components/ui'
 import {
   SimulatedMidiSource,
   WebMidiSource,
   attachQwertyKeys,
   type MidiSource,
 } from './midi'
+
+type View = 'home' | 'stage' | 'report' | 'progress' | 'chordStats' | 'settings'
 
 function createSource(): MidiSource {
   const wantSim =
@@ -44,9 +44,11 @@ function createSource(): MidiSource {
 const midiSource = createSource()
 
 export default function App() {
-  const [view, setView] = useState<
-    'practice' | 'history' | 'chordStats' | 'settings'
-  >('practice')
+  const [view, setView] = useState<View>('home')
+  const [sheetOpen, setSheetOpen] = useState(false)
+  // Bumping this remounts the Stage, so Start / Go again always begin a fresh
+  // session (start() resets on mount) even from an already-running Stage.
+  const [sessionNonce, setSessionNonce] = useState(0)
 
   useEffect(() => {
     void midiStore.getState().initialize(midiSource)
@@ -62,6 +64,14 @@ export default function App() {
       if (state.activeDeviceId !== prev.activeDeviceId) {
         piano.allNotesOff()
       }
+    })
+  }, [])
+
+  // A session that reaches its length ends itself (§7.2) — route to the
+  // Report when it does, wherever the transition happens.
+  useEffect(() => {
+    return practiceStore.subscribe((state, prev) => {
+      if (state.report !== null && prev.report === null) setView('report')
     })
   }, [])
 
@@ -120,80 +130,171 @@ export default function App() {
     }
   }, [])
 
+  // Start / restart a session with the current config: clear any report and
+  // remount the Stage so start() deals a fresh session (§7.2).
+  const startSession = () => {
+    setSheetOpen(false)
+    practiceStore.getState().dismissReport()
+    setSessionNonce((n) => n + 1)
+    setView('stage')
+  }
+
+  // The Stage's End button (§7.2): a zero-prompt session returns Home, else
+  // the Report (which the store just built).
+  const endSession = () => {
+    practiceStore.getState().endSession()
+    setView(practiceStore.getState().report !== null ? 'report' : 'home')
+  }
+
+  const goHomeFromReport = () => {
+    practiceStore.getState().dismissReport()
+    setView('home')
+  }
+
+  const view$ = (() => {
+    switch (view) {
+      case 'stage':
+        // The no-device gate (§6.1) wraps the Stage only.
+        return (
+          <MidiGate>
+            <StageView
+              key={sessionNonce}
+              onEnd={endSession}
+              onOpenSheet={() => setSheetOpen(true)}
+            />
+          </MidiGate>
+        )
+      case 'report':
+        return <ReportView onGoAgain={startSession} onHome={goHomeFromReport} />
+      case 'progress':
+        return (
+          <HistoryView
+            onBack={() => setView('home')}
+            onChordStats={() => setView('chordStats')}
+          />
+        )
+      case 'chordStats':
+        return <ChordStatsView onBack={() => setView('progress')} />
+      case 'settings':
+        return <SettingsView onBack={() => setView('home')} />
+      default:
+        return (
+          <HomeView
+            onStart={startSession}
+            onOpenSheet={() => setSheetOpen(true)}
+            onSettings={() => setView('settings')}
+            onProgress={() => setView('progress')}
+          />
+        )
+    }
+  })()
+
   return (
-    <MidiGate>
-      {view === 'practice' ? (
-        <PracticeView
-          onHistory={() => setView('history')}
-          onSettings={() => setView('settings')}
+    <>
+      {view$}
+      {sheetOpen && (
+        <SessionSheet
+          onStart={startSession}
+          onClose={() => setSheetOpen(false)}
         />
-      ) : view === 'history' ? (
-        <HistoryView
-          onBack={() => setView('practice')}
-          onChordStats={() => setView('chordStats')}
-        />
-      ) : view === 'chordStats' ? (
-        <ChordStatsView onBack={() => setView('history')} />
-      ) : (
-        <SettingsView onBack={() => setView('practice')} />
       )}
-    </MidiGate>
+      <UnlockToast />
+    </>
   )
 }
 
-function PracticeView({
-  onHistory,
-  onSettings,
+// The in-session Stage (§7.3). Practice pauses on unmount (leaving the Stage,
+// or a remount for a fresh session) and deals a prompt on mount. The prompt
+// area / keyboard get their full restyle in a later phase.
+function StageView({
+  onEnd,
+  onOpenSheet,
 }: {
-  onHistory: () => void
-  onSettings: () => void
+  onEnd: () => void
+  onOpenSheet: () => void
 }) {
-  // Practice pauses while the History view is open (unmount) and deals a
-  // fresh prompt on return.
   useEffect(() => {
     practiceStore.getState().start()
     return () => practiceStore.getState().pause()
   }, [])
 
+  const presets = usePractice((s) => s.presets)
+  const presetId = usePractice((s) => s.presetId)
+  const mode = usePractice((s) => s.mode)
+  const done = usePractice((s) => s.done)
+  const sessionLength = usePractice((s) => s.sessionLength)
+  const progress = usePractice((s) => s.progress)
+  const notPassedOnly = usePractice((s) => s.notPassedOnly)
+  const song = usePractice((s) => s.song)
+  const tempo = useSettings((s) => s.settings.songTempoBpm)
+
+  const presetName = presets.find((p) => p.id === presetId)?.name ?? 'Practice'
+  const modeLabel =
+    mode === 'song' ? '♪ Song' : mode === 'learn' ? '🎓 Learn' : '▶ Practice'
+  const lengthLabel = sessionLength === null ? '∞' : String(sessionLength)
+  const pct =
+    sessionLength && sessionLength > 0
+      ? Math.min(100, (100 * done) / sessionLength)
+      : 0
+
   return (
-    <main className="flex min-h-screen flex-col bg-slate-900 text-slate-100">
-      <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-slate-800 px-6 py-3">
-        <h1 className="text-lg font-bold tracking-tight">PlayingChord</h1>
-        <div className="flex flex-wrap items-center gap-3">
-          <PresetPicker />
-          <ModeBar />
-          <DevicePicker />
-          <UnlockChip />
-          <GoalChip />
-          <button
-            type="button"
-            onClick={onHistory}
-            className="rounded-md border border-slate-700 px-2.5 py-1 text-sm text-slate-300 transition-colors hover:border-slate-500 hover:text-slate-100"
-          >
-            History
-          </button>
-          <button
-            type="button"
-            onClick={onSettings}
-            className="rounded-md border border-slate-700 px-2.5 py-1 text-sm text-slate-300 transition-colors hover:border-slate-500 hover:text-slate-100"
-          >
-            ⚙ Settings
-          </button>
-        </div>
+    <main className="flex min-h-screen flex-col bg-surface text-ink">
+      <header className="flex items-center gap-3.5 px-6 py-4">
+        <RaisedButton variant="raised" size="sm" onClick={onOpenSheet}>
+          {presetName} · {modeLabel} ▾
+        </RaisedButton>
+
+        {mode === 'practice' && (
+          <>
+            <div className="h-3 flex-1 overflow-hidden rounded-full bg-track">
+              <div
+                className="h-full rounded-full bg-primary"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            <span className="text-sm font-semibold tabular-nums text-ink-muted">
+              {done} / {lengthLabel}
+            </span>
+          </>
+        )}
+        {mode === 'learn' && (
+          <>
+            {notPassedOnly && (
+              <Chip selected className="px-3 py-1.5 text-[13px]">
+                not passed only ✓
+              </Chip>
+            )}
+            <span className="flex-1" />
+            <span className="flex items-center gap-1.5 text-sm font-semibold text-ink-muted">
+              🔓{' '}
+              <b className="text-info-light">
+                {progress.unlocked}/{progress.total}
+              </b>
+            </span>
+          </>
+        )}
+        {mode === 'song' && (
+          <>
+            <Chip className="px-3 py-1.5 text-[13px]">♩ = {tempo}</Chip>
+            <Chip className="px-3 py-1.5 text-[13px]">
+              loop {song ? song.loopIndex + 1 : 1}
+            </Chip>
+            <span className="flex-1" />
+          </>
+        )}
+
+        <RaisedButton variant="outline" size="sm" onClick={onEnd}>
+          End
+        </RaisedButton>
       </header>
 
       <div className="flex flex-1 items-center justify-center px-6 py-8">
         <PromptCard />
       </div>
 
-      <footer className="pb-8">
-        <StatsBar />
-        <div className="px-4 pt-2">
-          <KeyboardView />
-        </div>
+      <footer className="px-4 pb-8">
+        <KeyboardView />
       </footer>
-
-      <UnlockToast />
     </main>
   )
 }

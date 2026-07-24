@@ -5,6 +5,7 @@ import {
   lastDateKeys,
   meetsGoal,
   previousDateKey,
+  weekFirstTryDelta,
 } from './goals'
 import type { DailyRecord } from './schema'
 
@@ -13,6 +14,19 @@ const day = (date: string, activeMinutes: number): DailyRecord => ({
   activeMinutes,
   prompts: 0,
   firstTrySuccesses: 0,
+  timeToCorrectMs: 0,
+})
+
+// A day carrying prompt stats (for the week-delta tests).
+const promptDay = (
+  date: string,
+  prompts: number,
+  firstTrySuccesses: number,
+): DailyRecord => ({
+  date,
+  activeMinutes: prompts,
+  prompts,
+  firstTrySuccesses,
   timeToCorrectMs: 0,
 })
 
@@ -133,5 +147,34 @@ describe('computeBestStreak (§7 History)', () => {
       day('2026-07-16', 10),
     )
     expect(computeBestStreak(r, 10)).toBe(2)
+  })
+})
+
+describe('weekFirstTryDelta (§7.1)', () => {
+  it('is all null with no prompts', () => {
+    expect(weekFirstTryDelta({}, '2026-07-24')).toEqual({
+      accuracy: null,
+      delta: null,
+    })
+  })
+
+  it('pools the last 7 days and compares against the prior 7', () => {
+    const r = records(
+      // prior week (2026-07-11 … 07-17): 10 prompts, 5 first-try → 50%
+      promptDay('2026-07-14', 10, 5),
+      // this week (2026-07-18 … 07-24): 20 prompts, 16 first-try → 80%
+      promptDay('2026-07-20', 8, 6),
+      promptDay('2026-07-24', 12, 10),
+    )
+    const result = weekFirstTryDelta(r, '2026-07-24')
+    expect(result.accuracy).toBeCloseTo(0.8, 6)
+    expect(result.delta).toBeCloseTo(0.3, 6)
+  })
+
+  it('has no delta when the prior week is empty', () => {
+    const r = records(promptDay('2026-07-24', 4, 3))
+    const result = weekFirstTryDelta(r, '2026-07-24')
+    expect(result.accuracy).toBeCloseTo(0.75, 6)
+    expect(result.delta).toBeNull()
   })
 })

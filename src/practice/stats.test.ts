@@ -16,8 +16,36 @@ import {
   RECENT_OUTCOME_WINDOW,
   RECENT_TIME_WINDOW,
   TIME_TO_CORRECT_SAMPLE_CAP,
+  worstChordGrade,
   type ComboStatRecord,
 } from './stats'
+
+// Build a record of N first-try successes at the given time-to-correct.
+const cleanRecord = (n: number, timeMs: number): ComboStatRecord => {
+  let record: ComboStatRecord | null = null
+  for (let i = 0; i < n; i++) record = applyOutcome(record, 'first-try', timeMs)
+  return record!
+}
+
+describe('worstChordGrade (§7.1 In play)', () => {
+  it('is null with no history', () => {
+    expect(worstChordGrade([])).toBeNull()
+  })
+
+  it('takes the lowest-scoring combo grade, not the average', () => {
+    const strong = cleanRecord(5, 500) // fast, clean → A
+    const weakRecord = applyOutcome(
+      applyOutcome(cleanRecord(3, 500), 'missed', 4000),
+      'missed',
+      4000,
+    ) // several recent misses → low grade
+    expect(comboGrade(comboMetrics(strong).score)).toBe('A')
+    // The chord's grade is the weaker of the two, matching the weak combo.
+    expect(worstChordGrade([strong, weakRecord])).toBe(
+      comboGrade(comboMetrics(weakRecord).score),
+    )
+  })
+})
 
 describe('applyOutcome (§8 combo stat record)', () => {
   it('creates a fresh record from null', () => {
