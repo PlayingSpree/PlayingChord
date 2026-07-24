@@ -100,7 +100,7 @@ export function KeyboardView() {
       <div
         role="img"
         aria-label="On-screen keyboard showing held and highlighted keys"
-        className="flex rounded-lg border border-slate-700 bg-slate-950 p-1.5"
+        className="flex rounded-2xl border-2 border-card-border bg-keybed p-2 shadow-hard"
       >
         {WHITE_KEYS.map((midi) => {
           const sharp = midi + 1
@@ -119,18 +119,21 @@ export function KeyboardView() {
   )
 }
 
+// Prototype key colors (§7.3): a warm off-white bed, green held, red wrong,
+// pale-green expected. Feedback never rides on color alone — each state also
+// carries a mark (dot / ✕ / ring) below.
 const KEY_BG = {
   white: {
-    idle: 'bg-slate-100',
-    held: 'bg-emerald-400',
-    wrong: 'bg-rose-400',
-    expected: 'bg-sky-200',
+    idle: 'bg-[#eceaf6]',
+    held: 'bg-[#8ee653]',
+    wrong: 'bg-[#ff8080]',
+    expected: 'bg-[#d9f2c4]',
   },
   black: {
-    idle: 'bg-slate-800',
-    held: 'bg-emerald-500',
-    wrong: 'bg-rose-500',
-    expected: 'bg-sky-600',
+    idle: 'bg-track',
+    held: 'bg-primary',
+    wrong: 'bg-[#d94f4f]',
+    expected: 'bg-[#41682a]',
   },
 } as const
 
@@ -145,8 +148,8 @@ function Key({
 }) {
   const base =
     color === 'white'
-      ? `h-36 w-8 rounded-b border border-slate-400 sm:w-9 ${KEY_BG.white[state]}`
-      : `absolute right-0 top-0 z-10 h-[5.5rem] w-5 translate-x-1/2 rounded-b border border-slate-950 ${KEY_BG.black[state]}`
+      ? `h-36 w-8 rounded-b border border-[#41466e] sm:w-9 ${KEY_BG.white[state]}`
+      : `absolute right-0 top-0 z-10 h-[5.5rem] w-5 translate-x-1/2 rounded-b shadow-[0_0_0_1px_var(--color-keybed)] ${KEY_BG.black[state]}`
   // Dark marks on light keys, light marks on dark keys (Tailwind needs the
   // class names spelled out in full to see them).
   const onWhite = color === 'white'
