@@ -7,14 +7,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 PlayingChord: a client-side-only web app for practicing piano chords with a MIDI
 keyboard. React + TypeScript + Vite + Zustand + Tailwind; no backend, everything
 persists to `localStorage`. Requires Web MIDI (Chrome/Edge/Opera; no Safari) and a
-physical MIDI keyboard — there is deliberately no mouse/QWERTY fallback.
+physical MIDI keyboard — there is deliberately no mouse/QWERTY fallback. The UI is
+**session-based** (DESIGN.md Draft v9, §7): Home → session sheet → gated Stage →
+full-screen Report, in the self-hosted Bricolage-Grotesque dark-navy visual
+language.
 
 ## DESIGN.md — the spec
 
-All requirements live in DESIGN.md, cited by section (e.g. §6.2 attempt lifecycle,
+All requirements live in [DESIGN.md](doc/DESIGN.md), cited by section (e.g. §6.2 attempt lifecycle,
 §3.3 voicing rules). Read the sections a change touches before coding; don't
 re-decide things it already resolves (§9 lists resolved questions). When a change
-intentionally alters product behavior, update DESIGN.md in the same commit.
+intentionally alters product behavior, update [DESIGN.md](doc/DESIGN.md) in the same commit.
 
 The app is feature-complete against the spec. The build-era docs (PLAN.md,
 PROGRESS.md) are retired — the phase-by-phase build log lives in git history.
@@ -36,7 +39,7 @@ npm run build                      # tsc -b typecheck + vite build
 CI (GitHub Actions) runs lint → format:check → test → build; run these locally
 before committing.
 
-## Architecture (DESIGN.md §8)
+## Architecture ([DESIGN.md](doc/DESIGN.md) §8)
 
 The core rule: **`src/theory/`, `src/practice/`, and `src/storage/` are pure
 TypeScript with no DOM or MIDI dependencies** — all chord matching, session/attempt

@@ -1,0 +1,2596 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script src="./support.js"></script>
+  </head>
+  <body>
+    <x-dc>
+      <helmet data-dc-atomics>
+        <link
+          href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&amp;display=swap"
+          rel="stylesheet"
+        />
+        <style>
+          body {
+            margin: 0;
+            background: #131628;
+            font-family: 'Bricolage Grotesque', system-ui, sans-serif;
+          }
+          * {
+            box-sizing: border-box;
+          }
+          a {
+            color: #38b6f0;
+            text-decoration: none;
+          }
+          a:hover {
+            color: #7fd0f7;
+          }
+          button {
+            font-family: inherit;
+          }
+          :focus-visible {
+            outline: 2px solid #38b6f0;
+            outline-offset: 2px;
+          }
+        </style>
+      </helmet>
+      <div
+        style="
+          min-height: 100vh;
+          display: flex;
+          flex-direction: column;
+          background: #131628;
+          color: #f4f2ff;
+        "
+      >
+        <sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+          <div
+            style="
+              flex: 1;
+              display: flex;
+              flex-direction: column;
+              padding: 22px;
+              max-width: 1040px;
+              width: 100%;
+              margin: 0 auto;
+            "
+            data-screen-label="Home"
+          >
+            <div style="display: flex; align-items: center; gap: 12px">
+              <span
+                style="
+                  font-size: 21px;
+                  font-weight: 800;
+                  letter-spacing: -0.01em;
+                "
+                >PlayingChord</span
+              >
+              <span style="flex: 1"></span>
+              <button
+                style="
+                  display: inline-flex;
+                  align-items: center;
+                  gap: 8px;
+                  height: 40px;
+                  border-radius: 14px;
+                  border: 2px solid #383d63;
+                  background: #1b1e33;
+                  box-shadow: 0 2px 0 #0a0c1a;
+                  padding: 0 14px;
+                  font:
+                    600 14px 'Bricolage Grotesque',
+                    sans-serif;
+                  color: #aeb3d9;
+                  cursor: pointer;
+                "
+              >
+                <span
+                  style="
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 50%;
+                    background: #58cc02;
+                  "
+                ></span
+                >KAWAI USB MIDI <span style="color: #6f74a3">▾</span>
+              </button>
+              <span
+                style="
+                  display: inline-flex;
+                  align-items: center;
+                  gap: 8px;
+                  height: 40px;
+                  border-radius: 14px;
+                  border: 2px solid #383d63;
+                  background: #1b1e33;
+                  box-shadow: 0 2px 0 #0a0c1a;
+                  padding: 0 16px;
+                  font-size: 15px;
+                  font-weight: 800;
+                  color: #f4f2ff;
+                "
+                >🔥 3 day streak</span
+              >
+              <button
+                onClick="{{ goSettings }}"
+                style="
+                  display: inline-flex;
+                  align-items: center;
+                  height: 40px;
+                  border-radius: 14px;
+                  border: 2px solid #2e3252;
+                  background: transparent;
+                  padding: 0 14px;
+                  font:
+                    600 15px 'Bricolage Grotesque',
+                    sans-serif;
+                  color: #6f74a3;
+                  cursor: pointer;
+                "
+              >
+                ⚙
+              </button>
+            </div>
+            <div
+              style="
+                flex: 1;
+                display: grid;
+                grid-template-columns: 1fr 300px;
+                gap: 18px;
+                margin-top: 20px;
+              "
+            >
+              <div
+                style="
+                  border-radius: 20px;
+                  border: 2px solid #383d63;
+                  background: #1b1e33;
+                  box-shadow: 0 3px 0 #0a0c1a;
+                  padding: 26px;
+                  display: flex;
+                  flex-direction: column;
+                  gap: 14px;
+                "
+              >
+                <span
+                  style="
+                    font-size: 13px;
+                    font-weight: 600;
+                    letter-spacing: 0.08em;
+                    color: #6f74a3;
+                  "
+                  >CONTINUE</span
+                >
+                <div style="display: flex; align-items: center; gap: 14px">
+                  <span
+                    style="font-size: 38px; font-weight: 800; line-height: 1.05"
+                    >Seventh chords</span
+                  >
+                  <button
+                    style="
+                      display: inline-flex;
+                      align-items: center;
+                      gap: 10px;
+                      border-radius: 12px;
+                      border: 2px solid #383d63;
+                      background: #131628;
+                      padding: 8px 14px;
+                      font:
+                        600 15px 'Bricolage Grotesque',
+                        sans-serif;
+                      color: #aeb3d9;
+                      cursor: pointer;
+                    "
+                  >
+                    Change <span style="color: #6f74a3">▾</span>
+                  </button>
+                </div>
+                <div
+                  style="
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    font-size: 15px;
+                    color: #6f74a3;
+                  "
+                >
+                  <span style="font-weight: 600; color: #aeb3d9"
+                    >5 / 36 chords unlocked</span
+                  >
+                  <div
+                    style="
+                      flex: 1;
+                      max-width: 280px;
+                      height: 10px;
+                      border-radius: 5px;
+                      background: #262a47;
+                      overflow: hidden;
+                    "
+                  >
+                    <div
+                      style="
+                        width: 14%;
+                        height: 100%;
+                        background: #38b6f0;
+                        border-radius: 5px;
+                      "
+                    ></div>
+                  </div>
+                  <span>2 unlock on next pass</span>
+                </div>
+                <div
+                  style="
+                    display: flex;
+                    flex-direction: column;
+                    gap: 8px;
+                    margin-top: 4px;
+                  "
+                >
+                  <span
+                    style="
+                      font-size: 13px;
+                      font-weight: 600;
+                      letter-spacing: 0.08em;
+                      color: #6f74a3;
+                    "
+                    >IN PLAY</span
+                  >
+                  <div style="display: flex; flex-wrap: wrap; gap: 8px">
+                    <span
+                      style="
+                        border-radius: 12px;
+                        border: 2px solid #2e3252;
+                        background: #131628;
+                        padding: 6px 12px;
+                        font-size: 14px;
+                        font-weight: 600;
+                        color: #aeb3d9;
+                      "
+                      >C maj7 <b style="color: #8ee653">A</b></span
+                    >
+                    <span
+                      style="
+                        border-radius: 12px;
+                        border: 2px solid #2e3252;
+                        background: #131628;
+                        padding: 6px 12px;
+                        font-size: 14px;
+                        font-weight: 600;
+                        color: #aeb3d9;
+                      "
+                      >D min7 <b style="color: #8ee653">B</b></span
+                    >
+                    <span
+                      style="
+                        border-radius: 12px;
+                        border: 2px solid #2e3252;
+                        background: #131628;
+                        padding: 6px 12px;
+                        font-size: 14px;
+                        font-weight: 600;
+                        color: #aeb3d9;
+                      "
+                      >E min7 <b style="color: #aeb3d9">C</b></span
+                    >
+                    <span
+                      style="
+                        border-radius: 12px;
+                        border: 2px solid #1d5f85;
+                        background: #0e2a3d;
+                        padding: 6px 12px;
+                        font-size: 14px;
+                        font-weight: 600;
+                        color: #7fd0f7;
+                      "
+                      >F maj7 · learning</span
+                    >
+                    <span
+                      style="
+                        border-radius: 12px;
+                        border: 2px solid #1d5f85;
+                        background: #0e2a3d;
+                        padding: 6px 12px;
+                        font-size: 14px;
+                        font-weight: 600;
+                        color: #7fd0f7;
+                      "
+                      >G dom7 · learning</span
+                    >
+                    <span
+                      style="
+                        border-radius: 12px;
+                        border: 2px dashed #2e3252;
+                        padding: 6px 12px;
+                        font-size: 14px;
+                        font-weight: 600;
+                        color: #3d4166;
+                      "
+                      >🔒 31 locked</span
+                    >
+                  </div>
+                </div>
+                <div style="display: flex; gap: 10px; margin-top: auto">
+                  <button onClick="{{ setLearn }}" style="{{ mLearnS }}">
+                    🎓 Learn
+                  </button>
+                  <button onClick="{{ setPractice }}" style="{{ mPracticeS }}">
+                    ▶ Practice
+                  </button>
+                  <button onClick="{{ setSong }}" style="{{ mSongS }}">
+                    ♪ Song
+                  </button>
+                </div>
+                <button
+                  onClick="{{ startSession }}"
+                  style="
+                    border-radius: 18px;
+                    border: none;
+                    background: #58cc02;
+                    box-shadow: 0 4px 0 #2e6b01;
+                    padding: 16px;
+                    font:
+                      800 22px 'Bricolage Grotesque',
+                      sans-serif;
+                    color: #173a00;
+                    cursor: pointer;
+                  "
+                >
+                  {{ startLabel }}
+                </button>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 16px">
+                <div
+                  style="
+                    border-radius: 20px;
+                    border: 2px solid #383d63;
+                    background: #1b1e33;
+                    box-shadow: 0 3px 0 #0a0c1a;
+                    padding: 20px;
+                    display: flex;
+                    align-items: center;
+                    gap: 18px;
+                  "
+                >
+                  <div
+                    style="
+                      width: 104px;
+                      height: 104px;
+                      border-radius: 50%;
+                      background: conic-gradient(#38b6f0 252deg, #262a47 0);
+                      display: flex;
+                      align-items: center;
+                      justify-content: center;
+                      flex: none;
+                    "
+                  >
+                    <div
+                      style="
+                        width: 76px;
+                        height: 76px;
+                        border-radius: 50%;
+                        background: #1b1e33;
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                        justify-content: center;
+                      "
+                    >
+                      <b style="font-size: 19px">7/10</b
+                      ><span style="font-size: 11px; color: #6f74a3">min</span>
+                    </div>
+                  </div>
+                  <div
+                    style="font-size: 14px; color: #6f74a3; line-height: 1.4"
+                  >
+                    <b style="color: #f4f2ff; font-size: 16px">Daily goal</b
+                    ><br />3 more minutes keeps the streak
+                  </div>
+                </div>
+                <div
+                  style="
+                    border-radius: 20px;
+                    border: 2px solid #383d63;
+                    background: #1b1e33;
+                    box-shadow: 0 3px 0 #0a0c1a;
+                    padding: 20px;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 10px;
+                  "
+                >
+                  <b style="font-size: 16px">Last 2 weeks</b>
+                  <div
+                    style="
+                      display: grid;
+                      grid-template-columns: repeat(7, 22px);
+                      gap: 5px;
+                    "
+                  >
+                    <sc-for
+                      list="{{ homeCal }}"
+                      as="c"
+                      hint-placeholder-count="14"
+                      ><i style="{{ c.s }}"></i
+                    ></sc-for>
+                  </div>
+                </div>
+                <button
+                  onClick="{{ goProgress }}"
+                  style="
+                    border-radius: 20px;
+                    border: 2px solid #383d63;
+                    background: #1b1e33;
+                    box-shadow: 0 3px 0 #0a0c1a;
+                    padding: 18px 20px;
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    font:
+                      800 17px 'Bricolage Grotesque',
+                      sans-serif;
+                    color: #f4f2ff;
+                    cursor: pointer;
+                    text-align: left;
+                  "
+                >
+                  📈 Progress
+                  <span
+                    style="
+                      font:
+                        600 13px 'Bricolage Grotesque',
+                        sans-serif;
+                      color: #8ee653;
+                    "
+                    >83% this week ▲</span
+                  ><span style="margin-left: auto; color: #6f74a3">→</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isPractice }}" hint-placeholder-val="{{ false }}">
+          <div
+            style="
+              flex: 1;
+              display: flex;
+              flex-direction: column;
+              max-width: 1040px;
+              width: 100%;
+              margin: 0 auto;
+            "
+            data-screen-label="Stage"
+          >
+            <div
+              style="
+                display: flex;
+                align-items: center;
+                gap: 14px;
+                padding: 16px 22px;
+              "
+            >
+              <button
+                onClick="{{ openSheet }}"
+                style="
+                  display: flex;
+                  align-items: center;
+                  gap: 8px;
+                  border-radius: 14px;
+                  border: 2px solid #383d63;
+                  background: #1b1e33;
+                  box-shadow: 0 2px 0 #0a0c1a;
+                  padding: 8px 16px;
+                  font:
+                    600 15px 'Bricolage Grotesque',
+                    sans-serif;
+                  color: #e8e6f5;
+                  cursor: pointer;
+                "
+              >
+                {{ sessionLabel }} ▾
+              </button>
+              <sc-if
+                value="{{ isModePractice }}"
+                hint-placeholder-val="{{ true }}"
+              >
+                <div
+                  style="
+                    flex: 1;
+                    height: 12px;
+                    border-radius: 6px;
+                    background: #262a47;
+                    overflow: hidden;
+                  "
+                >
+                  <div style="{{ barS }}"></div>
+                </div>
+                <span
+                  style="
+                    font-size: 14px;
+                    font-weight: 600;
+                    color: #6f74a3;
+                    font-variant-numeric: tabular-nums;
+                  "
+                  >{{ doneLabel }}</span
+                >
+              </sc-if>
+              <sc-if
+                value="{{ isModeLearn }}"
+                hint-placeholder-val="{{ false }}"
+              >
+                <span
+                  style="
+                    border-radius: 12px;
+                    border: 2px solid #58cc02;
+                    background: #1f3a0c;
+                    padding: 6px 12px;
+                    font-size: 13px;
+                    font-weight: 800;
+                    color: #8ee653;
+                  "
+                  >not passed only ✓</span
+                >
+                <span style="flex: 1"></span>
+                <span
+                  style="
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    font-size: 14px;
+                    font-weight: 600;
+                    color: #6f74a3;
+                  "
+                  >🔓 <b style="color: #7fd0f7">5/36</b></span
+                >
+              </sc-if>
+              <sc-if
+                value="{{ isModeSong }}"
+                hint-placeholder-val="{{ false }}"
+              >
+                <span
+                  style="
+                    border-radius: 12px;
+                    border: 2px solid #2e3252;
+                    padding: 6px 12px;
+                    font-size: 13px;
+                    font-weight: 600;
+                    color: #6f74a3;
+                  "
+                  >{{ bpmLabel }}</span
+                >
+                <span
+                  style="
+                    border-radius: 12px;
+                    border: 2px solid #2e3252;
+                    padding: 6px 12px;
+                    font-size: 13px;
+                    font-weight: 600;
+                    color: #6f74a3;
+                  "
+                  >{{ loopLabel }}</span
+                >
+                <span style="flex: 1"></span>
+              </sc-if>
+              <button
+                onClick="{{ endSession }}"
+                style="
+                  border-radius: 14px;
+                  border: 2px solid #2e3252;
+                  background: transparent;
+                  padding: 8px 16px;
+                  font:
+                    600 14px 'Bricolage Grotesque',
+                    sans-serif;
+                  color: #6f74a3;
+                  cursor: pointer;
+                "
+              >
+                End
+              </button>
+            </div>
+            <sc-if value="{{ notSong }}" hint-placeholder-val="{{ true }}">
+              <div
+                style="
+                  flex: 1;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  gap: 44px;
+                  padding: 0 40px;
+                  min-height: 220px;
+                "
+              >
+                <span
+                  style="
+                    font-size: 96px;
+                    font-weight: 800;
+                    letter-spacing: -0.02em;
+                    line-height: 1;
+                  "
+                  >{{ curName }}</span
+                >
+                <span style="font-size: 46px; font-weight: 800; color: #6f74a3"
+                  >{{ n1 }}</span
+                >
+                <span style="font-size: 27px; font-weight: 800; color: #3d4166"
+                  >{{ n2 }}</span
+                >
+              </div>
+            </sc-if>
+            <sc-if value="{{ isModeSong }}" hint-placeholder-val="{{ false }}">
+              <div
+                style="
+                  flex: 1;
+                  display: flex;
+                  flex-direction: column;
+                  align-items: center;
+                  justify-content: center;
+                  gap: 20px;
+                  min-height: 220px;
+                "
+              >
+                <span
+                  style="
+                    font-size: 72px;
+                    font-weight: 800;
+                    letter-spacing: -0.02em;
+                    line-height: 1;
+                  "
+                  >{{ songCurName }}</span
+                >
+                <div style="display: flex; gap: 14px">
+                  <sc-for
+                    list="{{ songChips }}"
+                    as="p"
+                    hint-placeholder-count="4"
+                  >
+                    <div style="{{ p.s }}">
+                      <span style="{{ p.ns }}">{{ p.label }}</span
+                      ><span style="{{ p.rs }}">{{ p.rn }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="display: flex; gap: 12px; align-items: center">
+                  <sc-for
+                    list="{{ beatDots }}"
+                    as="d"
+                    hint-placeholder-count="4"
+                    ><span style="{{ d.s }}"></span
+                  ></sc-for>
+                </div>
+              </div>
+            </sc-if>
+            <div
+              style="
+                display: flex;
+                justify-content: center;
+                min-height: 44px;
+                align-items: center;
+              "
+            >
+              <sc-if value="{{ fbShow }}" hint-placeholder-val="{{ false }}"
+                ><span style="{{ fbS }}">{{ fbText }}</span></sc-if
+              >
+            </div>
+            <div
+              style="
+                padding: 14px 22px 22px;
+                display: flex;
+                justify-content: center;
+              "
+            >
+              <div
+                style="
+                  display: flex;
+                  background: #0d0f1e;
+                  border: 2px solid #383d63;
+                  border-radius: 16px;
+                  padding: 8px;
+                  box-shadow: 0 3px 0 #0a0c1a;
+                "
+              >
+                <sc-for list="{{ keys }}" as="k" hint-placeholder-count="22">
+                  <div style="position: relative">
+                    <div onClick="{{ k.wTap }}" style="{{ k.wS }}">
+                      <span style="{{ k.wm }}">{{ k.wmt }}</span>
+                    </div>
+                    <sc-if
+                      value="{{ k.hasSharp }}"
+                      hint-placeholder-val="{{ false }}"
+                      ><div onClick="{{ k.bTap }}" style="{{ k.bS }}">
+                        <span style="{{ k.bm }}">{{ k.bmt }}</span>
+                      </div></sc-if
+                    >
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+            <div
+              style="
+                text-align: center;
+                padding-bottom: 14px;
+                font-size: 13px;
+                color: #3d4166;
+              "
+            >
+              no MIDI in this prototype — click the keys to play
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isReport }}" hint-placeholder-val="{{ false }}">
+          <div
+            style="
+              flex: 1;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              padding: 30px;
+            "
+            data-screen-label="Report"
+          >
+            <div
+              style="
+                width: 560px;
+                display: flex;
+                flex-direction: column;
+                gap: 16px;
+              "
+            >
+              <div style="display: flex; align-items: center; gap: 16px">
+                <span
+                  style="
+                    font-size: 34px;
+                    font-weight: 800;
+                    letter-spacing: -0.01em;
+                  "
+                  >{{ rHead }} <span style="color: #38b6f0">✦</span></span
+                >
+                <span style="flex: 1"></span>
+                <div
+                  style="
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    gap: 4px;
+                  "
+                >
+                  <div
+                    style="
+                      width: 74px;
+                      height: 74px;
+                      border-radius: 50%;
+                      border: 3px solid #58cc02;
+                      background: #1f3a0c;
+                      display: flex;
+                      align-items: center;
+                      justify-content: center;
+                      font-size: 30px;
+                      font-weight: 800;
+                      color: #8ee653;
+                    "
+                  >
+                    {{ rGrade }}
+                  </div>
+                  <span
+                    style="font-size: 11px; font-weight: 600; color: #6f74a3"
+                    >SESSION GRADE</span
+                  >
+                </div>
+              </div>
+              <div
+                style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px"
+              >
+                <div
+                  style="
+                    border-radius: 16px;
+                    border: 2px solid #383d63;
+                    background: #1b1e33;
+                    box-shadow: 0 3px 0 #0a0c1a;
+                    padding: 14px 18px;
+                  "
+                >
+                  <span
+                    style="font-size: 13px; font-weight: 600; color: #6f74a3"
+                    >FIRST-TRY</span
+                  >
+                  <div style="font-size: 30px; font-weight: 800">
+                    {{ rAcc }}
+                    <span style="font-size: 16px; color: #8ee653"
+                      >{{ rAccD }}</span
+                    >
+                  </div>
+                </div>
+                <div
+                  style="
+                    border-radius: 16px;
+                    border: 2px solid #383d63;
+                    background: #1b1e33;
+                    box-shadow: 0 3px 0 #0a0c1a;
+                    padding: 14px 18px;
+                  "
+                >
+                  <span
+                    style="font-size: 13px; font-weight: 600; color: #6f74a3"
+                    >AVG TIME</span
+                  >
+                  <div style="font-size: 30px; font-weight: 800">
+                    {{ rAvg }}
+                    <span style="font-size: 16px; color: #8ee653"
+                      >{{ rAvgD }}</span
+                    >
+                  </div>
+                </div>
+                <div
+                  style="
+                    border-radius: 16px;
+                    border: 2px solid #383d63;
+                    background: #1b1e33;
+                    box-shadow: 0 3px 0 #0a0c1a;
+                    padding: 14px 18px;
+                  "
+                >
+                  <span
+                    style="font-size: 13px; font-weight: 600; color: #6f74a3"
+                    >TOTAL PROMPTS</span
+                  >
+                  <div style="font-size: 30px; font-weight: 800">
+                    428
+                    <span style="font-size: 16px; color: #8ee653"
+                      >{{ rPrompts }}</span
+                    >
+                  </div>
+                </div>
+                <div
+                  style="
+                    border-radius: 16px;
+                    border: 2px solid #383d63;
+                    background: #1b1e33;
+                    box-shadow: 0 3px 0 #0a0c1a;
+                    padding: 14px 18px;
+                  "
+                >
+                  <span
+                    style="font-size: 13px; font-weight: 600; color: #6f74a3"
+                    >TOTAL TIME</span
+                  >
+                  <div style="font-size: 30px; font-weight: 800">
+                    3.4h
+                    <span style="font-size: 16px; color: #8ee653"
+                      >{{ rMin }}</span
+                    >
+                  </div>
+                </div>
+              </div>
+              <sc-if value="{{ rUnlock }}" hint-placeholder-val="{{ false }}">
+                <div
+                  style="
+                    border-radius: 16px;
+                    border: 2px solid #1d5f85;
+                    background: #0e2a3d;
+                    box-shadow: 0 3px 0 #0a0c1a;
+                    padding: 14px 18px;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 8px;
+                  "
+                >
+                  <span
+                    style="font-size: 17px; font-weight: 800; color: #7fd0f7"
+                    >🔓 Unlocked: B♭ maj7 &amp; C dom7</span
+                  >
+                  <div
+                    style="
+                      display: flex;
+                      align-items: center;
+                      gap: 10px;
+                      font-size: 13px;
+                      color: #6aa7c4;
+                    "
+                  >
+                    <div
+                      style="
+                        flex: 1;
+                        height: 8px;
+                        border-radius: 4px;
+                        background: #14384f;
+                        overflow: hidden;
+                      "
+                    >
+                      <div
+                        style="
+                          width: 19%;
+                          height: 100%;
+                          background: #38b6f0;
+                          border-radius: 4px;
+                        "
+                      ></div>
+                    </div>
+                    7 / 36 — bring every unlocked chord to a good grade to open
+                    2 more
+                  </div>
+                </div>
+              </sc-if>
+              <div
+                style="
+                  display: grid;
+                  grid-template-columns: 1fr 1fr;
+                  gap: 12px;
+                  font-size: 15px;
+                "
+              >
+                <div>
+                  <span
+                    style="font-size: 13px; font-weight: 600; color: #6f74a3"
+                    >CHORDS PASSED</span
+                  >
+                  <div
+                    style="margin-top: 4px; font-weight: 600; color: #aeb3d9"
+                  >
+                    {{ rPassed }}
+                  </div>
+                </div>
+                <div>
+                  <span
+                    style="font-size: 13px; font-weight: 600; color: #6f74a3"
+                    >STILL SHAKY</span
+                  >
+                  <div
+                    style="margin-top: 4px; font-weight: 600; color: #aeb3d9"
+                  >
+                    {{ rShaky }}
+                  </div>
+                </div>
+              </div>
+              <div style="font-size: 15px; font-weight: 800; color: #7fd0f7">
+                🔥 Streak safe — 10/10 min done today
+              </div>
+              <div style="display: flex; gap: 12px">
+                <button
+                  onClick="{{ startSession }}"
+                  style="
+                    flex: 1;
+                    border-radius: 16px;
+                    border: none;
+                    background: #58cc02;
+                    box-shadow: 0 4px 0 #2e6b01;
+                    padding: 13px;
+                    font:
+                      800 19px 'Bricolage Grotesque',
+                      sans-serif;
+                    color: #173a00;
+                    cursor: pointer;
+                  "
+                >
+                  Go again ▶
+                </button>
+                <button
+                  onClick="{{ goHome }}"
+                  style="
+                    border-radius: 16px;
+                    border: 2px solid #2e3252;
+                    background: transparent;
+                    padding: 13px 26px;
+                    font:
+                      600 17px 'Bricolage Grotesque',
+                      sans-serif;
+                    color: #6f74a3;
+                    cursor: pointer;
+                  "
+                >
+                  Home
+                </button>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isProgress }}" hint-placeholder-val="{{ false }}">
+          <div
+            style="
+              flex: 1;
+              display: flex;
+              flex-direction: column;
+              gap: 18px;
+              padding: 22px;
+              max-width: 1040px;
+              width: 100%;
+              margin: 0 auto;
+            "
+            data-screen-label="Progress"
+          >
+            <div style="display: flex; align-items: center; gap: 14px">
+              <button
+                onClick="{{ goHome }}"
+                style="
+                  border-radius: 14px;
+                  border: 2px solid #2e3252;
+                  background: transparent;
+                  padding: 8px 14px;
+                  font:
+                    600 14px 'Bricolage Grotesque',
+                    sans-serif;
+                  color: #6f74a3;
+                  cursor: pointer;
+                "
+              >
+                ← Home
+              </button>
+              <span style="font-size: 22px; font-weight: 800">Progress</span>
+              <span style="flex: 1"></span>
+              <span
+                style="
+                  display: inline-flex;
+                  align-items: center;
+                  gap: 8px;
+                  border-radius: 14px;
+                  border: 2px solid #383d63;
+                  background: #1b1e33;
+                  padding: 7px 14px;
+                  font-size: 14px;
+                  font-weight: 800;
+                  color: #f4f2ff;
+                "
+                >🔥 3</span
+              >
+            </div>
+            <div
+              style="
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: 12px;
+              "
+            >
+              <div
+                style="
+                  border-radius: 16px;
+                  border: 2px solid #383d63;
+                  background: #1b1e33;
+                  box-shadow: 0 3px 0 #0a0c1a;
+                  padding: 12px 16px;
+                "
+              >
+                <span style="font-size: 12px; font-weight: 600; color: #6f74a3"
+                  >BEST STREAK</span
+                >
+                <div style="font-size: 26px; font-weight: 800">6 days</div>
+              </div>
+              <div
+                style="
+                  border-radius: 16px;
+                  border: 2px solid #383d63;
+                  background: #1b1e33;
+                  box-shadow: 0 3px 0 #0a0c1a;
+                  padding: 12px 16px;
+                "
+              >
+                <span style="font-size: 12px; font-weight: 600; color: #6f74a3"
+                  >TOTAL PRACTICE TIME</span
+                >
+                <div style="font-size: 26px; font-weight: 800">3.4h</div>
+              </div>
+              <div
+                style="
+                  border-radius: 16px;
+                  border: 2px solid #383d63;
+                  background: #1b1e33;
+                  box-shadow: 0 3px 0 #0a0c1a;
+                  padding: 12px 16px;
+                "
+              >
+                <span style="font-size: 12px; font-weight: 600; color: #6f74a3"
+                  >DAYS PRACTICED</span
+                >
+                <div style="font-size: 26px; font-weight: 800">12</div>
+              </div>
+              <div
+                style="
+                  border-radius: 16px;
+                  border: 2px solid #383d63;
+                  background: #1b1e33;
+                  box-shadow: 0 3px 0 #0a0c1a;
+                  padding: 12px 16px;
+                "
+              >
+                <span style="font-size: 12px; font-weight: 600; color: #6f74a3"
+                  >TOTAL PROMPTS</span
+                >
+                <div style="font-size: 26px; font-weight: 800">428</div>
+              </div>
+            </div>
+            <div
+              style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px"
+            >
+              <div
+                style="
+                  border-radius: 16px;
+                  border: 2px solid #383d63;
+                  background: #1b1e33;
+                  box-shadow: 0 3px 0 #0a0c1a;
+                  padding: 16px 18px;
+                "
+              >
+                <div
+                  style="
+                    display: flex;
+                    align-items: baseline;
+                    justify-content: space-between;
+                  "
+                >
+                  <b style="font-size: 16px">First-try accuracy</b
+                  ><span style="font-size: 12px; color: #6f74a3">30 days</span>
+                </div>
+                <div
+                  style="
+                    margin-top: 10px;
+                    display: flex;
+                    height: 76px;
+                    align-items: flex-end;
+                    gap: 2px;
+                    border-bottom: 2px solid #262a47;
+                  "
+                >
+                  <sc-for
+                    list="{{ accBars }}"
+                    as="b"
+                    hint-placeholder-count="30"
+                    ><div style="{{ b.s }}" title="{{ b.t }}"></div
+                  ></sc-for>
+                </div>
+              </div>
+              <div
+                style="
+                  border-radius: 16px;
+                  border: 2px solid #383d63;
+                  background: #1b1e33;
+                  box-shadow: 0 3px 0 #0a0c1a;
+                  padding: 16px 18px;
+                "
+              >
+                <div
+                  style="
+                    display: flex;
+                    align-items: baseline;
+                    justify-content: space-between;
+                  "
+                >
+                  <b style="font-size: 16px">Time to correct</b
+                  ><span style="font-size: 12px; color: #6f74a3"
+                    >30 days · lower is better</span
+                  >
+                </div>
+                <div
+                  style="
+                    margin-top: 10px;
+                    display: flex;
+                    height: 76px;
+                    align-items: flex-end;
+                    gap: 2px;
+                    border-bottom: 2px solid #262a47;
+                  "
+                >
+                  <sc-for
+                    list="{{ timeBars }}"
+                    as="b"
+                    hint-placeholder-count="30"
+                    ><div style="{{ b.s }}" title="{{ b.t }}"></div
+                  ></sc-for>
+                </div>
+              </div>
+            </div>
+            <div
+              style="
+                display: grid;
+                grid-template-columns: auto 1fr 1fr;
+                gap: 12px;
+              "
+            >
+              <div
+                style="
+                  border-radius: 16px;
+                  border: 2px solid #383d63;
+                  background: #1b1e33;
+                  box-shadow: 0 3px 0 #0a0c1a;
+                  padding: 16px 18px;
+                  display: flex;
+                  flex-direction: column;
+                  gap: 10px;
+                "
+              >
+                <div style="display: flex; flex-direction: column">
+                  <b style="font-size: 16px">Goal calendar</b
+                  ><span style="font-size: 12px; color: #6f74a3"
+                    >12 weeks · 10 min/day</span
+                  >
+                </div>
+                <div
+                  style="
+                    display: grid;
+                    grid-auto-flow: column;
+                    grid-template-rows: repeat(7, 11px);
+                    gap: 3px;
+                    width: fit-content;
+                  "
+                >
+                  <sc-for list="{{ cal }}" as="c" hint-placeholder-count="84"
+                    ><div style="{{ c.s }}"></div
+                  ></sc-for>
+                </div>
+              </div>
+              <div
+                style="
+                  border-radius: 16px;
+                  border: 2px solid #383d63;
+                  background: #1b1e33;
+                  box-shadow: 0 3px 0 #0a0c1a;
+                  padding: 16px 18px;
+                  font-size: 15px;
+                "
+              >
+                <b style="font-size: 16px; color: #8ee653">▲ Most improved</b>
+                <div
+                  style="
+                    margin-top: 8px;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 6px;
+                    font-weight: 600;
+                    color: #aeb3d9;
+                  "
+                >
+                  <span style="display: flex; justify-content: space-between"
+                    >E♭ maj7 <span style="color: #8ee653">+18 pts</span></span
+                  >
+                  <span style="display: flex; justify-content: space-between"
+                    >F♯ maj <span style="color: #8ee653">+12 pts</span></span
+                  >
+                  <span style="display: flex; justify-content: space-between"
+                    >B min7 <span style="color: #8ee653">+9 pts</span></span
+                  >
+                  <span style="display: flex; justify-content: space-between"
+                    >A♭ maj <span style="color: #8ee653">+7 pts</span></span
+                  >
+                  <span style="display: flex; justify-content: space-between"
+                    >C maj — 1st Inv
+                    <span style="color: #8ee653">+5 pts</span></span
+                  >
+                </div>
+              </div>
+              <div
+                style="
+                  border-radius: 16px;
+                  border: 2px solid #383d63;
+                  background: #1b1e33;
+                  box-shadow: 0 3px 0 #0a0c1a;
+                  padding: 16px 18px;
+                  font-size: 15px;
+                "
+              >
+                <b style="font-size: 16px; color: #ff8080">Needs work</b>
+                <div
+                  style="
+                    margin-top: 8px;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 6px;
+                    font-weight: 600;
+                    color: #aeb3d9;
+                  "
+                >
+                  <span style="display: flex; justify-content: space-between"
+                    >F♯ maj
+                    <span style="color: #ff8080">61% first-try</span></span
+                  >
+                  <span style="display: flex; justify-content: space-between"
+                    >B min7
+                    <span style="color: #ff8080">64% first-try</span></span
+                  >
+                  <span style="display: flex; justify-content: space-between"
+                    >E♭ maj7
+                    <span style="color: #6f74a3">68% first-try</span></span
+                  >
+                  <span style="display: flex; justify-content: space-between"
+                    >A♭ maj
+                    <span style="color: #6f74a3">71% first-try</span></span
+                  >
+                  <span style="display: flex; justify-content: space-between"
+                    >C maj — 1st Inv
+                    <span style="color: #6f74a3">78% first-try</span></span
+                  >
+                </div>
+              </div>
+            </div>
+            <button
+              onClick="{{ goStats }}"
+              style="
+                align-self: flex-start;
+                border: none;
+                background: transparent;
+                padding: 0;
+                font:
+                  800 15px 'Bricolage Grotesque',
+                  sans-serif;
+                color: #8ee653;
+                cursor: pointer;
+              "
+            >
+              Every chord's stats →
+            </button>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isStats }}" hint-placeholder-val="{{ false }}">
+          <div
+            style="
+              flex: 1;
+              display: flex;
+              flex-direction: column;
+              gap: 18px;
+              padding: 22px;
+              max-width: 1040px;
+              width: 100%;
+              margin: 0 auto;
+            "
+            data-screen-label="Chord stats"
+          >
+            <div style="display: flex; align-items: center; gap: 14px">
+              <button
+                onClick="{{ goProgress }}"
+                style="
+                  border-radius: 14px;
+                  border: 2px solid #2e3252;
+                  background: transparent;
+                  padding: 8px 14px;
+                  font:
+                    600 14px 'Bricolage Grotesque',
+                    sans-serif;
+                  color: #6f74a3;
+                  cursor: pointer;
+                "
+              >
+                ← Progress
+              </button>
+              <span style="font-size: 22px; font-weight: 800">Chord stats</span>
+              <span style="flex: 1"></span>
+              <span style="font-size: 13px; color: #6f74a3"
+                >tap a column to sort</span
+              >
+            </div>
+            <div
+              style="
+                border-radius: 16px;
+                border: 2px solid #383d63;
+                background: #1b1e33;
+                box-shadow: 0 3px 0 #0a0c1a;
+                overflow: hidden;
+              "
+            >
+              <table
+                style="
+                  width: 100%;
+                  border-collapse: collapse;
+                  text-align: left;
+                  font-size: 15px;
+                "
+              >
+                <thead>
+                  <tr style="border-bottom: 2px solid #262a47">
+                    <th
+                      style="
+                        padding: 12px 16px;
+                        font-size: 12px;
+                        font-weight: 600;
+                        letter-spacing: 0.06em;
+                        color: #6f74a3;
+                      "
+                    >
+                      CHORD
+                    </th>
+                    <sc-for
+                      list="{{ heads }}"
+                      as="h"
+                      hint-placeholder-count="6"
+                    >
+                      <th style="padding: 12px 16px">
+                        <button onClick="{{ h.onClick }}" style="{{ h.s }}">
+                          {{ h.label }}{{ h.arrow }}
+                        </button>
+                      </th>
+                    </sc-for>
+                  </tr>
+                </thead>
+                <tbody>
+                  <sc-for list="{{ sRows }}" as="r" hint-placeholder-count="10">
+                    <tr style="border-bottom: 1px solid #262a47">
+                      <td
+                        style="
+                          padding: 11px 16px;
+                          font-weight: 600;
+                          color: #f4f2ff;
+                        "
+                      >
+                        {{ r.label }}
+                      </td>
+                      <td style="padding: 11px 16px">
+                        <span style="{{ r.gs }}">{{ r.grade }}</span>
+                      </td>
+                      <td style="padding: 11px 16px; color: #aeb3d9">
+                        {{ r.at }}
+                      </td>
+                      <td style="padding: 11px 16px; color: #aeb3d9">
+                        {{ r.la }}
+                      </td>
+                      <td style="padding: 11px 16px; color: #aeb3d9">
+                        {{ r.ra }}
+                      </td>
+                      <td style="padding: 11px 16px; color: #aeb3d9">
+                        {{ r.lt }}
+                      </td>
+                      <td style="padding: 11px 16px; color: #aeb3d9">
+                        {{ r.rt }}
+                      </td>
+                    </tr>
+                  </sc-for>
+                </tbody>
+              </table>
+            </div>
+            <p
+              style="
+                margin: 0;
+                font-size: 13px;
+                color: #6f74a3;
+                max-width: 760px;
+              "
+            >
+              Grade folds recent accuracy and speed into one figure — the same
+              score that drives which chords come up more often, and that gates
+              new unlocks.
+            </p>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isSettings }}" hint-placeholder-val="{{ false }}">
+          <div
+            style="
+              flex: 1;
+              display: flex;
+              flex-direction: column;
+              gap: 18px;
+              padding: 22px;
+              max-width: 1040px;
+              width: 100%;
+              margin: 0 auto;
+            "
+            data-screen-label="Settings"
+          >
+            <div style="display: flex; align-items: center; gap: 14px">
+              <button
+                onClick="{{ goHome }}"
+                style="
+                  border-radius: 14px;
+                  border: 2px solid #2e3252;
+                  background: transparent;
+                  padding: 8px 14px;
+                  font:
+                    600 14px 'Bricolage Grotesque',
+                    sans-serif;
+                  color: #6f74a3;
+                  cursor: pointer;
+                "
+              >
+                ← Home
+              </button>
+              <span style="font-size: 22px; font-weight: 800">Settings</span>
+              <span style="flex: 1"></span>
+              <button
+                style="
+                  display: inline-flex;
+                  align-items: center;
+                  gap: 8px;
+                  border-radius: 14px;
+                  border: 2px solid #383d63;
+                  background: #1b1e33;
+                  box-shadow: 0 2px 0 #0a0c1a;
+                  padding: 8px 14px;
+                  font:
+                    600 14px 'Bricolage Grotesque',
+                    sans-serif;
+                  color: #aeb3d9;
+                  cursor: pointer;
+                "
+              >
+                <span
+                  style="
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 50%;
+                    background: #58cc02;
+                  "
+                ></span
+                >KAWAI USB MIDI <span style="color: #6f74a3">▾</span>
+              </button>
+            </div>
+            <div
+              style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px"
+            >
+              <div
+                style="
+                  border-radius: 16px;
+                  border: 2px solid #383d63;
+                  background: #1b1e33;
+                  box-shadow: 0 3px 0 #0a0c1a;
+                  padding: 18px;
+                  display: flex;
+                  flex-direction: column;
+                  gap: 12px;
+                "
+              >
+                <div>
+                  <b style="font-size: 16px">Sound</b>
+                  <div style="font-size: 12px; color: #6f74a3">
+                    misses are always silent
+                  </div>
+                </div>
+                <div
+                  style="
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 12px;
+                    font-size: 15px;
+                    font-weight: 600;
+                    color: #aeb3d9;
+                    min-height: 32px;
+                  "
+                >
+                  Chime on correct<button
+                    onClick="{{ swChime.onClick }}"
+                    style="{{ swChime.s }}"
+                  >
+                    <span style="{{ swChime.k }}"></span>
+                  </button>
+                </div>
+                <div
+                  style="
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 12px;
+                    font-size: 15px;
+                    font-weight: 600;
+                    color: #aeb3d9;
+                    min-height: 32px;
+                  "
+                >
+                  Piano sound on key press<button
+                    onClick="{{ swPiano.onClick }}"
+                    style="{{ swPiano.s }}"
+                  >
+                    <span style="{{ swPiano.k }}"></span>
+                  </button>
+                </div>
+              </div>
+              <div
+                style="
+                  border-radius: 16px;
+                  border: 2px solid #383d63;
+                  background: #1b1e33;
+                  box-shadow: 0 3px 0 #0a0c1a;
+                  padding: 18px;
+                  display: flex;
+                  flex-direction: column;
+                  gap: 12px;
+                "
+              >
+                <div>
+                  <b style="font-size: 16px">Notation</b>
+                  <div style="font-size: 12px; color: #6f74a3">
+                    the keyboard carries practice — staff is optional
+                  </div>
+                </div>
+                <div
+                  style="
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 12px;
+                    font-size: 15px;
+                    font-weight: 600;
+                    color: #aeb3d9;
+                    min-height: 32px;
+                  "
+                >
+                  Show staff notation<button
+                    onClick="{{ swStaff.onClick }}"
+                    style="{{ swStaff.s }}"
+                  >
+                    <span style="{{ swStaff.k }}"></span>
+                  </button>
+                </div>
+                <div
+                  style="
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 12px;
+                    font-size: 15px;
+                    font-weight: 600;
+                    color: #aeb3d9;
+                    min-height: 32px;
+                  "
+                >
+                  Key signature (chord root)<button
+                    onClick="{{ swKeysig.onClick }}"
+                    style="{{ swKeysig.s }}"
+                  >
+                    <span style="{{ swKeysig.k }}"></span>
+                  </button>
+                </div>
+                <div
+                  style="
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 12px;
+                    font-size: 15px;
+                    font-weight: 600;
+                    color: #aeb3d9;
+                    min-height: 32px;
+                  "
+                >
+                  Chord name size
+                  <div style="display: flex; gap: 6px">
+                    <sc-for
+                      list="{{ sizeChips }}"
+                      as="c"
+                      hint-placeholder-count="4"
+                      ><button onClick="{{ c.onClick }}" style="{{ c.s }}">
+                        {{ c.label }}
+                      </button></sc-for
+                    >
+                  </div>
+                </div>
+              </div>
+              <div
+                style="
+                  border-radius: 16px;
+                  border: 2px solid #383d63;
+                  background: #1b1e33;
+                  box-shadow: 0 3px 0 #0a0c1a;
+                  padding: 18px;
+                  display: flex;
+                  flex-direction: column;
+                  gap: 12px;
+                "
+              >
+                <div>
+                  <b style="font-size: 16px">Matching &amp; timing</b>
+                  <div style="font-size: 12px; color: #6f74a3">
+                    how strictly attempts are judged
+                  </div>
+                </div>
+                <div
+                  style="
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 12px;
+                    font-size: 15px;
+                    font-weight: 600;
+                    color: #aeb3d9;
+                    min-height: 32px;
+                  "
+                >
+                  Allow octave doubling<button
+                    onClick="{{ swDoubling.onClick }}"
+                    style="{{ swDoubling.s }}"
+                  >
+                    <span style="{{ swDoubling.k }}"></span>
+                  </button>
+                </div>
+                <div
+                  style="
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 12px;
+                    font-size: 15px;
+                    font-weight: 600;
+                    color: #aeb3d9;
+                    min-height: 32px;
+                  "
+                >
+                  Strict extra notes<button
+                    onClick="{{ swStrict.onClick }}"
+                    style="{{ swStrict.s }}"
+                  >
+                    <span style="{{ swStrict.k }}"></span>
+                  </button>
+                </div>
+                <div
+                  style="
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 12px;
+                    font-size: 15px;
+                    font-weight: 600;
+                    color: #aeb3d9;
+                    min-height: 32px;
+                  "
+                >
+                  Judgment delay
+                  <div style="display: flex; align-items: center; gap: 10px">
+                    <button onClick="{{ judge.dec }}" style="{{ stepBtnS }}">
+                      −</button
+                    ><span
+                      style="
+                        font-variant-numeric: tabular-nums;
+                        color: #f4f2ff;
+                        min-width: 64px;
+                        text-align: center;
+                      "
+                      >{{ judge.val }}</span
+                    ><button onClick="{{ judge.inc }}" style="{{ stepBtnS }}">
+                      +
+                    </button>
+                  </div>
+                </div>
+                <div
+                  style="
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 12px;
+                    font-size: 15px;
+                    font-weight: 600;
+                    color: #aeb3d9;
+                    min-height: 32px;
+                  "
+                >
+                  Auto-advance delay
+                  <div style="display: flex; align-items: center; gap: 10px">
+                    <button onClick="{{ adv.dec }}" style="{{ stepBtnS }}">
+                      −</button
+                    ><span
+                      style="
+                        font-variant-numeric: tabular-nums;
+                        color: #f4f2ff;
+                        min-width: 64px;
+                        text-align: center;
+                      "
+                      >{{ adv.val }}</span
+                    ><button onClick="{{ adv.inc }}" style="{{ stepBtnS }}">
+                      +
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div
+                style="
+                  border-radius: 16px;
+                  border: 2px solid #383d63;
+                  background: #1b1e33;
+                  box-shadow: 0 3px 0 #0a0c1a;
+                  padding: 18px;
+                  display: flex;
+                  flex-direction: column;
+                  gap: 12px;
+                "
+              >
+                <div>
+                  <b style="font-size: 16px">Goal &amp; unlocks</b>
+                  <div style="font-size: 12px; color: #6f74a3">
+                    what keeps the streak alive
+                  </div>
+                </div>
+                <div
+                  style="
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 12px;
+                    font-size: 15px;
+                    font-weight: 600;
+                    color: #aeb3d9;
+                    min-height: 32px;
+                  "
+                >
+                  Daily goal
+                  <div style="display: flex; align-items: center; gap: 10px">
+                    <button onClick="{{ goal.dec }}" style="{{ stepBtnS }}">
+                      −</button
+                    ><span
+                      style="
+                        font-variant-numeric: tabular-nums;
+                        color: #f4f2ff;
+                        min-width: 64px;
+                        text-align: center;
+                      "
+                      >{{ goal.val }}</span
+                    ><button onClick="{{ goal.inc }}" style="{{ stepBtnS }}">
+                      +
+                    </button>
+                  </div>
+                </div>
+                <div
+                  style="
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 12px;
+                    font-size: 15px;
+                    font-weight: 600;
+                    color: #aeb3d9;
+                    min-height: 32px;
+                  "
+                >
+                  Unlock in circle-of-fifths order<button
+                    onClick="{{ swFifths.onClick }}"
+                    style="{{ swFifths.s }}"
+                  >
+                    <span style="{{ swFifths.k }}"></span>
+                  </button>
+                </div>
+                <div style="font-size: 12px; color: #6f74a3">
+                  C → G → D → A … for root-ordered pools; diatonic and custom
+                  lists keep their own order
+                </div>
+              </div>
+            </div>
+            <div
+              style="
+                border-radius: 16px;
+                border: 2px solid #383d63;
+                background: #1b1e33;
+                box-shadow: 0 3px 0 #0a0c1a;
+                padding: 18px;
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 20px;
+              "
+            >
+              <div style="display: flex; flex-direction: column; gap: 10px">
+                <div>
+                  <b style="font-size: 16px">Voicing rules</b>
+                  <div style="font-size: 12px; color: #6f74a3">
+                    two-hand patterns or bass/span/doubling specs
+                  </div>
+                </div>
+                <div style="display: flex; flex-direction: column">
+                  <div
+                    style="
+                      display: flex;
+                      align-items: center;
+                      justify-content: space-between;
+                      gap: 10px;
+                      padding: 8px 0;
+                      border-bottom: 1px solid #262a47;
+                      font-size: 14px;
+                    "
+                  >
+                    <span style="font-weight: 600; color: #f4f2ff"
+                      >Any Voicing
+                      <span style="font-weight: 600; color: #6f74a3"
+                        >· any bass, doubling ok</span
+                      ></span
+                    ><span style="font-size: 12px; color: #3d4166"
+                      >built-in</span
+                    >
+                  </div>
+                  <div
+                    style="
+                      display: flex;
+                      align-items: center;
+                      justify-content: space-between;
+                      gap: 10px;
+                      padding: 8px 0;
+                      border-bottom: 1px solid #262a47;
+                      font-size: 14px;
+                    "
+                  >
+                    <span style="font-weight: 600; color: #f4f2ff"
+                      >Root Position
+                      <span style="font-weight: 600; color: #6f74a3"
+                        >· bass = root</span
+                      ></span
+                    ><span style="font-size: 12px; color: #3d4166"
+                      >built-in</span
+                    >
+                  </div>
+                  <div
+                    style="
+                      display: flex;
+                      align-items: center;
+                      justify-content: space-between;
+                      gap: 10px;
+                      padding: 8px 0;
+                      border-bottom: 1px solid #262a47;
+                      font-size: 14px;
+                    "
+                  >
+                    <span style="font-weight: 600; color: #f4f2ff"
+                      >1st / 2nd Inversion
+                      <span style="font-weight: 600; color: #6f74a3"
+                        >· bass = 3rd / 5th</span
+                      ></span
+                    ><span style="font-size: 12px; color: #3d4166"
+                      >built-in</span
+                    >
+                  </div>
+                  <div
+                    style="
+                      display: flex;
+                      align-items: center;
+                      justify-content: space-between;
+                      gap: 10px;
+                      padding: 8px 0;
+                      border-bottom: 1px solid #262a47;
+                      font-size: 14px;
+                    "
+                  >
+                    <span style="font-weight: 600; color: #f4f2ff"
+                      >Closed / Open Position
+                      <span style="font-weight: 600; color: #6f74a3"
+                        >· span ≤ 11 / ≥ 12 st</span
+                      ></span
+                    ><span style="font-size: 12px; color: #3d4166"
+                      >built-in</span
+                    >
+                  </div>
+                  <div
+                    style="
+                      display: flex;
+                      align-items: center;
+                      justify-content: space-between;
+                      gap: 10px;
+                      padding: 8px 0;
+                      font-size: 14px;
+                    "
+                  >
+                    <span style="font-weight: 600; color: #f4f2ff"
+                      >Shell LH 1-5 + RH 1-2-5
+                      <span style="font-weight: 600; color: #6f74a3"
+                        >· pattern</span
+                      ></span
+                    ><button
+                      style="
+                        border-radius: 10px;
+                        border: 2px solid #2e3252;
+                        background: transparent;
+                        padding: 3px 12px;
+                        font:
+                          600 12px 'Bricolage Grotesque',
+                          sans-serif;
+                        color: #aeb3d9;
+                        cursor: pointer;
+                      "
+                    >
+                      Edit
+                    </button>
+                  </div>
+                </div>
+                <button
+                  style="
+                    align-self: flex-start;
+                    border-radius: 12px;
+                    border: 2px solid #2e3252;
+                    background: transparent;
+                    padding: 7px 14px;
+                    font:
+                      600 14px 'Bricolage Grotesque',
+                      sans-serif;
+                    color: #aeb3d9;
+                    cursor: pointer;
+                  "
+                >
+                  + New rule
+                </button>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 10px">
+                <div>
+                  <b style="font-size: 16px">Presets</b>
+                  <div style="font-size: 12px; color: #6f74a3">
+                    what the generator draws from
+                  </div>
+                </div>
+                <div style="display: flex; flex-direction: column">
+                  <div
+                    style="
+                      display: flex;
+                      align-items: center;
+                      justify-content: space-between;
+                      gap: 10px;
+                      padding: 8px 0;
+                      border-bottom: 1px solid #262a47;
+                      font-size: 14px;
+                    "
+                  >
+                    <span style="font-weight: 600; color: #f4f2ff"
+                      >Seventh chords
+                      <span style="font-weight: 600; color: #6f74a3"
+                        >· 36 × 1 rule</span
+                      ></span
+                    ><button
+                      style="
+                        border-radius: 10px;
+                        border: 2px solid #2e3252;
+                        background: transparent;
+                        padding: 3px 12px;
+                        font:
+                          600 12px 'Bricolage Grotesque',
+                          sans-serif;
+                        color: #6f74a3;
+                        cursor: pointer;
+                      "
+                    >
+                      Reset progress
+                    </button>
+                  </div>
+                  <div
+                    style="
+                      display: flex;
+                      align-items: center;
+                      justify-content: space-between;
+                      gap: 10px;
+                      padding: 8px 0;
+                      border-bottom: 1px solid #262a47;
+                      font-size: 14px;
+                    "
+                  >
+                    <span style="font-weight: 600; color: #f4f2ff"
+                      >Major + minor triads
+                      <span style="font-weight: 600; color: #6f74a3"
+                        >· 24 × 1 rule</span
+                      ></span
+                    ><button
+                      style="
+                        border-radius: 10px;
+                        border: 2px solid #2e3252;
+                        background: transparent;
+                        padding: 3px 12px;
+                        font:
+                          600 12px 'Bricolage Grotesque',
+                          sans-serif;
+                        color: #6f74a3;
+                        cursor: pointer;
+                      "
+                    >
+                      Reset progress
+                    </button>
+                  </div>
+                  <div
+                    style="
+                      display: flex;
+                      align-items: center;
+                      justify-content: space-between;
+                      gap: 10px;
+                      padding: 8px 0;
+                      border-bottom: 1px solid #262a47;
+                      font-size: 14px;
+                    "
+                  >
+                    <span style="font-weight: 600; color: #f4f2ff"
+                      >Inversion drills
+                      <span style="font-weight: 600; color: #6f74a3"
+                        >· 12 × 2 rules</span
+                      ></span
+                    ><button
+                      style="
+                        border-radius: 10px;
+                        border: 2px solid #2e3252;
+                        background: transparent;
+                        padding: 3px 12px;
+                        font:
+                          600 12px 'Bricolage Grotesque',
+                          sans-serif;
+                        color: #6f74a3;
+                        cursor: pointer;
+                      "
+                    >
+                      Reset progress
+                    </button>
+                  </div>
+                  <div
+                    style="
+                      display: flex;
+                      align-items: center;
+                      justify-content: space-between;
+                      gap: 10px;
+                      padding: 8px 0;
+                      font-size: 14px;
+                    "
+                  >
+                    <span style="font-weight: 600; color: #f4f2ff"
+                      >Jazz sevenths, open
+                      <span style="font-weight: 600; color: #6f74a3"
+                        >· custom, 21 × 1</span
+                      ></span
+                    ><button
+                      style="
+                        border-radius: 10px;
+                        border: 2px solid #2e3252;
+                        background: transparent;
+                        padding: 3px 12px;
+                        font:
+                          600 12px 'Bricolage Grotesque',
+                          sans-serif;
+                        color: #aeb3d9;
+                        cursor: pointer;
+                      "
+                    >
+                      Edit
+                    </button>
+                  </div>
+                </div>
+                <div style="display: flex; gap: 8px">
+                  <button
+                    style="
+                      border-radius: 12px;
+                      border: 2px solid #2e3252;
+                      background: transparent;
+                      padding: 7px 14px;
+                      font:
+                        600 14px 'Bricolage Grotesque',
+                        sans-serif;
+                      color: #aeb3d9;
+                      cursor: pointer;
+                    "
+                  >
+                    + New preset
+                  </button>
+                  <span style="flex: 1"></span>
+                  <button
+                    style="
+                      border-radius: 12px;
+                      border: 2px solid #2e3252;
+                      background: transparent;
+                      padding: 7px 14px;
+                      font:
+                        600 14px 'Bricolage Grotesque',
+                        sans-serif;
+                      color: #6f74a3;
+                      cursor: pointer;
+                    "
+                  >
+                    Export JSON
+                  </button>
+                  <button
+                    style="
+                      border-radius: 12px;
+                      border: 2px solid #2e3252;
+                      background: transparent;
+                      padding: 7px 14px;
+                      font:
+                        600 14px 'Bricolage Grotesque',
+                        sans-serif;
+                      color: #6f74a3;
+                      cursor: pointer;
+                    "
+                  >
+                    Import…
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ sheetOpen }}" hint-placeholder-val="{{ false }}">
+          <div
+            style="
+              position: fixed;
+              inset: 0;
+              background: rgba(10, 12, 26, 0.6);
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              z-index: 50;
+            "
+            data-screen-label="Session sheet"
+          >
+            <div
+              style="
+                width: 420px;
+                border-radius: 22px;
+                border: 2px solid #383d63;
+                background: #1b1e33;
+                box-shadow: 0 6px 0 #0a0c1a;
+                padding: 24px;
+                display: flex;
+                flex-direction: column;
+                gap: 16px;
+                color: #f4f2ff;
+              "
+            >
+              <div style="display: flex; align-items: center">
+                <b style="font-size: 22px; font-weight: 800">Session</b
+                ><button
+                  onClick="{{ closeSheet }}"
+                  style="
+                    margin-left: auto;
+                    border-radius: 12px;
+                    border: 2px solid #2e3252;
+                    background: transparent;
+                    padding: 5px 12px;
+                    font:
+                      600 14px 'Bricolage Grotesque',
+                      sans-serif;
+                    color: #6f74a3;
+                    cursor: pointer;
+                  "
+                >
+                  ✕
+                </button>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 6px">
+                <span style="font-size: 13px; font-weight: 600; color: #6f74a3"
+                  >PRESET</span
+                >
+                <button
+                  style="
+                    display: flex;
+                    align-items: center;
+                    border-radius: 14px;
+                    border: 2px solid #383d63;
+                    background: #131628;
+                    padding: 10px 14px;
+                    font:
+                      600 16px 'Bricolage Grotesque',
+                      sans-serif;
+                    color: #f4f2ff;
+                    cursor: pointer;
+                  "
+                >
+                  Seventh chords
+                  <span style="margin-left: auto; color: #6f74a3">▾</span>
+                </button>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 6px">
+                <span style="font-size: 13px; font-weight: 600; color: #6f74a3"
+                  >MODE</span
+                >
+                <div
+                  style="
+                    display: flex;
+                    border-radius: 14px;
+                    border: 2px solid #383d63;
+                    overflow: hidden;
+                  "
+                >
+                  <button onClick="{{ setLearn }}" style="{{ segLearnS }}">
+                    🎓 Learn
+                  </button>
+                  <button
+                    onClick="{{ setPractice }}"
+                    style="{{ segPracticeS }}"
+                  >
+                    ▶ Practice
+                  </button>
+                  <button onClick="{{ setSong }}" style="{{ segSongS }}">
+                    ♪ Song
+                  </button>
+                </div>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 6px">
+                <span style="font-size: 13px; font-weight: 600; color: #6f74a3"
+                  >LENGTH</span
+                >
+                <div style="display: flex; gap: 8px">
+                  <sc-for
+                    list="{{ lenChips }}"
+                    as="l"
+                    hint-placeholder-count="4"
+                    ><button onClick="{{ l.onClick }}" style="{{ l.s }}">
+                      {{ l.label }}
+                    </button></sc-for
+                  >
+                </div>
+              </div>
+              <div style="font-size: 13px; color: #6f74a3">
+                🎹 KAWAI USB MIDI connected · click keys to play in this
+                prototype
+              </div>
+              <button
+                onClick="{{ startSession }}"
+                style="
+                  border-radius: 16px;
+                  border: none;
+                  background: #58cc02;
+                  box-shadow: 0 4px 0 #2e6b01;
+                  padding: 13px;
+                  font:
+                    800 19px 'Bricolage Grotesque',
+                    sans-serif;
+                  color: #173a00;
+                  cursor: pointer;
+                "
+              >
+                Start ▶
+              </button>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+    </x-dc>
+    <script
+      type="text/x-dc"
+      data-dc-script
+      data-props='{"songTempo":{"editor":"range","default":60,"min":40,"max":140,"step":5,"unit":"bpm","tsType":"number","section":"Behavior"},"autoAdvanceMs":{"editor":"range","default":800,"min":200,"max":2000,"step":100,"unit":"ms","tsType":"number","section":"Behavior"},"celebrations":{"editor":"boolean","default":true,"tsType":"boolean","section":"Behavior"}}'
+    >
+      class Component extends DCLogic {
+        state = { view: 'home', mode: 'practice', sheetOpen: false, sessionLen: 20, held: [], done: 0, qPos: 0, queue: [], firstTryOk: 0, times: [], missed: false, passedNames: [], shaky: {}, feedback: null, promptStart: 0, song: null, sortCol: 'ra', sortDir: 'asc', settings: { chime: true, piano: true, staff: false, keysig: false, doubling: true, strict: true, judgeMs: 500, advanceMs: 800, goalMin: 10, fifths: false, nameSize: 'L' } };
+
+        POOL = [
+          { name: 'C maj7', pcs: [0, 4, 7, 11], ex: [60, 64, 67, 71] },
+          { name: 'D min7', pcs: [2, 5, 9, 0], ex: [62, 65, 69, 72] },
+          { name: 'E min7', pcs: [4, 7, 11, 2], ex: [64, 67, 71, 74] },
+          { name: 'F maj7', pcs: [5, 9, 0, 4], ex: [65, 69, 72, 76] },
+          { name: 'G dom7', pcs: [7, 11, 2, 5], ex: [55, 59, 62, 65] },
+        ];
+        PROG = [
+          { label: 'C', rn: 'I', pcs: [0, 4, 7], ex: [60, 64, 67] },
+          { label: 'G', rn: 'V', pcs: [7, 11, 2], ex: [55, 59, 62] },
+          { label: 'Am', rn: 'vi', pcs: [9, 0, 4], ex: [57, 60, 64] },
+          { label: 'F', rn: 'IV', pcs: [5, 9, 0], ex: [65, 69, 72] },
+        ];
+        STATS = [
+          { label: 'F♯ maj', g: 1, at: 34, la: 61, ra: 40, lt: 3.9, rt: 3.4 },
+          { label: 'B min7', g: 1, at: 28, la: 64, ra: 50, lt: 3.6, rt: 3.1 },
+          { label: 'E♭ maj7', g: 2, at: 22, la: 68, ra: 60, lt: 3.2, rt: 2.8 },
+          { label: 'A♭ maj', g: 2, at: 31, la: 71, ra: 70, lt: 2.9, rt: 2.6 },
+          { label: 'C maj — 1st Inv', g: 3, at: 45, la: 78, ra: 80, lt: 2.4, rt: 2.0 },
+          { label: 'G dom7', g: 3, at: 38, la: 82, ra: 80, lt: 2.2, rt: 1.9 },
+          { label: 'D min7', g: 3, at: 41, la: 85, ra: 90, lt: 2.0, rt: 1.7 },
+          { label: 'A min', g: 4, at: 52, la: 90, ra: 100, lt: 1.6, rt: 1.3 },
+          { label: 'C maj7', g: 4, at: 47, la: 92, ra: 100, lt: 1.5, rt: 1.2 },
+          { label: 'C maj', g: 4, at: 66, la: 95, ra: 100, lt: 1.2, rt: 0.9 },
+        ];
+        GRADES = ['F', 'D', 'C', 'B', 'A'];
+
+        componentWillUnmount() { this.stopTimer(); clearTimeout(this._adv); }
+        stopTimer() { if (this._tick) { clearInterval(this._tick); this._tick = null; } }
+
+        buildQueue(len) {
+          const q = []; let last = -1;
+          for (let i = 0; i < len; i++) { let n; do { n = Math.floor(Math.random() * this.POOL.length); } while (n === last && this.POOL.length > 1); q.push(n); last = n; }
+          return q;
+        }
+
+        startSession = () => {
+          clearTimeout(this._adv); this.stopTimer();
+          const song = this.state.mode === 'song' ? { barIndex: -1, beat: 0, loop: 1, results: [], curHit: false } : null;
+          this.setState({ view: 'practice', sheetOpen: false, held: [], done: 0, qPos: 0, queue: this.buildQueue(Math.min(this.state.sessionLen, 200)), firstTryOk: 0, times: [], missed: false, passedNames: [], shaky: {}, feedback: null, promptStart: Date.now(), song });
+          if (song) this._tick = setInterval(() => this.tick(), 60000 / (this.props.songTempo ?? 60));
+        };
+
+        tick() {
+          this.setState((s) => {
+            if (!s.song || s.view !== 'practice') return {};
+            const song = { ...s.song, results: [...s.song.results] };
+            song.beat++;
+            let extra = {};
+            if (song.barIndex === -1) {
+              if (song.beat >= 4) { song.barIndex = 0; song.beat = 0; }
+            } else if (song.beat >= 4) {
+              song.results.push(song.curHit);
+              extra = { done: s.done + 1, firstTryOk: s.firstTryOk + (song.curHit ? 1 : 0) };
+              song.curHit = false; song.beat = 0; song.barIndex++;
+              if (song.barIndex >= 4) {
+                song.barIndex = 0; song.loop++;
+                if (song.loop > 4) { this.stopTimer(); return { ...extra, view: 'report', song: null, held: [], feedback: null }; }
+              }
+            }
+            return { ...extra, song };
+          });
+        }
+
+        toggleKey(m) {
+          if (this.state.feedback && this.state.feedback.kind === 'correct') return;
+          const held = this.state.held.includes(m) ? this.state.held.filter((x) => x !== m) : [...this.state.held, m];
+          this.evaluate(held);
+        }
+
+        evaluate(held) {
+          const s = this.state;
+          const chord = s.song ? (s.song.barIndex >= 0 ? this.PROG[s.song.barIndex] : null) : this.POOL[s.queue[s.qPos]];
+          if (!chord) { this.setState({ held }); return; }
+          const target = new Set(chord.pcs);
+          const pcs = new Set(held.map((x) => x % 12));
+          const wrong = held.filter((x) => !target.has(x % 12));
+          const match = wrong.length === 0 && chord.pcs.every((p) => pcs.has(p));
+          if (s.song) {
+            const song = { ...s.song, curHit: s.song.curHit || match };
+            this.setState({ held, song, feedback: match ? { kind: 'song-hit' } : null });
+            return;
+          }
+          if (match) {
+            const ms = Date.now() - s.promptStart;
+            const passed = !s.missed && ms < 2000;
+            this.setState({ held, times: [...s.times, ms], firstTryOk: s.firstTryOk + (s.missed ? 0 : 1), passedNames: passed && !s.passedNames.includes(chord.name) ? [...s.passedNames, chord.name] : s.passedNames, feedback: { kind: 'correct', ms } });
+            this._adv = setTimeout(() => {
+              this.setState((st) => {
+                const done = st.done + 1;
+                if (done >= st.sessionLen || st.qPos + 1 >= st.queue.length) return { view: 'report', done, held: [], feedback: null };
+                return { done, qPos: st.qPos + 1, held: [], missed: false, feedback: null, promptStart: Date.now() };
+              });
+            }, this.props.autoAdvanceMs ?? this.state.settings.advanceMs);
+          } else if (wrong.length > 0) {
+            const shaky = { ...s.shaky }; if (!s.missed) shaky[chord.name] = (shaky[chord.name] || 0) + 1;
+            this.setState({ held, missed: true, shaky, feedback: { kind: 'wrong' } });
+          } else {
+            this.setState({ held, feedback: s.feedback && s.feedback.kind === 'wrong' ? s.feedback : null });
+          }
+        }
+
+        endSession = () => { clearTimeout(this._adv); this.stopTimer(); this.setState((s) => ({ view: s.done > 0 ? 'report' : 'home', song: null, feedback: null, held: [] })); };
+
+        renderVals() {
+          const s = this.state;
+          const raised = { borderRadius: 14, border: '2px solid #2e3252', background: 'transparent', padding: '10px 18px', font: "600 16px 'Bricolage Grotesque',sans-serif", color: '#6f74a3', cursor: 'pointer' };
+          const raisedOn = { ...raised, border: '2px solid #58cc02', background: '#1f3a0c', boxShadow: '0 2px 0 #0a0c1a', fontWeight: 800, color: '#8ee653' };
+          const seg = { flex: 1, textAlign: 'center', padding: 9, fontSize: 15, fontWeight: 600, color: '#6f74a3', border: 'none', background: 'transparent', cursor: 'pointer' };
+          const segOn = { ...seg, fontWeight: 800, background: '#58cc02', color: '#173a00' };
+          const mode = s.mode;
+          const chord = s.song ? (s.song.barIndex >= 0 ? this.PROG[s.song.barIndex] : null) : (s.view === 'practice' ? this.POOL[s.queue[s.qPos]] : null);
+          const expected = s.view === 'practice' && chord && (mode === 'learn' || mode === 'song') ? chord.ex : [];
+          const targetPcs = chord ? new Set(chord.pcs) : new Set();
+          const H = new Set(s.held), E = new Set(expected);
+          const WHITE = new Set([0, 2, 4, 5, 7, 9, 11]), SHARP = new Set([0, 2, 5, 7, 9]);
+          const keys = [];
+          for (let m = 48; m <= 84; m++) {
+            if (!WHITE.has(m % 12)) continue;
+            const st = (x) => (H.has(x) ? (targetPcs.size && !targetPcs.has(x % 12) ? 'wrong' : 'held') : E.has(x) ? 'expected' : 'idle');
+            const ws = st(m);
+            const hasSharp = SHARP.has(m % 12) && m + 1 <= 84;
+            const bs = hasSharp ? st(m + 1) : 'idle';
+            const wBg = { idle: '#eceaf6', held: '#8ee653', wrong: '#ff8080', expected: '#d9f2c4' }[ws];
+            const bBg = { idle: '#262a47', held: '#58cc02', wrong: '#d94f4f', expected: '#41682a' }[bs];
+            const mark = (x, onW) => {
+              const c = onW ? '#1d2007' : '#f4f2ff';
+              if (x === 'held') return [{ display: 'block', width: 7, height: 7, borderRadius: '50%', background: onW ? '#1d4d00' : '#123300' }, ''];
+              if (x === 'wrong') return [{ fontSize: 11, fontWeight: 800, lineHeight: 1, color: onW ? '#5c0f0f' : '#fff' }, '✕'];
+              if (x === 'expected') return [{ display: 'block', width: 7, height: 7, borderRadius: '50%', border: '2px solid ' + (onW ? '#2d5c10' : '#d9f2c4'), boxSizing: 'border-box' }, ''];
+              return [{ display: 'none' }, ''];
+            };
+            const [wm, wmt] = mark(ws, true), [bm, bmt] = mark(bs, false);
+            keys.push({
+              id: m, hasSharp, wm, wmt, bm, bmt,
+              wTap: () => this.toggleKey(m), bTap: () => this.toggleKey(m + 1),
+              wS: { height: 150, width: 38, borderRadius: '0 0 4px 4px', border: '1px solid #41466e', marginRight: -1, background: wBg, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: 6, cursor: 'pointer' },
+              bS: { position: 'absolute', right: 0, top: 0, transform: 'translateX(50%)', zIndex: 10, height: 92, width: 22, borderRadius: '0 0 3px 3px', background: bBg, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: 5, boxShadow: '0 0 0 1px #0d0f1e', cursor: 'pointer' },
+            });
+          }
+          // queue names
+          const nameAt = (o) => (s.queue.length ? this.POOL[s.queue[Math.min(s.qPos + o, s.queue.length - 1)]].name : '');
+          // feedback
+          const fb = s.feedback;
+          const countIn = s.song && s.song.barIndex === -1;
+          let fbShow = false, fbText = '', fbS = {};
+          const pill = (bg, color) => ({ display: 'inline-flex', alignItems: 'center', gap: 8, borderRadius: 999, background: bg, color, padding: '6px 18px', fontSize: 19, fontWeight: 800 });
+          if (countIn) { fbShow = true; fbText = 'Count-in… ' + (s.song.beat + 1); fbS = pill('#262a47', '#aeb3d9'); }
+          else if (fb && fb.kind === 'correct') { fbShow = true; fbText = '✓ ' + (fb.ms / 1000).toFixed(1) + 's' + ((this.props.celebrations ?? true) ? ' — nailed it' : ''); fbS = pill('#1f3a0c', '#8ee653'); }
+          else if (fb && fb.kind === 'wrong') { fbShow = true; fbText = '✕ wrong keys marked — lift and retry'; fbS = pill('#3a1414', '#ff8080'); }
+          else if (fb && fb.kind === 'song-hit') { fbShow = true; fbText = '✓ landed'; fbS = pill('#1f3a0c', '#8ee653'); }
+          else if (mode === 'learn' && s.view === 'practice') { fbShow = true; fbText = '◎ shape shown below — any matching voicing counts'; fbS = { ...pill('#262a47', '#aeb3d9'), fontSize: 15, fontWeight: 600 }; }
+          // song chips
+          const songChips = this.PROG.map((p, i) => {
+            const res = s.song ? s.song.results.slice(-4)[i] : undefined;
+            const inLoop = s.song && s.song.barIndex >= 0;
+            const current = inLoop && i === s.song.barIndex;
+            const past = inLoop && i < s.song.barIndex;
+            const r = past ? s.song.results[s.song.results.length - (s.song.barIndex - i)] : undefined;
+            const base = { width: 118, borderRadius: 16, padding: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, border: '2px solid #2e3252', background: '#1b1e33' };
+            let sty = base, ns = { fontSize: 32, fontWeight: 800, color: '#6f74a3' }, label = p.label;
+            if (past && r === true) { sty = { ...base, border: '2px solid #2e6b01', background: '#1f3a0c' }; ns = { fontSize: 32, fontWeight: 800, color: '#8ee653' }; label = '✓ ' + p.label; }
+            else if (past && r === false) { sty = { ...base, border: '2px solid #6b2222', background: '#331111' }; ns = { fontSize: 32, fontWeight: 800, color: '#ff8080' }; label = '✕ ' + p.label; }
+            else if (current) { sty = { ...base, border: '2px solid #58cc02', boxShadow: '0 0 0 4px rgba(88,204,2,0.22)' }; ns = { fontSize: 32, fontWeight: 800, color: '#f4f2ff' }; }
+            return { label, rn: p.rn, s: sty, ns, rs: { fontSize: 14, fontWeight: 600, color: current ? '#8ee653' : '#3d4166' } };
+          });
+          const beatDots = [0, 1, 2, 3].map((i) => ({ s: s.song && i === s.song.beat ? { width: 16, height: 16, borderRadius: '50%', background: '#58cc02', boxShadow: '0 0 12px rgba(88,204,2,0.5)' } : { width: 14, height: 14, borderRadius: '50%', background: '#3d4166' } }));
+          // report
+          const acc = s.done > 0 ? Math.round((100 * s.firstTryOk) / s.done) : 0;
+          const avg = s.times.length ? s.times.reduce((a, b) => a + b, 0) / s.times.length : null;
+          const accD = acc - 77, avgD = avg !== null ? (avg / 1000 - 2.5) : null;
+          const gradeIdx = acc >= 90 ? 4 : acc >= 78 ? 3 : acc >= 65 ? 2 : acc >= 50 ? 1 : 0;
+          const shakyNames = Object.keys(s.shaky);
+          // stats table
+          const cols = [
+            { id: 'g', label: 'GRADE', v: (r) => r.g, def: 'asc' },
+            { id: 'at', label: 'ATTEMPTS', v: (r) => r.at, def: 'desc' },
+            { id: 'la', label: 'LIFETIME ACC', v: (r) => r.la, def: 'asc' },
+            { id: 'ra', label: 'RECENT ACC', v: (r) => r.ra, def: 'asc' },
+            { id: 'lt', label: 'LIFETIME AVG', v: (r) => r.lt, def: 'desc' },
+            { id: 'rt', label: 'RECENT AVG', v: (r) => r.rt, def: 'desc' },
+          ];
+          const col = cols.find((c) => c.id === s.sortCol) || cols[3];
+          const dir = s.sortDir === 'asc' ? 1 : -1;
+          const sRows = [...this.STATS].sort((a, b) => (col.v(a) - col.v(b)) * dir || a.label.localeCompare(b.label)).map((r) => ({
+            label: r.label, at: String(r.at), la: r.la + '%', ra: r.ra + '%', lt: r.lt.toFixed(1) + 's', rt: r.rt.toFixed(1) + 's',
+            grade: this.GRADES[r.g],
+            gs: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 8, fontWeight: 800, fontSize: 14, background: r.g >= 3 ? '#1f3a0c' : r.g === 2 ? '#262a47' : '#3a1414', color: r.g >= 3 ? '#8ee653' : r.g === 2 ? '#aeb3d9' : '#ff8080' },
+          }));
+          const heads = cols.map((c) => ({
+            label: c.label, arrow: s.sortCol === c.id ? (s.sortDir === 'asc' ? ' ▲' : ' ▼') : '',
+            onClick: () => this.setState((st) => ({ sortCol: c.id, sortDir: st.sortCol === c.id ? (st.sortDir === 'asc' ? 'desc' : 'asc') : c.def })),
+            s: { border: 'none', background: 'transparent', padding: 0, font: "600 12px 'Bricolage Grotesque',sans-serif", letterSpacing: '0.06em', color: s.sortCol === c.id ? '#f4f2ff' : '#6f74a3', cursor: 'pointer' },
+          }));
+          // charts + calendars
+          const accBars = [], timeBars = [];
+          for (let i = 0; i < 30; i++) {
+            if (i === 3 || i === 9 || i === 17) { const sb = { maxWidth: 18, flex: 1 }; accBars.push({ s: sb, t: 'no practice' }); timeBars.push({ s: sb, t: 'no practice' }); continue; }
+            const a = Math.min(96, 54 + i * 1.2 + ((i * 7) % 9));
+            accBars.push({ s: { maxWidth: 18, flex: 1, borderRadius: '3px 3px 0 0', background: '#58cc02', height: a.toFixed(0) + '%' }, t: Math.round(a) + '% first-try' });
+            const v = Math.max(1.4, 4.6 - i * 0.09 - ((i * 5) % 7) / 10);
+            timeBars.push({ s: { maxWidth: 18, flex: 1, borderRadius: '3px 3px 0 0', background: '#38b6f0', height: Math.max(4, (100 * v) / 5).toFixed(0) + '%' }, t: v.toFixed(1) + 's avg' });
+          }
+          const cal = [];
+          for (let i = 0; i < 84; i++) {
+            const practiced = (i * 13) % 7 < 4 || i > 76;
+            const met = practiced && ((i * 17) % 5 > 1 || i > 78);
+            cal.push({ s: { width: 11, height: 11, borderRadius: 3, background: met ? '#58cc02' : practiced ? '#2e5214' : '#1b1e33', border: '1px solid ' + (met ? '#6fdb1c' : '#262a47') } });
+          }
+          const homeCal = [1, 1, 0, 1, 2, 1, 1, 0, 1, 1, 2, 1, 0, 3].map((v) => ({ s: { width: 22, height: 22, borderRadius: 6, background: v === 1 ? '#58cc02' : v === 2 ? '#2e5214' : v === 3 ? '#1b1e33' : '#262a47', border: v === 3 ? '2px dashed #38b6f0' : 'none', boxSizing: 'border-box', display: 'block' } }));
+          const lenOpts = [{ n: 10, l: '10' }, { n: 20, l: '20 prompts' }, { n: 40, l: '40' }, { n: 9999, l: '∞' }];
+          return {
+            isHome: s.view === 'home', isPractice: s.view === 'practice', isReport: s.view === 'report', isProgress: s.view === 'progress', isStats: s.view === 'stats', isSettings: s.view === 'settings',
+            goSettings: () => this.setState({ view: 'settings' }),
+            ...(() => {
+              const sw = (key) => {
+                const on = s.settings[key];
+                return {
+                  onClick: () => this.setState((st) => ({ settings: { ...st.settings, [key]: !st.settings[key] } })),
+                  s: { display: 'inline-flex', alignItems: 'center', justifyContent: on ? 'flex-end' : 'flex-start', width: 48, height: 28, borderRadius: 999, border: '2px solid ' + (on ? '#58cc02' : '#2e3252'), background: on ? '#58cc02' : '#262a47', padding: 2, cursor: 'pointer', boxSizing: 'border-box' },
+                  k: { display: 'block', width: 18, height: 18, borderRadius: '50%', background: on ? '#173a00' : '#6f74a3' },
+                };
+              };
+              const step = (key, delta, min, max, fmt) => ({
+                val: fmt(s.settings[key]),
+                dec: () => this.setState((st) => ({ settings: { ...st.settings, [key]: Math.max(min, st.settings[key] - delta) } })),
+                inc: () => this.setState((st) => ({ settings: { ...st.settings, [key]: Math.min(max, st.settings[key] + delta) } })),
+              });
+              return {
+                swChime: sw('chime'), swPiano: sw('piano'), swStaff: sw('staff'), swKeysig: sw('keysig'), swDoubling: sw('doubling'), swStrict: sw('strict'), swFifths: sw('fifths'),
+                judge: step('judgeMs', 100, 0, 2000, (v) => v + ' ms'),
+                adv: step('advanceMs', 100, 200, 2000, (v) => v + ' ms'),
+                goal: step('goalMin', 5, 5, 120, (v) => v + ' min'),
+                stepBtnS: { width: 30, height: 30, borderRadius: 10, border: '2px solid #2e3252', background: 'transparent', color: '#aeb3d9', font: "800 16px 'Bricolage Grotesque',sans-serif", cursor: 'pointer', lineHeight: 1 },
+                sizeChips: ['S', 'M', 'L', 'XL'].map((z) => ({
+                  label: z,
+                  onClick: () => this.setState((st) => ({ settings: { ...st.settings, nameSize: z } })),
+                  s: s.settings.nameSize === z ? { borderRadius: 10, border: '2px solid #58cc02', background: '#1f3a0c', padding: '5px 11px', font: "800 13px 'Bricolage Grotesque',sans-serif", color: '#8ee653', cursor: 'pointer' } : { borderRadius: 10, border: '2px solid #2e3252', background: 'transparent', padding: '5px 11px', font: "600 13px 'Bricolage Grotesque',sans-serif", color: '#6f74a3', cursor: 'pointer' },
+                })),
+              };
+            })(),
+            sheetOpen: s.sheetOpen, openSheet: () => this.setState({ sheetOpen: true }), closeSheet: () => this.setState({ sheetOpen: false }),
+            isModePractice: mode === 'practice' && s.view === 'practice', isModeLearn: mode === 'learn' && s.view === 'practice', isModeSong: mode === 'song' && s.view === 'practice', notSong: mode !== 'song',
+            setLearn: () => this.setState({ mode: 'learn' }), setPractice: () => this.setState({ mode: 'practice' }), setSong: () => this.setState({ mode: 'song' }),
+            mLearnS: mode === 'learn' ? raisedOn : raised, mPracticeS: mode === 'practice' ? raisedOn : raised, mSongS: mode === 'song' ? raisedOn : raised,
+            segLearnS: mode === 'learn' ? segOn : seg, segPracticeS: mode === 'practice' ? segOn : seg, segSongS: mode === 'song' ? segOn : seg,
+            startSession: this.startSession, endSession: this.endSession,
+            goHome: () => { this.stopTimer(); this.setState({ view: 'home', song: null }); }, goProgress: () => this.setState({ view: 'progress' }), goStats: () => this.setState({ view: 'stats' }),
+            startLabel: mode === 'song' ? 'Start song ▶' : mode === 'learn' ? 'Start learning ▶' : 'Start practicing ▶',
+            sessionLabel: 'Seventh chords · ' + (mode === 'song' ? '♪ Song' : mode === 'learn' ? '🎓 Learn' : '▶ Practice'),
+            barS: { width: Math.min(100, (100 * s.done) / s.sessionLen) + '%', height: '100%', background: '#58cc02', borderRadius: 6 },
+            doneLabel: s.done + ' / ' + (s.sessionLen > 200 ? '∞' : s.sessionLen),
+            bpmLabel: '♩ = ' + (this.props.songTempo ?? 60), loopLabel: 'loop ' + (s.song ? Math.min(s.song.loop, 4) : 1) + ' / 4',
+            curName: chord && !s.song ? chord.name : '', n1: nameAt(1), n2: nameAt(2),
+            songCurName: countIn ? 'Get ready…' : (chord ? (chord.label === 'Am' ? 'A min' : chord.label + ' maj') : ''),
+            songChips, beatDots, keys, fbShow, fbText, fbS,
+            rHead: acc >= 78 ? 'Nice session!' : 'Session done', rGrade: this.GRADES[gradeIdx],
+            rAcc: acc + '%', rAccD: (accD >= 0 ? '▲ +' : '▼ ') + accD, rAvg: avg !== null ? (avg / 1000).toFixed(1) + 's' : '—', rAvgD: avgD !== null ? (avgD <= 0 ? '▼ ' + avgD.toFixed(1) : '▲ +' + avgD.toFixed(1)) : '',
+            rPrompts: '+' + s.done, rMin: '+' + Math.max(1, Math.round(s.times.reduce((a, b) => a + b, 0) / 60000 + s.done * 0.05)) + ' min',
+            rUnlock: s.passedNames.length >= this.POOL.length,
+            rPassed: s.passedNames.length + ' / ' + this.POOL.length + (s.passedNames.length >= this.POOL.length ? ' — all passed → new chords unlocked' : ' fast first-try'),
+            rShaky: shakyNames.length ? shakyNames.map((n) => n + ' (' + s.shaky[n] + ')').join(' · ') : '— none',
+            heads, sRows, accBars, timeBars, cal, homeCal,
+            lenChips: lenOpts.map((o) => ({ label: o.l, onClick: () => this.setState({ sessionLen: o.n }), s: s.sessionLen === o.n ? { borderRadius: 12, border: '2px solid #58cc02', background: '#1f3a0c', padding: '7px 14px', fontSize: 14, fontWeight: 800, color: '#8ee653', cursor: 'pointer' } : { borderRadius: 12, border: '2px solid #2e3252', background: 'transparent', padding: '7px 14px', fontSize: 14, fontWeight: 600, color: '#6f74a3', cursor: 'pointer' } })),
+          };
+        }
+      }
+    </script>
+  </body>
+</html>

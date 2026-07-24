@@ -4,7 +4,15 @@ A web app for practicing piano chords with a MIDI keyboard. The app shows a rand
 from a chosen preset, the user plays it on their connected MIDI keyboard, and the app
 validates the input and moves on to the next chord.
 
-Status: **Draft v8** — flashcard-style **chord unlocking** (2026-07-19): each preset
+Status: **Draft v9** — **session-based UI** (2026-07-24): the app opens on a **Home**
+screen and practice runs as explicit sessions — a session sheet picks preset, mode,
+and a **length in prompts** (10/20/40/∞, replacing the Draft-v5 minute timer), the
+**Stage** runs the session, and every session ends in a full-screen **Report** with a
+session grade (the §5 chord-score formula applied to the session) and deltas against
+a trailing-30-practiced-day baseline (§7). History becomes **Progress**, the upcoming
+preview shrinks to the next 2 shown inline, and the visual language is redone
+(reference mock: `doc/Prototype.dc.html`). Draft v8 added flashcard-style
+**chord unlocking** (2026-07-19): each preset
 starts with only its first 3 chords in play, and a fast first-try success on every
 unlocked chord opens 2 more, until the whole pool is available (§5). Learn/Practice
 generate only from unlocked chords; Song mode stays full-pool. A same-day revision
@@ -43,12 +51,15 @@ first) is intentionally left outside this document.
   rule; a miss latches only when the attempt can no longer succeed or stalls (§6.2).
 - On a wrong attempt: **retry until correct**, with **progressive hints** — early misses
   only mark the wrong played keys; the expected keys are revealed from the 3rd miss.
-- **Session modes**: **Learn** (example voicing shown from the start, untimed,
-  stats-neutral), **Practice** (default: voicing hidden, endless), and **Song**
+- **Session flow**: the app opens on **Home**; a session is configured in a sheet
+  (preset, mode, **length**: 10/20/40/∞ prompts) and always ends in a full-screen
+  **Report** — session grade, trend deltas, passed/shaky chords (§7).
+- **Session modes**: **Learn** (example voicing shown from the start,
+  stats-neutral), **Practice** (default: voicing hidden), and **Song**
   (a 2–4-chord progression from the active preset's pool looped to a metronome — the
-  bar boundary judges, not the player's success; §6.5). Practice-mode settings: an optional **session
-  timer** (with end-of-session summary) and a **worst chords only** toggle (replacing
-  the old review mode) — plus subtle miss-weighting always.
+  bar boundary judges, not the player's success; §6.5). Practice keeps a
+  **worst chords only** toggle (replacing the old review mode) — plus subtle
+  miss-weighting always.
 - **Chord unlocking**: flashcard-style progression per preset — start with 3 chords,
   pass them all (first-try, under 2 s) to unlock 2 more, repeating until the pool is
   open (§5). Gates Learn/Practice generation only; Song mode uses the full pool.
@@ -79,8 +90,9 @@ first) is intentionally left outside this document.
 - Bias chord selection toward recently-missed chords (weighted repetition), offer a
   worst-chords-only Practice setting for explicit review, and persist stats across
   sessions.
-- Practice sessions are endless by default; an optional session timer ends the session
-  with a summary.
+- Practice runs as explicit sessions — a chosen number of prompts (10/20/40/∞)
+  started from Home — each ending in a report with a session grade and trend deltas
+  (§7.4).
 - Simulate playing a real song: loop a short random progression from the selected
   preset against a fixed tempo, training chord *transitions* under time pressure
   (Song mode, §6.5).
@@ -331,7 +343,8 @@ or machines.
 - **No immediate repeat**: the last `min(3, poolSize − 1)` combos are excluded, so small
   custom pools (≤ 3 combos) still generate.
 - **Upcoming preview**: generation keeps a queue of the next 4 combos, dealt in
-  order (§7); one new combo is appended after each advance, picked with the
+  order — the Stage displays only the first 2 (§7.3); the rest exist for the
+  duplicate-exclusion below. One new combo is appended after each advance, picked with the
   then-current weights. Combos already queued join the no-immediate-repeat
   exclusion (extending it beyond the played-history window above) so the
   preview and the current prompt stay duplicate-free whenever the pool is
@@ -339,7 +352,7 @@ or machines.
   preview rather than leaving slots empty. The queue is rebuilt from scratch
   whenever the pool changes (preset, key, mode, worst-only, or a library
   edit).
-- **Worst chords only** (a Practice-mode setting, §7) inverts the emphasis: it draws
+- **Worst chords only** (a Practice-mode setting, §7.2) inverts the emphasis: it draws
   only from the selected preset's worst combos instead of gently biasing the normal
   stream.
 - Only Practice-mode attempts are recorded: Learn mode feeds neither the per-combo stats
@@ -376,7 +389,7 @@ flashcard-style batches instead of the whole pool at once:
   like any other pool change), so new chords can appear in the very next preview.
 - **Scope:** the gate applies to Learn and Practice generation (worst-chords-only,
   Practice-only, and not-passed-only, Learn-only, then each narrow *within* the
-  unlocked set — see the §7 settings). **Song mode is deliberately not gated** — it
+  unlocked set — see the §7.2 session sheet). **Song mode is deliberately not gated** — it
   draws from the preset's full pool (§6.5); revisit if that proves confusing.
 - **"Not passed only"** (a Learn-mode setting, §7, off by default, session-only like
   its Practice counterpart): narrows generation to unlocked chords not yet passed.
@@ -401,8 +414,10 @@ flashcard-style batches instead of the whole pool at once:
   → a reactive "currently held notes" set (`Set<number>` of MIDI note numbers).
 - Device picker UI when more than one input exists; last device remembered.
 - **No device connected:** a blocking "connect a MIDI keyboard" screen replaces the
-  practice view; hot-plug resumes practice automatically. There is no mouse/QWERTY
-  fallback input (non-goal). MIDI is simulated in development/tests via the wrapper.
+  **Stage** (§7.3) — Home, Progress, and Settings stay browsable without a device;
+  starting a session without one shows the gate instead, and hot-plug resumes
+  practice automatically. There is no mouse/QWERTY fallback input (non-goal). MIDI
+  is simulated in development/tests via the wrapper.
 
 ### 6.2 Attempt lifecycle
 
@@ -518,7 +533,8 @@ deferred.
 **Phrase structure.** The progression repeats **4 times** (fixed) as one *phrase* —
 about 60–90 s at default tempo. At the end of a phrase a brief per-chord hit/miss
 summary is shown, then a new progression is generated and counts in. Endless until the
-user stops, like Practice.
+user ends the session — the §7.2 length picker doesn't apply to Song — and ending
+shows the Report like any other mode.
 
 **Example voicing.** A Song-mode setting, **Show example** (default **on**), overlays
 each bar's example voicing on the keyboard Learn-style (and the grand staff still
@@ -541,48 +557,101 @@ keys, and the stricter down-by-beat-1 judging variant.
 
 ## 7. UI / Screens
 
+The app runs as explicit **sessions**: Home is the entry screen, a session sheet
+configures preset/mode/length, the Stage runs the session, and a full-screen
+Report ends it.
+
 ```
-┌────────────────────────────────────────────────────┐
-│ [Preset ▾] [Mode ▾] [Device ▾] 🔥12  [History] [⚙] │  ← top bar: streak + goal progress
-├────────────────────────────────────────────────────┤
-│              D min7 — 2nd inversion                 │  ← prompt: NAME is primary
-│      (G maj) (A min) (F maj7) (E min — 1st inv)     │  ← upcoming preview, next 4
-│          𝄞  ♩♩♩♩ (grand staff, if staff setting on) │  ← example voicing, both modes
-│                                                     │
-│          ✔ Correct!  (1.2s)      [Skip →]   ⏱ 3:12 │  ← feedback line; timer if set
-├────────────────────────────────────────────────────┤
-│  🎹 on-screen keyboard (~3 octaves)                 │  ← live held keys; miss overlays
-│                                                     │     escalate per hint stage (§6.4);
-│                                                     │     out-of-range shapes octave-shift
-│                                                     │     into view whole (§7)
-└────────────────────────────────────────────────────┘
+Home ──(Start / session sheet §7.2)──▶ Stage ──(length reached or End)──▶ Report
+ ├──▶ Progress ──▶ Chord stats                     Report ──▶ Go again / Home
+ └──▶ Settings
 ```
 
-- **Session modes** (top-bar picker):
+**Visual language** (reference mock: `doc/Prototype.dc.html`): dark navy surface,
+green primary action color, cards and buttons as chunky 2px-bordered rounded
+panels with a hard offset shadow, display typeface Bricolage Grotesque —
+**self-hosted** (the app is client-side; no runtime font CDN). Feedback still
+never relies on color alone (§6.4).
+
+### 7.1 Home
+
+The entry screen — the app boots here, not into practice. The no-device gate
+(§6.1) doesn't block Home/Progress/Settings; it appears when a session starts.
+
+- **Top bar**: app name · device picker · streak chip (🔥 N) · Settings.
+- **Continue card** (primary): the active preset's name with a **Change**
+  control (the preset picker, incl. the diatonic key picker); unlock progress —
+  `N/total chords unlocked`, a bar, and how many unlock on the next pass (§5.1);
+  an **In play** chip row — every unlocked chord with its letter grade (chord
+  score §5 → A–F), not-yet-passed chords tagged *learning*, plus one
+  `🔒 N locked` chip — this row is the per-chord breakdown that used to live
+  behind the top-bar unlock chip; the **mode selector** (Learn / Practice /
+  Song); and the **Start** button, labeled per mode.
+- **Daily goal ring**: today's active minutes vs the goal (§7.6) and what's
+  left to keep the streak.
+- **Last 2 weeks**: a 14-day mini calendar of daily goal results
+  (met / practiced-but-short / missed / today).
+- **Progress button**: opens Progress (§7.5); shows this week's first-try
+  accuracy with a delta vs the prior week.
+
+### 7.2 Session sheet & length
+
+A modal sheet — opened from Home and from the Stage's session label — holding
+everything that defines a session:
+
+- **Preset**: the same picker as the Continue card.
+- **Mode**: Learn / Practice / Song, segmented. Each mode's sub-settings (§7.3)
+  appear under the row while that mode is selected: Learn's *Not passed only*,
+  Practice's *Worst chords only*, Song's *Tempo* / *Chords per progression* /
+  *Show example*.
+- **Length**: **10 / 20 / 40 / ∞ prompts** (default 20; session-only, resets on
+  reload). Applies to Learn and Practice; hidden in Song, which runs until
+  ended. This replaces the Draft-v5 minute timer — the daily goal tracks active
+  minutes regardless (§7.6).
+
+Reaching the length — or the Stage's **End** button, any mode, any time — ends
+the session and shows the Report (§7.4); ending with zero prompts played
+returns Home instead.
+
+### 7.3 Stage (the in-session screen)
+
+```
+┌─────────────────────────────────────────────────────┐
+│ [Seventh chords · ▶ Practice ▾]  ▓▓▓░░ 12/20  [End] │ ← session label opens the
+├─────────────────────────────────────────────────────┤   sheet; center varies by mode
+│    D min7 — 2nd inv     (G maj)  (A min)            │ ← prompt + next 2 inline
+│    𝄞 (grand staff, if staff setting on)             │
+│          [ ✔ Correct! 1.2s ]     [Skip →]           │ ← feedback pill
+├─────────────────────────────────────────────────────┤
+│  🎹 on-screen keyboard (~3 octaves)                 │ ← live held keys; overlays
+└─────────────────────────────────────────────────────┘   escalate per §6.4
+```
+
+- **Top bar, per mode**: the session label (preset + mode) opening the sheet, an
+  **End** button, and in the center — Practice: a progress bar with
+  `done / length` (∞ shows the count alone); Learn: the *Not passed only* state
+  plus a compact `🔓 N/total` unlock count; Song: tempo and loop chips. The old
+  always-visible unlock chip is gone — Home's In play row carries the per-chord
+  breakdown — but the transient unlock **toast** ("🔓 New chords unlocked:
+  A, E") still fires at the mid-session unlock moment.
+- **Session modes**:
   - **Learn**: the prompt's `example` voicing is shown from the start — highlighted on
     the on-screen keyboard, and drawn on the grand staff when the staff setting is on
     (§3.4) — for the user to copy (any voicing satisfying the rule still counts).
-    Untimed. Attempts are excluded from stats and weighting (§5); active minutes still
-    count toward the daily goal. Learn-mode setting (shown with the picker when Learn
-    is active):
+    Attempts are excluded from stats and weighting (§5); active minutes still
+    count toward the daily goal. Learn-mode setting (in the session sheet, §7.2):
     - **Not passed only**: narrows generation to the selected preset's unlocked
       chords not yet passed (§5.1).
   - **Practice** (default): the voicing is hidden from the keyboard — recall from the
     name, keyboard hints escalate per §6.4 — but the grand staff (if its setting is on)
-    is visible from the first prompt, independent of misses. Endless unless the timer is
-    set. Practice-mode settings (shown with the picker when Practice is active):
-    - **Timer**: off (default) or 5 / 10 / 15 min / custom — countdown in the UI, then
-      an end-of-session summary (prompts played, accuracy, average time-to-correct,
-      best chord average, slowest/worst chords). *Best* is the fastest chord's
-      per-chord average, not the single fastest raw sample, so one lucky rep can't
-      set it.
+    is visible from the first prompt, independent of misses. Runs to the session
+    length (§7.2). Practice-mode setting (in the session sheet):
     - **Worst chords only**: drills the selected preset's worst combos (§5).
   - **Song**: a looped progression from the active preset against a metronome —
     clock-paced judging per §6.5. The preset picker (and, for the diatonic preset,
     its key picker) works exactly as in the other modes; switching mid-song rebuilds
     the progression with a fresh count-in.
-    Song-mode settings (shown with the picker when Song is active, mirroring how
-    Practice hosts its own):
+    Song-mode settings (in the session sheet):
     - **Tempo**: BPM, default 60, range 40–140.
     - **Chords per progression**: 2 / 3 / 4 (default 4).
     - **Show example**: default on — each bar's example voicing overlaid on the
@@ -599,10 +668,10 @@ keys, and the stricter down-by-beat-1 judging variant.
   as a text label (omitted for the `any` rule); the `example` voicing on a grand staff
   (§3.4) whenever the staff setting is on, in either mode — optionally in the chord
   root's key (key signature setting, §3.5) — off by default keeps name+keyboard-only
-  practice first-class for users who don't read notation. Below the name, a column of
-  muted chips previews the next 4 upcoming combos in dealing order (§5), stacked top
-  to bottom with the next one on top, each labeled like the worst-chords list (name,
-  plus voicing unless it's the `any` rule); Song mode's progression display (§6.5)
+  practice first-class for users who don't read notation. Beside the name, the
+  **next 2** upcoming combos in dealing order (§5) render inline at decreasing
+  sizes and muted colors, each labeled like the worst-chords list (name, plus
+  voicing unless it's the `any` rule); Song mode's progression display (§6.5)
   keeps a left-to-right row instead, since it reads in time. Both scale with the
   chord-name size setting so they stay readable from the same distance as the name.
 - **Keyboard visual**: shows currently held notes live; in Practice, after misses,
@@ -612,37 +681,75 @@ keys, and the stricter down-by-beat-1 judging variant.
   §6.3), its whole note set octave-shifts together into view — held + wrong-key marks
   as one shape, the answer overlay as another — so the voicing's shape stays intact; a
   shape wider than the drawn range folds the leftover notes per note.
-- **Feedback**: correct flash + reaction time + optional chime, auto-advance (default
-  800 ms). Misses are always **visual-only** (§9). Skip button available (excluded from
-  stats and weighting). A **combo streak** (consecutive first-try correct prompts, reset
-  by any miss; skips leave it untouched) rides the same flash once it reaches 10
-  ("🔥 10 combo"). Session-only — not shown elsewhere — but the longest streak ever
-  reached is tracked lifetime (§7 History).
-- **Unlock chip** (top bar): `N/total` chords unlocked for the active preset (§5.1),
-  with a brief highlight when a batch unlocks; hidden in Song mode, which isn't
-  gated. Full state in the tooltip. Clicking the chip expands a per-chord
-  breakdown — every pool chord in unlock order, tagged locked / unlocked-not-yet-passed
-  ("Learning") / **passed**. The unlock moment also shows a transient
-  **toast** naming the newly opened chords ("🔓 New chords unlocked: A, E"), for
-  the same window as the chip highlight.
-- **Goals & streaks**: daily goal = **active practice minutes** (default 10,
-  configurable). Streak = consecutive days (local timezone) meeting the goal. Shown
-  compactly in the top bar; detailed in History.
-- **Stats panel** (live, session): prompts, first-try accuracy, average time-to-correct,
-  worst chords. Definitions: *accuracy* = prompts answered correctly on the first
-  attempt ÷ prompts (skips and Learn-mode prompts excluded); *time-to-correct* = prompt
-  shown → correct match, retries included.
-- **History tab** (separate view, top bar): persisted trends across all sessions —
-  accuracy over time, time-to-correct trend, most-improved/worst chords, streak calendar,
-  goal history, and the lifetime **best combo streak** (the longest run of consecutive
-  first-try prompts ever reached, across all sessions). Reachable independently of the
-  practice screen. A **chord stats** drill-down (its own screen, linked from History)
+- **Feedback**: a pill under the prompt — correct flash + reaction time + optional
+  chime, auto-advance (default 800 ms). Misses are always **visual-only** (§9). Skip
+  button available (excluded from stats and weighting). A **combo streak**
+  (consecutive first-try correct prompts, reset by any miss; skips leave it
+  untouched) rides the same flash once it reaches 10 ("🔥 10 combo"). Session-only —
+  not shown elsewhere — but the longest streak ever reached is tracked lifetime
+  (§7.5 Progress). There is no separate live stats panel — session stats surface in
+  the Report.
+
+### 7.4 Report (end of session)
+
+Every session ends here, full-screen (replacing the Draft-v5 summary modal).
+Stat definitions carry over unchanged: *accuracy* = prompts answered correctly
+on the first attempt ÷ prompts (skips and Learn-mode prompts excluded);
+*time-to-correct* = prompt shown → correct match, retries included; Song bars
+count as prompts, a hit being a first-try success (§6.5).
+
+- **Session grade** (A–F): the session's first-try accuracy and average
+  time-to-correct fed through the §5 chord-score formula — accuracy scaled by
+  the speed factor against the 2000 ms bar — mapped to the same letter
+  thresholds as the chord-stats grade, so session and per-chord grades mean the
+  same thing. Song sessions have no time samples → full speed credit, exactly
+  as §5 scores such combos. Learn sessions are stats-neutral (§5): no grade, no
+  accuracy/speed cards — just prompts played, active time, and the goal line.
+- **Stat cards**: session *First-try accuracy* and *Avg time-to-correct*, each
+  with a **delta vs the trailing baseline** — the mean over the last **30
+  practiced days** (days with ≥ 1 counted prompt, from the daily records,
+  excluding today); no baseline data → no delta shown. Plus lifetime **Total
+  prompts** and **Total time**, each with this session's increment. The
+  avg-time baseline reads the daily records' existing per-day time sums with
+  the same `timeToCorrectMs / prompts` convention the Progress trend chart
+  uses — including its accepted approximation that Song bars count as prompts
+  while contributing no time.
+- **Best chord average** (fastest per-chord average time this session, so one
+  lucky rep can't set it) and the session's **slowest/worst chords** carry over
+  from the old summary as secondary lines.
+- **Unlock banner**: when the session unlocked chords — names them and shows
+  pool progress toward the next batch (§5.1).
+- **Chords passed** this session (§5.1 passes) and **Still shaky** — chords
+  missed this session, with miss counts.
+- **Goal line**: today's state after the session ("🔥 Streak safe — 10/10 min
+  done today", or the minutes remaining).
+- **Go again** (a fresh session with the same sheet config) / **Home**.
+
+### 7.5 Progress & chord stats
+
+**Progress** (formerly *History*; reached from Home) — persisted trends across
+all sessions:
+
+- **Header stat cards**: current & best streak, total practice time, days
+  practiced, total prompts.
+- Accuracy over time and time-to-correct trend (30 days), the goal/streak
+  calendar (12 weeks), most-improved / needs-work chords, goal history, and the
+  lifetime **best combo streak** (the longest run of consecutive first-try
+  prompts ever reached, across all sessions).
+- A **chord stats** drill-down (its own screen, linked from Progress)
   lists every practiced combo — not just the top-3 worst/most-improved — with a letter
   **grade** (A–F, from the combo's chord score, §5), attempts, lifetime and recent
   accuracy, and lifetime and recent avg time-to-correct, sortable by any column. *Recent*
   windows differently per metric: accuracy uses the same window that drives weighting
   (§5, the most outcomes ever kept per combo); avg time uses its own wider window, since
   more time samples are kept per combo than outcomes.
+
+### 7.6 Goals, streaks & settings
+
+- **Goals & streaks**: daily goal = **active practice minutes** (default 10,
+  configurable). Streak = consecutive days (local timezone) meeting the goal.
+  Shown on Home (goal ring + streak chip) and after each session in the
+  Report's goal line; detailed in Progress.
 - **Voicing builder** (settings): dedicated form UI to compose a custom `VoicingRule`
   from bass/span/doubling primitives, save it to the shared library, and use it in any
   preset.
@@ -650,13 +757,16 @@ keys, and the stricter down-by-beat-1 judging variant.
   with rule-compatibility validation; import/export as JSON. Each preset row (built-in
   and custom) also offers **Reset progress**, restarting its §5.1 unlocks at the
   initial count.
-- **Settings**: preset editor, voicing builder, doubling toggle, strict-extra-notes
+- **Settings** (grouped into cards: Sound / Notation / Matching & timing /
+  Goal & unlocks / Voicing rules / Presets): preset editor, voicing builder,
+  doubling toggle, strict-extra-notes
   toggle, chord name size (small/medium/large/extra-large, default large), staff
   on/off, staff key signature on/off (chord root as key, §3.5), correct-chime on/off,
   piano sound on key press on/off (§9), judgment delay, auto-advance delay, daily
-  goal minutes, circle-of-fifths unlock order on/off (§5.1). (The timer and
-  worst-chords-only controls are Practice-mode settings living next to the mode
-  picker, not in the settings panel.)
+  goal minutes, circle-of-fifths unlock order on/off (§5.1). (Mode sub-settings —
+  worst-chords-only, not-passed-only, Song's tempo / chords-per-progression /
+  show-example — live in the session sheet, §7.2, not the settings panel; the
+  session length lives there too.)
 
 ---
 
@@ -668,8 +778,9 @@ src/
   theory/         # chord types, interval math, naming, spelling (§3.5), voicing rules,
                   #   matcher, realizeVoicing (pure, unit-tested)
   practice/       # session engine: attempt lifecycle (§6.2), prompt generation, weighted
-                  #   selection, session modes (Learn/Practice + timer/worst-chords,
-                  #   Song progression + bar clock §6.5), hint staging, unlock
+                  #   selection, session modes (Learn/Practice + length/worst-chords,
+                  #   Song progression + bar clock §6.5), hint staging, report
+                  #   derivations (grade + baselines §7.4), unlock
                   #   progress (§5.1, progress.ts)
   storage/        # localStorage persistence: presets, custom voicing rules, per-combo
                   #   stats history, daily practice totals + goal/streak state,
@@ -677,8 +788,9 @@ src/
                   #   (versioned schema, import/export)
   audio/          # Web Audio: correct-chime, key-press piano synth, metronome click
                   #   (shared context)
-  components/     # PromptCard, KeyboardView, DevicePicker, PresetEditor, VoicingBuilder,
-                  #   StatsBar, SessionSummary, HistoryView
+  components/     # HomeView, SessionSheet, PromptCard, KeyboardView, ReportView,
+                  #   ProgressView, ChordStatsView, DevicePicker, PresetEditor,
+                  #   VoicingBuilder
   store/          # app state (settings, session) — Zustand
 ```
 
@@ -688,7 +800,9 @@ is simulated for development without hardware.
 
 Per-combo stat record (keyed `(root, typeId, voicingId)`, §5): attempts, first-try
 successes, recent-miss window, time-to-correct samples. Daily record: date, active
-minutes, prompts, first-try successes. Preset progress record (keyed by preset id,
+minutes, prompts, first-try successes, and the day's summed time-to-correct ms —
+the Report's trailing-30-practiced-day baselines (§7.4) read these existing
+fields; no schema change is needed for v9. Preset progress record (keyed by preset id,
 schema v2, §5.1): unlocked count + passed chord indices (still `masteredIndices` in the
 JSON, §5.1). Best combo streak (schema v2, §7): a single lifetime integer, raised
 whenever a session's live streak beats it.

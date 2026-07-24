@@ -3,7 +3,7 @@
 A web app for practicing piano chords with a MIDI keyboard: the app shows a random chord
 from a chosen preset, you play it, and it validates the voicing and moves on.
 
-See **[DESIGN.md](DESIGN.md)** for the full product/technical design.
+See **[DESIGN.md](doc/DESIGN.md)** for the full product/technical design.
 
 > Created by an LLM (Claude Code).
 
