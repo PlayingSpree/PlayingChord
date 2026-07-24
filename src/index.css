@@ -1,16 +1,68 @@
 @import 'tailwindcss';
 
+/* ─── v9 visual language (DESIGN.md §7) ────────────────────────────────────
+   Dark navy surface, green primary, chunky 2px-bordered cards with a hard
+   offset shadow, self-hosted Bricolage Grotesque. Colors are named
+   semantically (surface/card/primary/info/danger), never by hex, so screens
+   reference intent. The reference mock is doc/Prototype.dc.html. */
+@theme {
+  --font-display: 'Bricolage Grotesque', system-ui, sans-serif;
+
+  /* Surfaces */
+  --color-surface: #131628;
+  --color-card: #1b1e33;
+  --color-card-border: #383d63;
+  --color-muted-border: #2e3252;
+  --color-track: #262a47;
+  --color-keybed: #0d0f1e; /* the on-screen keyboard's dark frame */
+
+  /* Text ramp: primary → soft → muted → faint */
+  --color-ink: #f4f2ff;
+  --color-ink-soft: #aeb3d9;
+  --color-ink-muted: #6f74a3;
+  --color-ink-faint: #3d4166;
+
+  /* Primary action (green) */
+  --color-primary: #58cc02;
+  --color-primary-shadow: #2e6b01;
+  --color-primary-ink: #173a00; /* text on a green fill */
+  --color-primary-light: #8ee653;
+  --color-primary-tint: #1f3a0c; /* green-tinted card background */
+
+  /* Info (blue) — unlocks, links, learning state */
+  --color-info: #38b6f0;
+  --color-info-light: #7fd0f7;
+  --color-info-tint: #0e2a3d;
+  --color-info-border: #1d5f85;
+
+  /* Danger (red) — misses, needs-work */
+  --color-danger: #ff8080;
+  --color-danger-tint: #3a1414;
+
+  /* Hard offset shadow (no blur) — cards 3px, buttons 2px, primary 4px green */
+  --shadow-hard: 0 3px 0 #0a0c1a;
+  --shadow-hard-sm: 0 2px 0 #0a0c1a;
+  --shadow-hard-lg: 0 6px 0 #0a0c1a;
+  --shadow-primary: 0 4px 0 var(--color-primary-shadow);
+}
+
 /* The app is dark-only; letting the browser know keeps native widgets
    (select dropdowns, number spinners, scrollbars) dark too. */
 :root {
   color-scheme: dark;
 }
 
+/* Bricolage Grotesque everywhere — the display face doubles as the UI face
+   in the v9 language (§7). */
+body {
+  font-family: var(--font-display);
+}
+
 /* One visible keyboard-focus style everywhere (a11y §6.4-adjacent: focus
    must never be color-contrast-invisible on the dark surface). Mouse/touch
    interaction stays ring-free via :focus-visible. */
 :focus-visible {
-  outline: 2px solid var(--color-sky-400);
+  outline: 2px solid var(--color-info);
   outline-offset: 2px;
 }
 
