@@ -13,7 +13,7 @@ import { useLibrary } from '../store/libraryStore'
 import { Card, RaisedButton } from './ui'
 import { cx } from './cx'
 
-// The §7 chord stats drill-down (reached from History): every combo ever
+// The §7.5 chord stats drill-down (reached from Progress): every combo ever
 // practiced, not just the top-3 worst/most-improved lists — sortable so any
 // axis (accuracy, speed, volume) can lead. Lifetime and recent figures sit
 // side by side per metric — "recent" windows differently per metric

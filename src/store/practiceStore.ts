@@ -175,9 +175,9 @@ export const ACTIVE_FLUSH_MS = 5_000
 // the selected preset, feeds held-set changes into the §6.2 machine, mirrors
 // machine state out for the UI, and records prompt outcomes into the
 // persisted stats (§7: skips excluded; miss = any miss before the eventual
-// correct). Phase 7 adds the §7 session layer: Learn/Practice modes, the
-// session timer with its end-of-session summary, worst-chords-only drilling,
-// and active-minutes → daily goal/streak tracking.
+// correct). It also owns the §7.2 session layer: Learn/Practice/Song modes,
+// the prompt-count length with its end-of-session Report (§7.4),
+// worst-chords-only drilling, and active-minutes → daily goal/streak tracking.
 export interface PracticeStoreState {
   presets: readonly Preset[]
   presetId: string
@@ -968,7 +968,7 @@ export function createPracticeStore({
           worstChords: worstChords(),
           progress: progressSnapshot(),
         })
-        // Paused (settings/History open) means no prompt to refresh; a live
+        // Paused (settings/Progress open) means no prompt to refresh; a live
         // prompt/song is redealt so it can't reference deleted content.
         if (get().mode === 'song') {
           songEngine.setPool(preset.pool) // no-ops while paused

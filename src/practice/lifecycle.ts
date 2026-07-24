@@ -103,8 +103,8 @@ export class AttemptLifecycle {
     }
   }
 
-  // Halt without advancing — the practice flow is leaving (History view
-  // opened, session timer expired). All timers die; held keys are still
+  // Halt without advancing — the practice flow is leaving (a non-Stage view
+  // opened, or the session ended). All timers die; held keys are still
   // tracked so the next promptShown() arms correctly.
   stop(): void {
     this.clearStall()
