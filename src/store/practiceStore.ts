@@ -241,9 +241,13 @@ export interface PracticeStoreState {
   // Report and freeze practice. A zero-prompt session ends with report = null
   // (the caller returns Home).
   endSession(): void
+  // Abandon an in-flight session with no Report (§7.2 Start / Go again), so
+  // the next start() begins fresh instead of resuming.
+  discardSession(): void
   dismissReport(): void
-  // Leaving the Stage (StrictMode churn): halt judging and drop the prompt so
-  // start() deals a fresh one on return.
+  // Leaving the Stage temporarily — the MIDI gate raised by an unplug (§6.1),
+  // or the session sheet opened over it (§7.2). Judging halts and the prompt
+  // drops, but the session stays live: start() resumes it on return.
   pause(): void
   // Re-derive goal/streak state (e.g. after the goal setting changes).
   refreshGoal(): void
@@ -292,6 +296,13 @@ export function createPracticeStore({
   let queue: Combo[] = []
   let currentCombo: Combo | null = null
   let sessionEvents: SessionEvent[] = []
+  // Is a session running (§7.2)? True from start() until the session ends —
+  // through a Report (endSession/the length) or a restart (discardSession) —
+  // and it stays true across a pause(), which is what lets the Stage resume
+  // instead of restarting. Nothing generates a prompt while this is false, so
+  // Home's mode chips and the session sheet's pickers are pure config: no
+  // judging, no stats, no Song clock outside the Stage (§7.1).
+  let sessionLive = false
   // Chords passed / newly unlocked this session (§5.1) and the session's own
   // accrued active ms — the Report's passed/unlock lists and time increment
   // (§7.4). Reset alongside sessionEvents at each session start.
@@ -752,14 +763,24 @@ export function createPracticeStore({
       })
     }
 
+    // Halt practice without deciding what comes next: the Song clock and the
+    // attempt machine stop, buffered active time lands, the prompt clears and
+    // the session is no longer live. Shared by the two ways a session ends —
+    // with a Report (concludeSession) or without one (discardSession).
+    const haltSession = () => {
+      if (get().mode === 'song') leaveSong()
+      machine.stop()
+      flushActivity()
+      sessionLive = false
+      set({ prompt: null })
+    }
+
     // End the current session (§7.2): freeze practice and show the Report — or
     // return with no report when zero prompts played. The caller/endSession has
     // already recorded any pending ✔.
     const concludeSession = () => {
-      if (get().mode === 'song') leaveSong()
-      machine.stop()
-      flushActivity()
-      set({ prompt: null, report: get().done > 0 ? buildReport() : null })
+      haltSession()
+      set({ report: get().done > 0 ? buildReport() : null })
     }
 
     const applySelection = (presetId: string, diatonicKey: PitchClass) => {
@@ -782,6 +803,9 @@ export function createPracticeStore({
         justUnlocked: false,
         justUnlockedLabels: [],
       })
+      // Outside a session this is pure config (Home's Change control, the
+      // sheet's preset picker) — the pool is picked up by the next start().
+      if (!sessionLive) return
       // A live song rebuilds from the new pool with a fresh count-in; a
       // paused one (no clock) picks the pool up on the next start().
       if (get().mode === 'song') {
@@ -819,11 +843,20 @@ export function createPracticeStore({
       justUnlockedLabels: [],
 
       start() {
-        // Entering the Stage begins a fresh session (§7.2). Idempotent under
-        // StrictMode's double-mount (a live prompt/song short-circuits) and
-        // never runs over an open Report.
-        if (get().report !== null || get().prompt !== null) return
-        resetSession()
+        // Entering the Stage (§7.2): begins a fresh session, or resumes the
+        // live one when the Stage was only left temporarily — the MIDI gate
+        // raised by an unplug (§6.1) or the session sheet opened over it. A
+        // resumed session keeps its count and tallies and is dealt a fresh
+        // prompt (Song counts a fresh progression in, as pause() documents).
+        // Idempotent under StrictMode's double-mount and never runs over an
+        // open Report.
+        if (get().report !== null) return
+        if (sessionLive) {
+          if (get().prompt !== null) return
+        } else {
+          resetSession()
+          sessionLive = true
+        }
         if (get().mode === 'song') {
           songEngine.start(activePreset.pool)
           return
@@ -875,6 +908,10 @@ export function createPracticeStore({
         // Learn reveal can't be answered for Practice credit.
         recordOutcome()
         queue = [] // the pool can change (worstOnly/notPassedOnly are per-mode)
+        if (!sessionLive) {
+          set({ mode })
+          return
+        }
         if (mode === 'song') {
           machine.stop() // clears phase/hint/reactionMs via onState
           set({ mode, upcoming: [] })
@@ -892,7 +929,7 @@ export function createPracticeStore({
         recordOutcome()
         queue = []
         set({ worstOnly: on })
-        nextPrompt()
+        if (sessionLive) nextPrompt()
       },
 
       setNotPassedOnly(on: boolean) {
@@ -901,7 +938,7 @@ export function createPracticeStore({
         recordOutcome()
         queue = []
         set({ notPassedOnly: on })
-        nextPrompt()
+        if (sessionLive) nextPrompt()
       },
 
       setSessionLength(length: number | null) {
@@ -914,6 +951,14 @@ export function createPracticeStore({
         if (get().report !== null) return
         recordOutcome()
         concludeSession()
+      },
+
+      discardSession() {
+        // Start / Go again (§7.2): whatever was in flight is abandoned with no
+        // Report, so the next start() begins fresh rather than resuming.
+        if (!sessionLive) return
+        recordOutcome() // a pending ✔ still counts against the lifetime stats
+        haltSession()
       },
 
       dismissReport() {
@@ -968,8 +1013,10 @@ export function createPracticeStore({
           worstChords: worstChords(),
           progress: progressSnapshot(),
         })
-        // Paused (settings/Progress open) means no prompt to refresh; a live
-        // prompt/song is redealt so it can't reference deleted content.
+        // Paused (settings/Progress open) or outside a session means no
+        // prompt to refresh; a live prompt/song is redealt so it can't
+        // reference deleted content.
+        if (!sessionLive) return
         if (get().mode === 'song') {
           songEngine.setPool(preset.pool) // no-ops while paused
         } else if (get().prompt !== null) {

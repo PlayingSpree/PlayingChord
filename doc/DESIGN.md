@@ -416,8 +416,11 @@ flashcard-style batches instead of the whole pool at once:
 - **No device connected:** a blocking "connect a MIDI keyboard" screen replaces the
   **Stage** (§7.3) — Home, Progress, and Settings stay browsable without a device;
   starting a session without one shows the gate instead, and hot-plug resumes
-  practice automatically. There is no mouse/QWERTY fallback input (non-goal). MIDI
-  is simulated in development/tests via the wrapper.
+  practice automatically. An unplug mid-session doesn't lose it: the session stays
+  live behind the gate and **resumes at its own count** when the device returns
+  (§7.2). The gate also offers a way back to Home, ending the session like the
+  Stage's End button, so it is never a dead end. There is no mouse/QWERTY fallback
+  input (non-goal). MIDI is simulated in development/tests via the wrapper.
 
 ### 6.2 Attempt lifecycle
 
@@ -586,7 +589,8 @@ The entry screen — the app boots here, not into practice. The no-device gate
   score §5 → A–F), not-yet-passed chords tagged *learning*, plus one
   `🔒 N locked` chip — this row is the per-chord breakdown that used to live
   behind the top-bar unlock chip; the **mode selector** (Learn / Practice /
-  Song); and the **Start** button, labeled per mode.
+  Song) — configuration only, like everything else outside a session (§7.2);
+  and the **Start** button, labeled per mode.
 - **Daily goal ring**: today's active minutes vs the goal (§7.6) and what's
   left to keep the streak.
 - **Last 2 weeks**: a 14-day mini calendar of daily goal results
@@ -596,8 +600,18 @@ The entry screen — the app boots here, not into practice. The no-device gate
 
 ### 7.2 Session sheet & length
 
+A session runs **only between Start and its end** (the length, the End button,
+or the gate's way back). Outside one — on Home, or in the sheet — the mode and
+preset controls are pure configuration: nothing is dealt, judged, recorded or
+counted, and Song's clock stays silent until the Stage opens.
+
 A modal sheet — opened from Home and from the Stage's session label — holding
-everything that defines a session:
+everything that defines a session. Opened over a running session it **pauses**
+it, and its picks are a draft: **Start** applies them to a new session, while
+closing (✕ / Escape / backdrop) resumes the paused session unchanged, at its own
+count. Song's tempo / chords-per-progression / show-example are the exception —
+persisted preferences that apply from the next beat or progression (§7.3), not
+session config, so they take effect as they're set.
 
 - **Preset**: the same picker as the Continue card.
 - **Mode**: Learn / Practice / Song, segmented. Each mode's sub-settings (§7.3)
@@ -605,13 +619,17 @@ everything that defines a session:
   Practice's *Worst chords only*, Song's *Tempo* / *Chords per progression* /
   *Show example*.
 - **Length**: **10 / 20 / 40 / ∞ prompts** (default 20; session-only, resets on
-  reload). Applies to Learn and Practice; hidden in Song, which runs until
-  ended. This replaces the Draft-v5 minute timer — the daily goal tracks active
-  minutes regardless (§7.6).
+  reload). Applies to Learn and Practice — both show the count on the Stage
+  (§7.3) — and is hidden in Song, which runs until ended. This replaces the
+  Draft-v5 minute timer — the daily goal tracks active minutes regardless
+  (§7.6).
 
 Reaching the length — or the Stage's **End** button, any mode, any time — ends
 the session and shows the Report (§7.4); ending with zero prompts played
-returns Home instead.
+returns Home instead. Leaving the Stage without ending it (the sheet, the
+no-device gate §6.1) only pauses: the session keeps its count, tallies and
+recorded prompts, and returning resumes it with a freshly dealt prompt (Song
+counts a new progression in).
 
 ### 7.3 Stage (the in-session screen)
 
@@ -628,9 +646,10 @@ returns Home instead.
 ```
 
 - **Top bar, per mode**: the session label (preset + mode) opening the sheet, an
-  **End** button, and in the center — Practice: a progress bar with
-  `done / length` (∞ shows the count alone); Learn: the *Not passed only* state
-  plus a compact `🔓 N/total` unlock count; Song: tempo and loop chips. The old
+  **End** button, and in the center — Learn and Practice: a progress bar with
+  `done / length` (∞ shows the count alone, with no bar), Learn adding the
+  *Not passed only* state and a compact `🔓 N/total` unlock count; Song: tempo
+  and loop chips (the length doesn't apply). The old
   always-visible unlock chip is gone — Home's In play row carries the per-chord
   breakdown — but the transient unlock **toast** ("🔓 New chords unlocked:
   A, E") still fires at the mid-session unlock moment.
@@ -652,7 +671,8 @@ returns Home instead.
     its key picker) works exactly as in the other modes; switching mid-song rebuilds
     the progression with a fresh count-in.
     Song-mode settings (in the session sheet):
-    - **Tempo**: BPM, default 60, range 40–140.
+    - **Tempo**: BPM, default 60, range 40–140 — ± in 5 bpm steps or typed in
+      directly (committed on blur).
     - **Chords per progression**: 2 / 3 / 4 (default 4).
     - **Show example**: default on — each bar's example voicing overlaid on the
       keyboard, Learn-style (§6.5).
@@ -709,11 +729,13 @@ count as prompts, a hit being a first-try success (§6.5).
   with a **delta vs the trailing baseline** — the mean over the last **30
   practiced days** (days with ≥ 1 counted prompt, from the daily records,
   excluding today); no baseline data → no delta shown. Plus lifetime **Total
-  prompts** and **Total time**, each with this session's increment. The
-  avg-time baseline reads the daily records' existing per-day time sums with
-  the same `timeToCorrectMs / prompts` convention the Progress trend chart
-  uses — including its accepted approximation that Song bars count as prompts
-  while contributing no time.
+  prompts** and **Total time**, each with this session's increment. Every judged
+  prompt ticks the day's count, Song bars included, so a session's increment and
+  the lifetime total it sits beside describe the same population. The avg-time
+  baseline divides the day's summed time by its **timed** prompts (§8) rather
+  than by all of them, so clock-paced bars — which contribute no time — can't
+  drag it toward zero; a day of nothing but Song bars counts toward the accuracy
+  baseline and sits out the time one.
 - **Best chord average** (fastest per-chord average time this session, so one
   lucky rep can't set it) and the session's **slowest/worst chords** carry over
   from the old summary as secondary lines.
@@ -735,7 +757,9 @@ all sessions:
 - Accuracy over time and time-to-correct trend (30 days), the goal/streak
   calendar (12 weeks), most-improved / needs-work chords, goal history, and the
   lifetime **best combo streak** (the longest run of consecutive first-try
-  prompts ever reached, across all sessions).
+  prompts ever reached, across all sessions). The accuracy trend divides by the
+  day's prompts, the time trend by its **timed** prompts (§8); a day with
+  prompts but no time samples (Song only) is a gap in the time chart, not a zero.
 - A **chord stats** drill-down (its own screen, linked from Progress)
   lists every practiced combo — not just the top-3 worst/most-improved — with a letter
   **grade** (A–F, from the combo's chord score, §5), attempts, lifetime and recent
@@ -800,9 +824,13 @@ is simulated for development without hardware.
 
 Per-combo stat record (keyed `(root, typeId, voicingId)`, §5): attempts, first-try
 successes, recent-miss window, time-to-correct samples. Daily record: date, active
-minutes, prompts, first-try successes, and the day's summed time-to-correct ms —
-the Report's trailing-30-practiced-day baselines (§7.4) read these existing
-fields; no schema change is needed for v9. Preset progress record (keyed by preset id,
+minutes, prompts (every judged prompt, Song bars included), first-try successes,
+**timed prompts** (those carrying a time sample, i.e. prompts minus the day's Song
+bars) and the day's summed time-to-correct ms — the Progress trends (§7.5) and the
+Report's trailing-30-practiced-day baselines (§7.4) read these. `timedPrompts` was
+added within schema v2: absent in earlier states, where every counted prompt was
+self-paced, so it defaults to that day's `prompts` and no migration is needed.
+Preset progress record (keyed by preset id,
 schema v2, §5.1): unlocked count + passed chord indices (still `masteredIndices` in the
 JSON, §5.1). Best combo streak (schema v2, §7): a single lifetime integer, raised
 whenever a session's live streak beats it.

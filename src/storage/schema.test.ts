@@ -105,6 +105,7 @@ describe('sanitizeDailyRecords', () => {
     activeMinutes: 12.5,
     prompts: 30,
     firstTrySuccesses: 24,
+    timedPrompts: 30,
     timeToCorrectMs: 45_000,
   }
 
@@ -131,6 +132,21 @@ describe('sanitizeDailyRecords', () => {
     expect(
       sanitizeDailyRecords({ a: { ...valid, timeToCorrectMs: -3 } }),
     ).toEqual({ '2026-07-16': { ...valid, timeToCorrectMs: 0 } })
+  })
+
+  it('defaults a missing timed-prompt count to the day’s prompts', () => {
+    // Every prompt counted before Song bars joined the daily tally was
+    // self-paced, so the whole day was timed.
+    const { timedPrompts: _dropped, ...beforeSongCounted } = valid
+    expect(sanitizeDailyRecords({ a: beforeSongCounted })).toEqual({
+      '2026-07-16': { ...valid, timedPrompts: 30 },
+    })
+  })
+
+  it('clamps a timed-prompt count above the day’s prompts', () => {
+    expect(sanitizeDailyRecords({ a: { ...valid, timedPrompts: 99 } })).toEqual(
+      { '2026-07-16': { ...valid, timedPrompts: 30 } },
+    )
   })
 })
 

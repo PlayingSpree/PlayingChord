@@ -1,5 +1,5 @@
-import { useEffect } from 'react'
-import { usePractice } from '../store/practiceStore'
+import { useEffect, useState } from 'react'
+import { practiceStore, usePractice } from '../store/practiceStore'
 import { settingsStore, useSettings } from '../store/settingsStore'
 import {
   MAX_SONG_TEMPO_BPM,
@@ -8,14 +8,22 @@ import {
   SONG_CHORD_COUNTS,
   type SessionMode,
 } from '../practice'
-import { ALL_PITCH_CLASSES, keyDisplayName } from '../theory'
+import { ALL_PITCH_CLASSES, keyDisplayName, type PitchClass } from '../theory'
 import { Chip, RaisedButton, SectionLabel, Toggle } from './ui'
 import { cx } from './cx'
 
 // The session sheet (DESIGN.md §7.2): a modal over Home or the Stage holding
 // everything that defines a session — preset, mode with its inline
-// sub-settings (§7.3), and length. Start (re)starts the session with the
-// chosen config. Length is hidden in Song, which runs until ended.
+// sub-settings (§7.3), and length. Length is hidden in Song, which runs until
+// ended.
+//
+// The picks are a *draft*: nothing reaches the practice store until Start,
+// which discards whatever session was running and begins a new one with the
+// chosen config. Closing without starting leaves the session it was opened
+// over exactly as it was (the caller paused it, and resumes it on close).
+// Song's tempo / chord count / show-example are the exception — they're
+// persisted preferences that apply from the next beat or progression (§7.3),
+// not session config, so they keep writing straight through to settings.
 const MODES: { id: SessionMode; label: string }[] = [
   { id: 'learn', label: '🎓 Learn' },
   { id: 'practice', label: '▶ Practice' },
@@ -30,6 +38,15 @@ const LENGTHS: { value: number | null; label: string }[] = [
   { value: null, label: '∞' },
 ]
 
+interface Draft {
+  presetId: string
+  diatonicKey: PitchClass
+  mode: SessionMode
+  sessionLength: number | null
+  worstOnly: boolean
+  notPassedOnly: boolean
+}
+
 export function SessionSheet({
   onStart,
   onClose,
@@ -37,10 +54,20 @@ export function SessionSheet({
   onStart: () => void
   onClose: () => void
 }) {
-  const mode = usePractice((s) => s.mode)
-  const setMode = usePractice((s) => s.setMode)
-  const sessionLength = usePractice((s) => s.sessionLength)
-  const setSessionLength = usePractice((s) => s.setSessionLength)
+  const presets = usePractice((s) => s.presets)
+  const [draft, setDraft] = useState<Draft>(() => {
+    const state = practiceStore.getState()
+    return {
+      presetId: state.presetId,
+      diatonicKey: state.diatonicKey,
+      mode: state.mode,
+      sessionLength: state.sessionLength,
+      worstOnly: state.worstOnly,
+      notPassedOnly: state.notPassedOnly,
+    }
+  })
+  const patch = (fields: Partial<Draft>) =>
+    setDraft((current) => ({ ...current, ...fields }))
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -49,6 +76,23 @@ export function SessionSheet({
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [onClose])
+
+  // Commit the draft, then hand off to the caller's start (which remounts the
+  // Stage). The in-flight session is discarded first so the setters below are
+  // pure config — they can't deal a prompt into a session that's ending.
+  const start = () => {
+    const store = practiceStore.getState()
+    store.discardSession()
+    store.setPreset(draft.presetId)
+    store.setDiatonicKey(draft.diatonicKey)
+    store.setMode(draft.mode)
+    store.setSessionLength(draft.sessionLength)
+    store.setWorstOnly(draft.worstOnly)
+    store.setNotPassedOnly(draft.notPassedOnly)
+    onStart()
+  }
+
+  const activePreset = presets.find((p) => p.id === draft.presetId)
 
   return (
     <div
@@ -78,7 +122,37 @@ export function SessionSheet({
           </RaisedButton>
         </div>
 
-        <PresetField />
+        <div className="flex flex-col gap-1.5">
+          <SectionLabel>Preset</SectionLabel>
+          <div className="flex gap-2">
+            <select
+              value={draft.presetId}
+              onChange={(e) => patch({ presetId: e.target.value })}
+              aria-label="Preset"
+              className={SELECT_CLASS}
+            >
+              {presets.map((preset) => (
+                <option key={preset.id} value={preset.id}>
+                  {preset.name}
+                </option>
+              ))}
+            </select>
+            {activePreset?.pool.kind === 'diatonic' && (
+              <select
+                value={draft.diatonicKey}
+                onChange={(e) => patch({ diatonicKey: Number(e.target.value) })}
+                aria-label="Key"
+                className={SELECT_CLASS}
+              >
+                {ALL_PITCH_CLASSES.map((pc) => (
+                  <option key={pc} value={pc}>
+                    {keyDisplayName(pc)}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+        </div>
 
         <div className="flex flex-col gap-1.5">
           <SectionLabel>Mode</SectionLabel>
@@ -87,10 +161,10 @@ export function SessionSheet({
               <button
                 key={m.id}
                 type="button"
-                onClick={() => setMode(m.id)}
+                onClick={() => patch({ mode: m.id })}
                 className={cx(
                   'flex-1 py-2.5 text-[15px] transition-colors',
-                  mode === m.id
+                  draft.mode === m.id
                     ? 'bg-primary font-extrabold text-primary-ink'
                     : 'font-semibold text-ink-muted hover:text-ink-soft',
                 )}
@@ -99,18 +173,30 @@ export function SessionSheet({
               </button>
             ))}
           </div>
-          <ModeSettings mode={mode} />
+          {draft.mode === 'learn' && (
+            <NotPassedOnlyRow
+              value={draft.notPassedOnly}
+              onChange={(notPassedOnly) => patch({ notPassedOnly })}
+            />
+          )}
+          {draft.mode === 'practice' && (
+            <WorstOnlyRow
+              value={draft.worstOnly}
+              onChange={(worstOnly) => patch({ worstOnly })}
+            />
+          )}
+          {draft.mode === 'song' && <SongSettings />}
         </div>
 
-        {mode !== 'song' && (
+        {draft.mode !== 'song' && (
           <div className="flex flex-col gap-1.5">
             <SectionLabel>Length</SectionLabel>
             <div className="flex gap-2">
               {LENGTHS.map((len) => (
                 <Chip
                   key={len.label}
-                  selected={sessionLength === len.value}
-                  onClick={() => setSessionLength(len.value)}
+                  selected={draft.sessionLength === len.value}
+                  onClick={() => patch({ sessionLength: len.value })}
                   className="px-3.5 py-1.5 text-sm"
                 >
                   {len.label}
@@ -125,7 +211,7 @@ export function SessionSheet({
           variant="primary"
           size="lg"
           className="w-full"
-          onClick={onStart}
+          onClick={start}
         >
           Start ▶
         </RaisedButton>
@@ -134,67 +220,20 @@ export function SessionSheet({
   )
 }
 
-// The preset chooser: the same selection the Continue card and every mode
-// share (§7.2). A themed native select; the diatonic preset adds its key.
-function PresetField() {
-  const presets = usePractice((s) => s.presets)
-  const presetId = usePractice((s) => s.presetId)
-  const setPreset = usePractice((s) => s.setPreset)
-  const diatonicKey = usePractice((s) => s.diatonicKey)
-  const setDiatonicKey = usePractice((s) => s.setDiatonicKey)
-  const active = presets.find((p) => p.id === presetId)
-
-  return (
-    <div className="flex flex-col gap-1.5">
-      <SectionLabel>Preset</SectionLabel>
-      <div className="flex gap-2">
-        <select
-          value={presetId}
-          onChange={(e) => setPreset(e.target.value)}
-          aria-label="Preset"
-          className={SELECT_CLASS}
-        >
-          {presets.map((preset) => (
-            <option key={preset.id} value={preset.id}>
-              {preset.name}
-            </option>
-          ))}
-        </select>
-        {active?.pool.kind === 'diatonic' && (
-          <select
-            value={diatonicKey}
-            onChange={(e) => setDiatonicKey(Number(e.target.value))}
-            aria-label="Key"
-            className={SELECT_CLASS}
-          >
-            {ALL_PITCH_CLASSES.map((pc) => (
-              <option key={pc} value={pc}>
-                {keyDisplayName(pc)}
-              </option>
-            ))}
-          </select>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function ModeSettings({ mode }: { mode: SessionMode }) {
-  if (mode === 'learn') return <NotPassedOnlyRow />
-  if (mode === 'practice') return <WorstOnlyRow />
-  return <SongSettings />
-}
-
-function NotPassedOnlyRow() {
-  const notPassedOnly = usePractice((s) => s.notPassedOnly)
-  const setNotPassedOnly = usePractice((s) => s.setNotPassedOnly)
+function NotPassedOnlyRow({
+  value,
+  onChange,
+}: {
+  value: boolean
+  onChange: (next: boolean) => void
+}) {
   const progress = usePractice((s) => s.progress)
-  const disabled = progress.unlocked === progress.passed && !notPassedOnly
+  const disabled = progress.unlocked === progress.passed && !value
   return (
     <SettingRow label="Not passed only" disabled={disabled}>
       <Toggle
-        checked={notPassedOnly}
-        onChange={setNotPassedOnly}
+        checked={value}
+        onChange={onChange}
         disabled={disabled}
         aria-label="Not passed only"
       />
@@ -202,16 +241,20 @@ function NotPassedOnlyRow() {
   )
 }
 
-function WorstOnlyRow() {
-  const worstOnly = usePractice((s) => s.worstOnly)
-  const setWorstOnly = usePractice((s) => s.setWorstOnly)
+function WorstOnlyRow({
+  value,
+  onChange,
+}: {
+  value: boolean
+  onChange: (next: boolean) => void
+}) {
   const worstChords = usePractice((s) => s.worstChords)
-  const disabled = worstChords.length === 0 && !worstOnly
+  const disabled = worstChords.length === 0 && !value
   return (
     <SettingRow label="Worst chords only" disabled={disabled}>
       <Toggle
-        checked={worstOnly}
-        onChange={setWorstOnly}
+        checked={value}
+        onChange={onChange}
         disabled={disabled}
         aria-label="Worst chords only"
       />
@@ -227,23 +270,11 @@ function SongSettings() {
 
   return (
     <div className="mt-1 flex flex-col gap-2.5">
-      <SettingRow label={`Tempo · ${tempo} bpm`}>
-        <div className="flex items-center gap-2">
-          <StepBtn
-            label="Decrease tempo"
-            disabled={tempo <= MIN_SONG_TEMPO_BPM}
-            onClick={() => update({ songTempoBpm: tempo - 5 })}
-          >
-            −
-          </StepBtn>
-          <StepBtn
-            label="Increase tempo"
-            disabled={tempo >= MAX_SONG_TEMPO_BPM}
-            onClick={() => update({ songTempoBpm: tempo + 5 })}
-          >
-            +
-          </StepBtn>
-        </div>
+      <SettingRow label="Tempo">
+        <TempoField
+          tempo={tempo}
+          onChange={(bpm) => update({ songTempoBpm: bpm })}
+        />
       </SettingRow>
       <SettingRow label="Chords per progression">
         <div className="flex gap-1.5">
@@ -266,6 +297,55 @@ function SongSettings() {
           aria-label="Show example"
         />
       </SettingRow>
+    </div>
+  )
+}
+
+// ± in 5 bpm steps, or type a value directly — 40 → 140 is a long way in
+// clicks. Committing on blur, not per keystroke: the sanitizer clamps to
+// [40, 140], which would rewrite "1" to 40 midway through typing "100".
+function TempoField({
+  tempo,
+  onChange,
+}: {
+  tempo: number
+  onChange: (bpm: number) => void
+}) {
+  const [draft, setDraft] = useState<string | null>(null)
+  const commit = () => {
+    if (draft !== null && draft !== '') onChange(Number(draft))
+    setDraft(null)
+  }
+  return (
+    <div className="flex items-center gap-2">
+      <StepBtn
+        label="Decrease tempo"
+        disabled={tempo <= MIN_SONG_TEMPO_BPM}
+        onClick={() => onChange(tempo - 5)}
+      >
+        −
+      </StepBtn>
+      <input
+        type="number"
+        min={MIN_SONG_TEMPO_BPM}
+        max={MAX_SONG_TEMPO_BPM}
+        value={draft ?? tempo}
+        aria-label="Tempo in beats per minute"
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur()
+        }}
+        className="w-16 rounded-[10px] border-2 border-muted-border bg-surface px-2 py-1 text-right text-[15px] font-semibold tabular-nums text-ink"
+      />
+      <span className="text-[13px] text-ink-muted">bpm</span>
+      <StepBtn
+        label="Increase tempo"
+        disabled={tempo >= MAX_SONG_TEMPO_BPM}
+        onClick={() => onChange(tempo + 5)}
+      >
+        +
+      </StepBtn>
     </div>
   )
 }

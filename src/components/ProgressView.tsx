@@ -71,6 +71,10 @@ export function ProgressView({
     for (const key of trendKeys) {
       const record = dailyRecords[key]
       const hasPrompts = record !== undefined && record.prompts > 0
+      // Time-to-correct divides by the *timed* prompts: a day's Song bars are
+      // prompts, but clock-paced ones with no span to average (§6.5). A day of
+      // nothing but Song bars is therefore a gap in the time chart, not a zero.
+      const hasTimes = record !== undefined && record.timedPrompts > 0
       accuracyDays.push({
         key,
         value: hasPrompts
@@ -82,12 +86,12 @@ export function ProgressView({
       })
       timeDays.push({
         key,
-        value: hasPrompts
-          ? record.timeToCorrectMs / record.prompts / 1000
+        value: hasTimes
+          ? record.timeToCorrectMs / record.timedPrompts / 1000
           : null,
-        detail: hasPrompts
-          ? `${shortDate(key)} — ${(record.timeToCorrectMs / record.prompts / 1000).toFixed(1)}s avg to correct`
-          : `${shortDate(key)} — no prompts`,
+        detail: hasTimes
+          ? `${shortDate(key)} — ${(record.timeToCorrectMs / record.timedPrompts / 1000).toFixed(1)}s avg to correct`
+          : `${shortDate(key)} — no timed prompts`,
       })
     }
 

@@ -20,15 +20,20 @@ function emptyDailyRecord(date: string): DailyRecord {
     activeMinutes: 0,
     prompts: 0,
     firstTrySuccesses: 0,
+    timedPrompts: 0,
     timeToCorrectMs: 0,
   }
 }
 
+// One completed prompt into the day's tallies. Every prompt counts toward
+// `prompts` / `firstTrySuccesses`, Song bars included; a null time marks a
+// clock-paced bar (§6.5), which has no span to add and so leaves the timed
+// pair — the divisor for the day's average — alone.
 export function applyDailyPrompt(
   record: DailyRecord | undefined,
   date: string,
   outcome: PromptOutcome,
-  timeToCorrectMs: number,
+  timeToCorrectMs: number | null,
 ): DailyRecord {
   const base = record ?? emptyDailyRecord(date)
   return {
@@ -36,7 +41,10 @@ export function applyDailyPrompt(
     prompts: base.prompts + 1,
     firstTrySuccesses:
       base.firstTrySuccesses + (outcome === 'first-try' ? 1 : 0),
-    timeToCorrectMs: base.timeToCorrectMs + Math.max(0, timeToCorrectMs),
+    timedPrompts: base.timedPrompts + (timeToCorrectMs === null ? 0 : 1),
+    timeToCorrectMs:
+      base.timeToCorrectMs +
+      (timeToCorrectMs === null ? 0 : Math.max(0, timeToCorrectMs)),
   }
 }
 
@@ -76,22 +84,20 @@ export class PersistedComboStats implements ComboStatsSource {
           timeToCorrectMs,
         ),
       },
-      // A null time is a Song-mode bar (§6.5): it feeds the per-combo record
-      // only. Daily prompt tallies drive History's accuracy/avg-time trends,
-      // whose populations are self-paced prompts — a 0-time bar would drag
-      // the avg-time trend toward zero.
-      dailyRecords:
-        timeToCorrectMs === null
-          ? state.dailyRecords
-          : {
-              ...state.dailyRecords,
-              [date]: applyDailyPrompt(
-                state.dailyRecords[date],
-                date,
-                outcome,
-                timeToCorrectMs,
-              ),
-            },
+      // Every judged prompt ticks the day, Song bars (a null time) included —
+      // they're prompts the user played, so they belong in the accuracy trend
+      // and the Report's lifetime total. What a bar doesn't get is a time
+      // sample: applyDailyPrompt keeps it out of `timedPrompts`, so the
+      // avg-time trend is never dragged toward zero by clock-paced bars.
+      dailyRecords: {
+        ...state.dailyRecords,
+        [date]: applyDailyPrompt(
+          state.dailyRecords[date],
+          date,
+          outcome,
+          timeToCorrectMs,
+        ),
+      },
     }))
   }
 }

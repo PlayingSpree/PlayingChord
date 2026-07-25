@@ -250,7 +250,11 @@ function GoalSection() {
           value={`${settings.dailyGoalMinutes} min`}
           decDisabled={settings.dailyGoalMinutes <= 1}
           incDisabled={settings.dailyGoalMinutes >= MAX_DAILY_GOAL_MINUTES}
-          onDecrement={() => setGoal(settings.dailyGoalMinutes - 5)}
+          // Clamped, not sanitized after the fact: a 5-minute goal stepping
+          // down lands on the 1-minute floor instead of asking for 0.
+          onDecrement={() =>
+            setGoal(Math.max(1, settings.dailyGoalMinutes - 5))
+          }
           onIncrement={() => setGoal(settings.dailyGoalMinutes + 5)}
         />
       </Row>

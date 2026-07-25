@@ -59,7 +59,7 @@ export function ReportView({
             />
             <StatCard
               label="Active time"
-              value={`+${formatMinutes(report.increment.activeMinutes)}`}
+              value={formatMinutesAdded(report.increment.activeMinutes)}
             />
           </div>
         ) : (
@@ -86,7 +86,7 @@ export function ReportView({
             <StatCard
               label="Total time"
               value={formatHours(report.lifetime.activeMinutes)}
-              increment={`+${formatMinutes(report.increment.activeMinutes)}`}
+              increment={formatMinutesAdded(report.increment.activeMinutes)}
             />
           </div>
         )}
@@ -251,8 +251,10 @@ function goalLine(report: SessionReport, goalMinutes: number): string {
 const formatPct = (v: number) => `${Math.round(v * 100)}%`
 const formatSecs = (ms: number) => `${(ms / 1000).toFixed(1)}s`
 
-function formatMinutes(minutes: number): string {
-  return `${Math.max(1, Math.round(minutes))} min`
+// This session's contribution. A sub-minute session reads "<1 min" rather
+// than rounding up to a minute the goal ring never got.
+function formatMinutesAdded(minutes: number): string {
+  return minutes < 1 ? '<1 min' : `+${Math.round(minutes)} min`
 }
 
 function formatHours(minutes: number): string {

@@ -36,6 +36,7 @@ describe('applyDailyPrompt (§8 daily record)', () => {
       activeMinutes: 0,
       prompts: 1,
       firstTrySuccesses: 1,
+      timedPrompts: 1,
       timeToCorrectMs: 1500,
     })
   })
@@ -49,7 +50,22 @@ describe('applyDailyPrompt (§8 daily record)', () => {
     )
     expect(day.prompts).toBe(2)
     expect(day.firstTrySuccesses).toBe(1)
+    expect(day.timedPrompts).toBe(2)
     expect(day.timeToCorrectMs).toBe(5000)
+  })
+
+  it('counts a null-time Song bar as a prompt but not a timed one', () => {
+    const day = applyDailyPrompt(
+      applyDailyPrompt(undefined, '2026-07-16', 'first-try', 2000),
+      '2026-07-16',
+      'first-try',
+      null,
+    )
+    expect(day.prompts).toBe(2)
+    expect(day.firstTrySuccesses).toBe(2)
+    // The bar leaves the average alone: 2000 ms over one timed prompt.
+    expect(day.timedPrompts).toBe(1)
+    expect(day.timeToCorrectMs).toBe(2000)
   })
 })
 
@@ -77,6 +93,7 @@ describe('PersistedComboStats', () => {
       activeMinutes: 0,
       prompts: 2,
       firstTrySuccesses: 1,
+      timedPrompts: 2,
       timeToCorrectMs: 5500,
     })
   })
@@ -94,7 +111,7 @@ describe('PersistedComboStats', () => {
     expect(storage.state.dailyRecords['2026-07-17']?.prompts).toBe(1)
   })
 
-  it('a null-time record (§6.5 Song bar) skips the daily tick', () => {
+  it('a null-time record (§6.5 Song bar) ticks the day but not its timed pair', () => {
     const storage = new AppStorage(fakeKV())
     const stats = new PersistedComboStats(storage, () => '2026-07-18')
 
@@ -107,11 +124,21 @@ describe('PersistedComboStats', () => {
       recentOutcomes: ['missed', 'first-try'],
       timeToCorrectMs: [],
     })
-    expect(storage.state.dailyRecords['2026-07-18']).toBeUndefined()
+    // Bars are prompts the user played — they belong in the accuracy trend
+    // and the lifetime total — but they carry no time sample.
+    expect(storage.state.dailyRecords['2026-07-18']).toEqual({
+      date: '2026-07-18',
+      activeMinutes: 0,
+      prompts: 2,
+      firstTrySuccesses: 1,
+      timedPrompts: 0,
+      timeToCorrectMs: 0,
+    })
 
-    // A numeric record still ticks both.
+    // A numeric record ticks both.
     stats.record(KEY, 'first-try', 900)
-    expect(storage.state.dailyRecords['2026-07-18']?.prompts).toBe(1)
+    expect(storage.state.dailyRecords['2026-07-18']?.prompts).toBe(3)
+    expect(storage.state.dailyRecords['2026-07-18']?.timedPrompts).toBe(1)
   })
 
   // Milestone B at the unit level: misses recorded through one storage
@@ -159,6 +186,7 @@ describe('PersistedDailyActivity (§7 active minutes)', () => {
       activeMinutes: 1,
       prompts: 0,
       firstTrySuccesses: 0,
+      timedPrompts: 0,
       timeToCorrectMs: 0,
     })
   })

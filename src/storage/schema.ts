@@ -50,8 +50,17 @@ export interface PersistedPresetSelection {
 export interface DailyRecord {
   date: string // local 'YYYY-MM-DD', also the dailyRecords key
   activeMinutes: number
+  // Every judged prompt of the day, self-paced and Song bars alike — the
+  // accuracy trend's denominator (§7.5) and the Report's lifetime total.
   prompts: number
   firstTrySuccesses: number
+  // Prompts that carry a time sample, i.e. `prompts` minus the day's Song
+  // bars (§6.5 is clock-paced, so a bar has no prompt-shown → correct span).
+  // The divisor for timeToCorrectMs everywhere: dividing by `prompts` would
+  // drag a Song-heavy day's average toward zero. Added within v2 — absent in
+  // earlier states, where every counted prompt was self-paced, so it defaults
+  // to `prompts` rather than invalidating the record.
+  timedPrompts: number
   // Summed per-prompt time-to-correct for the day — the §7 History trend
   // needs a per-day average, which the per-combo sample windows can't give.
   // Added within v1: absent in early-v1 states, so it defaults rather than
@@ -214,12 +223,19 @@ export function sanitizeDailyRecords(
       record.timeToCorrectMs >= 0
         ? record.timeToCorrectMs
         : 0
+    // Absent before Song bars started counting as prompts (see DailyRecord):
+    // every prompt those states counted was timed, so `prompts` is the honest
+    // default. A stored value can never exceed the day's prompts.
+    const storedTimed = asCount(record.timedPrompts)
+    const timedPrompts =
+      storedTimed === null ? prompts : Math.min(storedTimed, prompts)
     // The record's own date is canonical — a mismatched map key self-heals.
     records[date] = {
       date,
       activeMinutes,
       prompts,
       firstTrySuccesses,
+      timedPrompts,
       timeToCorrectMs,
     }
   }

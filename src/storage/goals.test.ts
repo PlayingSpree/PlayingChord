@@ -14,6 +14,7 @@ const day = (date: string, activeMinutes: number): DailyRecord => ({
   activeMinutes,
   prompts: 0,
   firstTrySuccesses: 0,
+  timedPrompts: 0,
   timeToCorrectMs: 0,
 })
 
@@ -27,6 +28,7 @@ const promptDay = (
   activeMinutes: prompts,
   prompts,
   firstTrySuccesses,
+  timedPrompts: prompts,
   timeToCorrectMs: 0,
 })
 

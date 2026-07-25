@@ -68,10 +68,14 @@ export default function App() {
   }, [])
 
   // A session that reaches its length ends itself (§7.2) — route to the
-  // Report when it does, wherever the transition happens.
+  // Report when it does, wherever the transition happens. The sheet closes
+  // with it so it can never be left stacked over the Report.
   useEffect(() => {
     return practiceStore.subscribe((state, prev) => {
-      if (state.report !== null && prev.report === null) setView('report')
+      if (state.report !== null && prev.report === null) {
+        setSheetOpen(false)
+        setView('report')
+      }
     })
   }, [])
 
@@ -130,20 +134,36 @@ export default function App() {
     }
   }, [])
 
-  // Start / restart a session with the current config: clear any report and
-  // remount the Stage so start() deals a fresh session (§7.2).
+  // Start / restart a session with the current config: clear any report,
+  // abandon anything still in flight so the Stage can't resume it instead,
+  // and remount the Stage so start() deals a fresh session (§7.2).
   const startSession = () => {
     setSheetOpen(false)
     practiceStore.getState().dismissReport()
+    practiceStore.getState().discardSession()
     setSessionNonce((n) => n + 1)
     setView('stage')
   }
 
-  // The Stage's End button (§7.2): a zero-prompt session returns Home, else
-  // the Report (which the store just built).
+  // The Stage's End button (§7.2, and the MIDI gate's way back, §6.1): a
+  // zero-prompt session returns Home, else the Report (which the store just
+  // built).
   const endSession = () => {
     practiceStore.getState().endSession()
     setView(practiceStore.getState().report !== null ? 'report' : 'home')
+  }
+
+  // The session sheet pauses the session it's opened over (§7.2): judging
+  // stops behind the modal, and closing it without starting resumes the same
+  // session — count and tallies intact, a fresh prompt dealt.
+  const openSheet = () => {
+    if (view === 'stage') practiceStore.getState().pause()
+    setSheetOpen(true)
+  }
+
+  const closeSheet = () => {
+    setSheetOpen(false)
+    if (view === 'stage') practiceStore.getState().start()
   }
 
   const goHomeFromReport = () => {
@@ -154,13 +174,15 @@ export default function App() {
   const view$ = (() => {
     switch (view) {
       case 'stage':
-        // The no-device gate (§6.1) wraps the Stage only.
+        // The no-device gate (§6.1) wraps the Stage only; its way out ends the
+        // session like the End button, so an unplug is never a dead end. A
+        // device coming back remounts the Stage, which resumes the session.
         return (
-          <MidiGate>
+          <MidiGate onBack={endSession}>
             <StageView
               key={sessionNonce}
               onEnd={endSession}
-              onOpenSheet={() => setSheetOpen(true)}
+              onOpenSheet={openSheet}
             />
           </MidiGate>
         )
@@ -181,7 +203,7 @@ export default function App() {
         return (
           <HomeView
             onStart={startSession}
-            onOpenSheet={() => setSheetOpen(true)}
+            onOpenSheet={openSheet}
             onSettings={() => setView('settings')}
             onProgress={() => setView('progress')}
           />
@@ -193,10 +215,7 @@ export default function App() {
     <>
       {view$}
       {sheetOpen && (
-        <SessionSheet
-          onStart={startSession}
-          onClose={() => setSheetOpen(false)}
-        />
+        <SessionSheet onStart={startSession} onClose={closeSheet} />
       )}
       <UnlockToast />
     </>
@@ -231,9 +250,12 @@ function StageView({
   const presetName = presets.find((p) => p.id === presetId)?.name ?? 'Practice'
   const modeLabel =
     mode === 'song' ? '♪ Song' : mode === 'learn' ? '🎓 Learn' : '▶ Practice'
-  const lengthLabel = sessionLength === null ? '∞' : String(sessionLength)
+  // The length applies to Learn as well as Practice (§7.2), so both get the
+  // done/length readout; ∞ shows the count alone, with no bar to fill (§7.3).
+  const counted = mode !== 'song'
+  const bounded = sessionLength !== null && sessionLength > 0
   const pct =
-    sessionLength && sessionLength > 0
+    sessionLength !== null && sessionLength > 0
       ? Math.min(100, (100 * done) / sessionLength)
       : 0
 
@@ -244,18 +266,19 @@ function StageView({
           {presetName} · {modeLabel} ▾
         </RaisedButton>
 
-        {mode === 'practice' && (
-          <>
-            <div className="h-3 flex-1 overflow-hidden rounded-full bg-track">
-              <div
-                className="h-full rounded-full bg-primary"
-                style={{ width: `${pct}%` }}
-              />
-            </div>
-            <span className="text-sm font-semibold tabular-nums text-ink-muted">
-              {done} / {lengthLabel}
-            </span>
-          </>
+        {counted && bounded && (
+          <div className="h-3 flex-1 overflow-hidden rounded-full bg-track">
+            <div
+              className="h-full rounded-full bg-primary"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        )}
+        {counted && !bounded && <span className="flex-1" />}
+        {counted && (
+          <span className="text-sm font-semibold tabular-nums text-ink-muted">
+            {bounded ? `${done} / ${sessionLength}` : done}
+          </span>
         )}
         {mode === 'learn' && (
           <>
@@ -264,7 +287,6 @@ function StageView({
                 not passed only ✓
               </Chip>
             )}
-            <span className="flex-1" />
             <span className="flex items-center gap-1.5 text-sm font-semibold text-ink-muted">
               🔓{' '}
               <b className="text-info-light">

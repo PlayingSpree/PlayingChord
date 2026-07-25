@@ -59,7 +59,13 @@ function fullyUnlocked(
   return progress
 }
 
-function setup(deps: Parameters<typeof createPracticeStore>[0] = {}) {
+// `autoStart` mirrors the Stage mounting (§7.2). Pass false for the Home
+// state the app actually boots into — a store with no session running, where
+// the mode/preset pickers are pure config.
+function setup(
+  deps: Parameters<typeof createPracticeStore>[0] = {},
+  autoStart = true,
+) {
   const store = createPracticeStore({
     settings: () => DEFAULT_PRACTICE_SETTINGS, // independent of localStorage
     memory: memoryStub(),
@@ -82,10 +88,12 @@ function setup(deps: Parameters<typeof createPracticeStore>[0] = {}) {
     held = new Set()
     store.getState().onHeldChange(held)
   }
-  store.getState().start()
-  // Default to ∞ so length-agnostic tests can drill as many prompts as they
-  // like; the session-length suite sets its own length explicitly.
-  store.getState().setSessionLength(null)
+  if (autoStart) {
+    store.getState().start()
+    // Default to ∞ so length-agnostic tests can drill as many prompts as they
+    // like; the session-length suite sets its own length explicitly.
+    store.getState().setSessionLength(null)
+  }
   return { store, press, release, releaseAll }
 }
 
@@ -1122,6 +1130,147 @@ describe('practiceStore — session length & report (§7.2/§7.4)', () => {
     expect(report!.grade).toBeNull()
     expect(report!.promptsPlayed).toBe(2)
     expect(report!.recordedPrompts).toBe(0) // Learn is stats-neutral (§5)
+  })
+})
+
+// A session exists only between the Stage's start() and the end of the
+// session (§7.2). Home's mode chips and the session sheet's pickers run
+// against a store with no session live, so none of them may deal a prompt,
+// judge input or record anything.
+describe('practiceStore — session lifecycle (§7.2)', () => {
+  const onePreset = presetsOf({
+    kind: 'explicit',
+    chords: [{ root: 0, typeId: 'maj' }],
+  })
+
+  it('config changes deal no prompt before a session starts', () => {
+    const s = setup({ presets: onePreset }, false)
+    expect(s.store.getState().prompt).toBeNull()
+
+    s.store.getState().setMode('learn')
+    s.store.getState().setNotPassedOnly(true)
+    s.store.getState().setSessionLength(10)
+
+    expect(s.store.getState().prompt).toBeNull()
+    expect(s.store.getState().phase).toBe('idle')
+    expect(s.store.getState().mode).toBe('learn')
+  })
+
+  it('the Song chip starts no clock outside a session', () => {
+    const s = setup({ presets: onePreset }, false)
+    s.store.getState().setMode('song')
+    expect(s.store.getState().song).toBeNull()
+    expect(s.store.getState().prompt).toBeNull()
+  })
+
+  it('keys played before a session are never judged or recorded', () => {
+    const stats = new InMemoryComboStats()
+    const s = setup({ presets: onePreset, stats }, false)
+    s.store.getState().setMode('learn') // the Home mode chip
+
+    s.press(60, 64, 67) // a correct C major, on Home
+
+    expect(s.store.getState().phase).toBe('idle')
+    expect(stats.get('0:maj:any')).toBeNull()
+    expect(s.store.getState().done).toBe(0)
+    expect(s.store.getState().report).toBeNull()
+    s.releaseAll()
+  })
+
+  it('the mode chosen before Start is the mode the session runs in', () => {
+    const s = setup({ presets: onePreset }, false)
+    s.store.getState().setMode('learn')
+    s.store.getState().start()
+    expect(s.store.getState().mode).toBe('learn')
+    expect(s.store.getState().prompt).not.toBeNull()
+    expect(s.store.getState().phase).toBe('armed')
+  })
+
+  it('a config change between sessions never leaks into the next one', () => {
+    const s = setup({ presets: onePreset }, false)
+    s.store.getState().setSessionLength(2)
+    s.store.getState().start()
+    for (let i = 0; i < 2; i++) {
+      playCorrectAndAdvance(s, s.store.getState().prompt!)
+    }
+    expect(s.store.getState().report!.recordedPrompts).toBe(2)
+    s.store.getState().dismissReport()
+
+    s.store.getState().setMode('practice') // already practice — a no-op
+    s.store.getState().setPreset('test') // the sheet's picker, unchanged
+    expect(s.store.getState().prompt).toBeNull()
+
+    s.store.getState().start()
+    expect(s.store.getState().done).toBe(0)
+    expect(s.store.getState().session).toEqual({
+      prompts: 0,
+      firstTrySuccesses: 0,
+      totalTimeToCorrectMs: 0,
+    })
+
+    playCorrectAndAdvance(s, s.store.getState().prompt!)
+    expect(s.store.getState().report).toBeNull() // 1 of 2, not 3 of 2
+    expect(s.store.getState().done).toBe(1)
+  })
+
+  it('start resumes a paused session instead of restarting it', () => {
+    // The §6.1 gate raised by an unplug, or the session sheet opened over the
+    // Stage: the Stage unmounts and remounts around the same session.
+    const s = setup({ presets: onePreset }, false)
+    s.store.getState().setSessionLength(null)
+    s.store.getState().start()
+    playCorrectAndAdvance(s, s.store.getState().prompt!)
+
+    s.store.getState().pause()
+    expect(s.store.getState().prompt).toBeNull()
+
+    s.store.getState().start()
+    expect(s.store.getState().done).toBe(1)
+    expect(s.store.getState().session.prompts).toBe(1)
+    expect(s.store.getState().prompt).not.toBeNull()
+  })
+
+  it('a resumed session reports everything it played, across the pause', () => {
+    const s = setup({ presets: onePreset }, false)
+    s.store.getState().setSessionLength(null)
+    s.store.getState().start()
+    playCorrectAndAdvance(s, s.store.getState().prompt!)
+    s.store.getState().pause()
+    s.store.getState().start()
+    playCorrectAndAdvance(s, s.store.getState().prompt!)
+
+    s.store.getState().endSession()
+    expect(s.store.getState().report!.recordedPrompts).toBe(2)
+  })
+
+  it('discardSession makes the next start a fresh session', () => {
+    const s = setup({ presets: onePreset }, false)
+    s.store.getState().setSessionLength(null)
+    s.store.getState().start()
+    playCorrectAndAdvance(s, s.store.getState().prompt!)
+
+    s.store.getState().discardSession() // Start / Go again
+    expect(s.store.getState().prompt).toBeNull()
+    expect(s.store.getState().report).toBeNull() // discarded, not reported
+
+    s.store.getState().start()
+    expect(s.store.getState().done).toBe(0)
+    expect(s.store.getState().session.prompts).toBe(0)
+  })
+
+  it('discardSession still counts a pending ✔ toward lifetime stats', () => {
+    const stats = new InMemoryComboStats()
+    const s = setup({ presets: onePreset, stats }, false)
+    s.store.getState().start()
+    s.press(...correctNotes(s.store.getState().prompt!))
+    expect(s.store.getState().phase).toBe('advancing')
+
+    s.store.getState().discardSession()
+    expect(stats.get('0:maj:any')?.attempts).toBe(1)
+    // The dead advance timer must not deal a prompt into the discarded session.
+    vi.advanceTimersByTime(ADVANCE)
+    expect(s.store.getState().prompt).toBeNull()
+    s.releaseAll()
   })
 })
 

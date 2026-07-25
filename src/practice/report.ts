@@ -25,6 +25,9 @@ export const BASELINE_DAYS = 30
 export interface DailyStatsForBaseline {
   prompts: number
   firstTrySuccesses: number
+  // Prompts carrying a time sample — Song bars excluded (§6.5). The divisor
+  // for timeToCorrectMs; can be 0 on a Song-only day.
+  timedPrompts: number
   timeToCorrectMs: number
 }
 
@@ -96,7 +99,9 @@ function mean(values: readonly number[]): number {
 // The trailing baseline (§7.4): the mean over the last BASELINE_DAYS days with
 // ≥ 1 recorded prompt, today excluded. Accuracy and avg-time use the same
 // per-day conventions the Progress trend chart does (firstTrySuccesses /
-// prompts, timeToCorrectMs / prompts). Null when no qualifying day exists.
+// prompts, timeToCorrectMs / timedPrompts). Null when no qualifying day
+// exists — and a day of nothing but Song bars qualifies for the accuracy mean
+// while sitting out the time mean, having contributed no time sample.
 export function trailingBaseline(
   records: Readonly<Record<string, DailyStatsForBaseline>>,
   todayKey: string,
@@ -109,9 +114,13 @@ export function trailingBaseline(
     .slice(0, days)
     .map(([, record]) => record)
   if (qualifying.length === 0) return { accuracy: null, avgTimeMs: null }
+  const timed = qualifying.filter((r) => r.timedPrompts > 0)
   return {
     accuracy: mean(qualifying.map((r) => r.firstTrySuccesses / r.prompts)),
-    avgTimeMs: mean(qualifying.map((r) => r.timeToCorrectMs / r.prompts)),
+    avgTimeMs:
+      timed.length > 0
+        ? mean(timed.map((r) => r.timeToCorrectMs / r.timedPrompts))
+        : null,
   }
 }
 

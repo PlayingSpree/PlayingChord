@@ -8,11 +8,18 @@ import {
 import { comboGrade, sessionScore } from './stats'
 import type { SessionEvent } from './session'
 
+// A self-paced day: every prompt carries a time sample. Song-only days are
+// built inline where they're tested.
 const day = (
   prompts: number,
   firstTrySuccesses: number,
   timeToCorrectMs: number,
-): DailyStatsForBaseline => ({ prompts, firstTrySuccesses, timeToCorrectMs })
+): DailyStatsForBaseline => ({
+  prompts,
+  firstTrySuccesses,
+  timedPrompts: prompts,
+  timeToCorrectMs,
+})
 
 describe('trailingBaseline (§7.4)', () => {
   it('is null when no qualifying day exists', () => {
@@ -34,6 +41,41 @@ describe('trailingBaseline (§7.4)', () => {
     )
     expect(baseline.accuracy).toBeCloseTo((0.8 + 0.5) / 2, 6)
     expect(baseline.avgTimeMs).toBeCloseTo((1500 + 3000) / 2, 6)
+  })
+
+  it('counts a Song-only day toward accuracy but not the time mean', () => {
+    // A day of nothing but Song bars: prompts, no time samples (§6.5).
+    const songDay: DailyStatsForBaseline = {
+      prompts: 8,
+      firstTrySuccesses: 4,
+      timedPrompts: 0,
+      timeToCorrectMs: 0,
+    }
+    const baseline = trailingBaseline(
+      {
+        '2026-07-20': day(10, 8, 15_000), // 80%, 1500 ms
+        '2026-07-22': songDay, // 50%, no time
+      },
+      '2026-07-24',
+    )
+    expect(baseline.accuracy).toBeCloseTo((0.8 + 0.5) / 2, 6)
+    expect(baseline.avgTimeMs).toBe(1500) // the Song day can't drag it down
+  })
+
+  it('has no time baseline when every practiced day was Song-only', () => {
+    const baseline = trailingBaseline(
+      {
+        '2026-07-22': {
+          prompts: 4,
+          firstTrySuccesses: 2,
+          timedPrompts: 0,
+          timeToCorrectMs: 0,
+        },
+      },
+      '2026-07-24',
+    )
+    expect(baseline.accuracy).toBe(0.5)
+    expect(baseline.avgTimeMs).toBeNull()
   })
 
   it('windows to the most recent N practiced days', () => {
