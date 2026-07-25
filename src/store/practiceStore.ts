@@ -8,11 +8,14 @@ import {
   chordPassList,
   comboKey,
   comboLabel,
+  comboMetrics,
   createPrompt,
   DEFAULT_DIATONIC_KEY,
   expandPreset,
   fillQueue,
   filterUnlockedCombos,
+  gradeRank,
+  IMPROVED_MIN_ATTEMPTS,
   initialProgress,
   notPassedChordKeys,
   poolChordKey,
@@ -31,6 +34,9 @@ import {
   wrongHeldKeys,
   type AttemptPhase,
   type Combo,
+  type ComboGrade,
+  type ComboStatRecord,
+  type LifecycleState,
   type ComboStatsSource,
   type Hint,
   type PracticeSettings,
@@ -164,7 +170,16 @@ export interface ChordPassDisplayEntry {
   label: string
 }
 
-// How long the top-bar chip celebrates a fresh unlock before settling.
+// A combo whose grade just improved mid-session (§7.3): the label it's known
+// by in the chord stats, and the two letters, for the toast.
+export interface GradeUpFlash {
+  label: string
+  from: ComboGrade
+  to: ComboGrade
+}
+
+// How long the top-bar chip celebrates a fresh unlock before settling — also
+// the grade-up toast's window, so the two read as one kind of notice.
 export const JUST_UNLOCKED_FLASH_MS = 2_500
 
 // Buffered active time is persisted once this much accrues — every held-note
@@ -183,6 +198,11 @@ export interface PracticeStoreState {
   presetId: string
   diatonicKey: PitchClass
   prompt: Prompt | null
+  // The §7.3 ready gate: a Practice session (fresh or resumed) holds its first
+  // prompt until the player says they're set — a tap on the Stage or any note.
+  // Nothing is dealt while this is true, so time-to-correct can't absorb the
+  // walk-up to the keyboard. Learn and Song don't gate (see start()).
+  awaitingReady: boolean
   phase: AttemptPhase
   // Prompt shown → correct match (§7); displayed with the ✔ flash.
   reactionMs: number | null
@@ -228,7 +248,14 @@ export interface PracticeStoreState {
   progress: UnlockProgress
   justUnlocked: boolean
   justUnlockedLabels: readonly string[]
+  // A combo that just climbed a grade (§7.3), for the same window as the
+  // unlock flash. Practice-only, and gated on enough attempts to mean
+  // something (§5 chord score over the recent window).
+  gradeUp: GradeUpFlash | null
   start(): void
+  // Answer the §7.3 ready gate: deal the prompt start() withheld. A no-op
+  // unless a gated session is actually waiting.
+  ready(): void
   onHeldChange(held: ReadonlySet<number>): void
   skip(): void
   setPreset(id: string): void
@@ -361,6 +388,7 @@ export function createPracticeStore({
     let progressRecord: PresetProgressRecord = initialProgress(1)
     let unlocked: ReadonlySet<string> = new Set()
     let justUnlockedTimer: ReturnType<typeof setTimeout> | null = null
+    let gradeUpTimer: ReturnType<typeof setTimeout> | null = null
 
     const reloadProgress = () => {
       // Circle-of-fifths unlock order (§5.1) applies only to root-ordered
@@ -407,6 +435,25 @@ export function createPracticeStore({
       justUnlockedTimer = setTimeout(() => {
         justUnlockedTimer = null
         set({ justUnlocked: false, justUnlockedLabels: [] })
+      }, JUST_UNLOCKED_FLASH_MS)
+    }
+
+    const clearGradeFlash = () => {
+      if (gradeUpTimer !== null) {
+        clearTimeout(gradeUpTimer)
+        gradeUpTimer = null
+      }
+      if (get().gradeUp !== null) set({ gradeUp: null })
+    }
+
+    // Announce a combo climbing a grade (§7.3). The latest one wins its own
+    // full window, like the unlock flash.
+    const flashGradeUp = (gradeUp: GradeUpFlash) => {
+      clearGradeFlash()
+      set({ gradeUp })
+      gradeUpTimer = setTimeout(() => {
+        gradeUpTimer = null
+        set({ gradeUp: null })
       }, JUST_UNLOCKED_FLASH_MS)
     }
 
@@ -478,16 +525,29 @@ export function createPracticeStore({
     // Learn/Practice generate only from unlocked chords (§5); Song bypasses
     // this entirely (it draws from the preset's raw pool). "Worst chords
     // only" (Practice, §5/§7) and "not passed only" (Learn, §5.1/§7) then
-    // each narrow generation within the unlocked set; an empty result
-    // (nothing missed yet, or everything unlocked is already passed —
-    // both possible right after a preset switch) falls back to the whole
-    // unlocked pool.
+    // each narrow generation within the unlocked set; an empty result (every
+    // unlocked chord already passed with nothing ever missed) falls back to
+    // the whole unlocked pool.
     const pickPool = (): readonly Combo[] => {
       const state = get()
       const available = filterUnlockedCombos(expansion.combos, unlocked)
       if (state.mode === 'practice' && state.worstOnly) {
+        // "Worst" is chords with a miss on the record — plus the chords still
+        // being learned (§5.1: unlocked, not yet passed). A chord you've never
+        // passed belongs in a weak-spots drill even with a clean sheet: most
+        // likely you've barely played it, and leaving it out means the toggle
+        // can only revisit old mistakes and never the gaps.
         const worst = rankWorstCombos(available, stats, available.length)
-        if (worst.length > 0) return worst.map((w) => w.combo)
+        const worstKeys = new Set(worst.map(({ combo }) => comboKey(combo)))
+        const notPassed = notPassedChordKeys(chordOrder, progressRecord)
+        const learning = available.filter(
+          (combo) =>
+            notPassed.has(poolChordKey(combo)) &&
+            !worstKeys.has(comboKey(combo)),
+        )
+        // Worst first, so the ranking still leads the weighted draw.
+        const pool = [...worst.map(({ combo }) => combo), ...learning]
+        if (pool.length > 0) return pool
       }
       if (state.mode === 'learn' && state.notPassedOnly) {
         const notPassed = notPassedChordKeys(chordOrder, progressRecord)
@@ -528,9 +588,44 @@ export function createPracticeStore({
       machine.promptShown(prompt)
     }
 
+    // Deal the next prompt, or raise the §7.3 ready gate instead when a
+    // Practice session has nothing on screen yet: entering the Stage, and
+    // every pool change that lands while the gate is still up (a preset
+    // switch, a sheet toggle over a paused session). A prompt already showing
+    // means the player is at the keyboard, so a pool change re-deals at once
+    // as it always has — the gate is about the *first* prompt's clock.
+    const dealOrGate = () => {
+      if (get().mode === 'practice' && get().prompt === null) {
+        set({ awaitingReady: true })
+        return
+      }
+      set({ awaitingReady: false })
+      nextPrompt()
+    }
+
     // Advance the session's played-prompt count (§7.2): every prompt that
     // advances counts a slot — correct, skip, or Learn.
     const bumpDone = () => set((state) => ({ done: state.done + 1 }))
+
+    // A combo's §5 chord score is graded off a *recent* window, so the letter
+    // can climb mid-session — worth saying so while the player is still on it,
+    // rather than leaving it for the next visit to the chord stats page (§7.5).
+    // `before` is the record as it stood before this prompt was recorded; both
+    // sides need IMPROVED_MIN_ATTEMPTS of history for the comparison to mean
+    // anything (the same low-evidence floor the most-improved ranking uses),
+    // which also keeps a brand-new combo's first few attempts quiet.
+    const announceGradeUp = (
+      key: string,
+      label: string,
+      before: ComboStatRecord | null,
+    ) => {
+      if (before === null || before.attempts < IMPROVED_MIN_ATTEMPTS) return
+      const after = stats.get(key)
+      if (after === null) return
+      const from = comboMetrics(before).grade
+      const to = comboMetrics(after).grade
+      if (gradeRank(to) > gradeRank(from)) flashGradeUp({ label, from, to })
+    }
 
     // A prompt only completes through the 'advancing' phase — skip advances
     // from any other phase and stays out of stats and weighting (§6.2 step 4).
@@ -547,38 +642,58 @@ export function createPracticeStore({
         machine.state.missCount > 0 ? 'missed' : 'first-try'
       const timeToCorrectMs = machine.state.reactionMs ?? 0
       const key = comboKey(currentCombo)
+      const label = comboLabel(
+        currentCombo,
+        expansion.rootSpellings.get(currentCombo.root),
+        voicings(),
+      )
+      const before = stats.get(key)
       stats.record(key, outcome, timeToCorrectMs)
+      announceGradeUp(key, label, before)
       applyProgress(currentCombo, outcome, timeToCorrectMs)
-      sessionEvents.push({
-        key,
-        label: comboLabel(
-          currentCombo,
-          expansion.rootSpellings.get(currentCombo.root),
-          voicings(),
-        ),
-        outcome,
-        timeToCorrectMs,
-      })
+      sessionEvents.push({ key, label, outcome, timeToCorrectMs })
       // Defensive: a ✔ is recorded exactly once — clear the combo so a stray
       // second recordOutcome (still 'advancing') can't double-count it.
       currentCombo = null
-      set((state) => {
-        const comboStreak = outcome === 'first-try' ? state.comboStreak + 1 : 0
-        return {
-          session: {
-            prompts: state.session.prompts + 1,
-            firstTrySuccesses:
-              state.session.firstTrySuccesses +
-              (outcome === 'first-try' ? 1 : 0),
-            totalTimeToCorrectMs:
-              state.session.totalTimeToCorrectMs + timeToCorrectMs,
-          },
-          comboStreak,
-          done: state.done + 1,
-        }
-      })
-      bestCombo.record(get().comboStreak)
+      // The combo streak isn't touched here — it moves on the judgment edges
+      // themselves (applyStreak below), which is what keeps the flash honest.
+      set((state) => ({
+        session: {
+          prompts: state.session.prompts + 1,
+          firstTrySuccesses:
+            state.session.firstTrySuccesses + (outcome === 'first-try' ? 1 : 0),
+          totalTimeToCorrectMs:
+            state.session.totalTimeToCorrectMs + timeToCorrectMs,
+        },
+        done: state.done + 1,
+      }))
       return true
+    }
+
+    // The §7.3 combo streak, driven by the judgment edges rather than by the
+    // completed prompt: a miss drops it the moment the ✘ lands (it used to
+    // wait for the auto-advance, which left the ✔ flash of a missed prompt
+    // claiming a streak the miss had already ended — and made a *surviving*
+    // streak undercount by one, so "🔥 10 combo" appeared on the 11th), and a
+    // first-try ✔ counts itself. A miss followed by a Skip now breaks it too,
+    // exactly as §7.3 says. Learn is stats-neutral (§5) and Song bars have no
+    // self-paced streak.
+    const applyStreak = (next: LifecycleState) => {
+      const state = get()
+      if (state.mode === 'learn') return
+      if (next.missCount > state.missCount) {
+        if (state.comboStreak > 0) set({ comboStreak: 0 })
+        return
+      }
+      if (
+        next.phase === 'advancing' &&
+        state.phase !== 'advancing' &&
+        next.missCount === 0
+      ) {
+        const comboStreak = state.comboStreak + 1
+        set({ comboStreak })
+        bestCombo.record(comboStreak)
+      }
     }
 
     const machine = new AttemptLifecycle({
@@ -587,7 +702,10 @@ export function createPracticeStore({
       // Learn mode shows the answer from the start (§7), so misses never
       // escalate to the redundant miss-3 reveal (§6.4).
       revealOnMisses: () => get().mode !== 'learn',
-      onState: (state) => set(state),
+      onState: (state) => {
+        applyStreak(state) // reads the pre-transition state, so it runs first
+        set(state)
+      },
       onAdvance: () => {
         // A skip or a Learn prompt records nothing but still consumes a slot.
         if (!recordOutcome()) bumpDone()
@@ -727,7 +845,12 @@ export function createPracticeStore({
       sessionPassedLabels = []
       sessionUnlockedLabels = []
       sessionActiveMs = 0
-      set({ session: FRESH_SESSION, comboStreak: 0, done: 0 })
+      set({
+        session: FRESH_SESSION,
+        comboStreak: 0,
+        done: 0,
+        awaitingReady: false,
+      })
     }
 
     // Assemble the §7.4 Report from the just-ended session's tallies plus the
@@ -772,7 +895,7 @@ export function createPracticeStore({
       machine.stop()
       flushActivity()
       sessionLive = false
-      set({ prompt: null })
+      set({ prompt: null, awaitingReady: false })
     }
 
     // End the current session (§7.2): freeze practice and show the Report — or
@@ -794,6 +917,7 @@ export function createPracticeStore({
       queue = []
       reloadProgress()
       clearUnlockFlash()
+      clearGradeFlash()
       memory.save({ presetId: preset.id, diatonicKey })
       set({
         presets: list,
@@ -812,7 +936,7 @@ export function createPracticeStore({
         songEngine.setPool(preset.pool)
         return
       }
-      nextPrompt()
+      dealOrGate()
     }
 
     return {
@@ -820,6 +944,7 @@ export function createPracticeStore({
       presetId: initialId,
       diatonicKey: initialKey,
       prompt: null,
+      awaitingReady: false,
       phase: 'idle',
       reactionMs: null,
       missCount: 0,
@@ -841,6 +966,7 @@ export function createPracticeStore({
       progress: progressSnapshot(),
       justUnlocked: false,
       justUnlockedLabels: [],
+      gradeUp: null,
 
       start() {
         // Entering the Stage (§7.2): begins a fresh session, or resumes the
@@ -861,11 +987,29 @@ export function createPracticeStore({
           songEngine.start(activePreset.pool)
           return
         }
-        nextPrompt()
+        // Practice waits for the player before the clock starts (§7.3). Learn
+        // is stats-neutral (§5) and Song counts itself in (§6.5), so neither
+        // gains anything from a gate — they deal straight away.
+        dealOrGate()
+      },
+
+      ready() {
+        if (!sessionLive || !get().awaitingReady) return
+        set({ awaitingReady: false })
+        nextPrompt() // stamps shownAt (§6.2) — the gate's whole purpose
       },
 
       onHeldChange(held: ReadonlySet<number>) {
         touchActivity()
+        // Any note answers the ready gate (§7.3). The machine still sees the
+        // held set first — it judges nothing while idle, but knowing what's
+        // down means the prompt the gate deals arms only once that key is
+        // released (§6.2 step 1), like every other prompt.
+        if (get().awaitingReady) {
+          machine.heldChange(held)
+          if (held.size > 0) get().ready()
+          return
+        }
         if (get().mode === 'song') {
           songHeld = held
           songEngine.heldChange(held)
@@ -920,7 +1064,7 @@ export function createPracticeStore({
         }
         set({ mode })
         if (leavingSong) leaveSong()
-        nextPrompt()
+        dealOrGate()
       },
 
       setWorstOnly(on: boolean) {
@@ -929,7 +1073,7 @@ export function createPracticeStore({
         recordOutcome()
         queue = []
         set({ worstOnly: on })
-        if (sessionLive) nextPrompt()
+        if (sessionLive) dealOrGate()
       },
 
       setNotPassedOnly(on: boolean) {
@@ -938,7 +1082,7 @@ export function createPracticeStore({
         recordOutcome()
         queue = []
         set({ notPassedOnly: on })
-        if (sessionLive) nextPrompt()
+        if (sessionLive) dealOrGate()
       },
 
       setSessionLength(length: number | null) {
@@ -1033,6 +1177,7 @@ export function createPracticeStore({
         if (presetId !== activePreset.id) return
         reloadProgress()
         clearUnlockFlash()
+        clearGradeFlash()
         queue = []
         recentKeys = []
         set({
@@ -1052,6 +1197,7 @@ export function createPracticeStore({
         recordOutcome()
         reloadProgress()
         clearUnlockFlash()
+        clearGradeFlash()
         queue = []
         recentKeys = []
         set({

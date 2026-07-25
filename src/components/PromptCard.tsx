@@ -1,7 +1,11 @@
 import { lazy, Suspense } from 'react'
 import { usePractice } from '../store/practiceStore'
 import { useSettings } from '../store/settingsStore'
-import type { ChordNameSize, Hint } from '../practice'
+import {
+  COMBO_STREAK_DISPLAY_MIN,
+  type ChordNameSize,
+  type Hint,
+} from '../practice'
 import { cx } from './cx'
 
 // VexFlow + music font are a heavy chunk; staff-off users (a first-class
@@ -164,7 +168,7 @@ function FeedbackPill() {
     content = (
       <span className={cx(base, 'bg-primary-tint text-lg text-primary-light')}>
         ✓ {(reactionMs / 1000).toFixed(1)}s
-        {comboStreak >= 10 && (
+        {comboStreak >= COMBO_STREAK_DISPLAY_MIN && (
           <span className="text-base text-primary-light">
             🔥 {comboStreak} combo
           </span>

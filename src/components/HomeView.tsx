@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { usePractice } from '../store/practiceStore'
 import { useSettings } from '../store/settingsStore'
 import { useLibrary } from '../store/libraryStore'
@@ -52,13 +52,15 @@ export function HomeView({
   const chordPassStatus = usePractice((s) => s.chordPassStatus)
   const goalMinutes = useSettings((s) => s.settings.dailyGoalMinutes)
   const customRules = useLibrary((s) => s.customRules)
+  const [showLocked, setShowLocked] = useState(false)
 
   const presetName = presets.find((p) => p.id === presetId)?.name ?? 'Practice'
 
-  // In-play chips: unlocked chords with their worst-combo grade (§7.1). Read
-  // the persisted per-combo stats once — Home re-mounts after every session,
-  // so the grades reflect the latest play. `customRules` in the deps keeps it
-  // in step with a library edit.
+  // In-play chips: unlocked chords with their worst-combo grade (§7.1), plus
+  // the locked ones behind the 🔒 chip. Read the persisted per-combo stats
+  // once — Home re-mounts after every session, so the grades reflect the
+  // latest play. `customRules` in the deps keeps it in step with a library
+  // edit.
   const inPlay = useMemo(() => {
     const comboStats = appStorage.state.comboStats
     const entries = chordPassStatus()
@@ -75,7 +77,11 @@ export function HomeView({
           grade: worstChordGrade(records),
         }
       })
-    const locked = entries.filter((chord) => !chord.unlocked).length
+    // Locked chords keep their unlock order (§5.1) — the list reads as
+    // "what's coming next", so the head of it is the next batch.
+    const locked = entries
+      .filter((chord) => !chord.unlocked)
+      .map((chord) => ({ key: chord.key, label: chord.label }))
     return { chips, locked }
     // chordPassStatus is a stable store method; re-run on preset/progress/lib.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -166,12 +172,32 @@ export function HomeView({
                     grade={chip.grade}
                   />
                 ))}
-                {inPlay.locked > 0 && (
-                  <Chip tone="locked" className="px-3 py-1.5 text-sm">
-                    🔒 {inPlay.locked} locked
+                {inPlay.locked.length > 0 && (
+                  <Chip
+                    tone="locked"
+                    className="px-3 py-1.5 text-sm"
+                    onClick={() => setShowLocked((open) => !open)}
+                    aria-expanded={showLocked}
+                  >
+                    🔒 {inPlay.locked.length} locked {showLocked ? '▴' : '▾'}
                   </Chip>
                 )}
               </div>
+              {/* What's still to come, in unlock order (§5.1) — the chip is a
+                  disclosure rather than a popover so it needs no focus trap. */}
+              {showLocked && inPlay.locked.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {inPlay.locked.map((chord) => (
+                    <Chip
+                      key={chord.key}
+                      tone="locked"
+                      className="px-3 py-1.5 text-sm"
+                    >
+                      {chord.label}
+                    </Chip>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="mt-auto flex flex-wrap gap-2.5 pt-2">

@@ -155,6 +155,20 @@ export function comboGrade(score: number): ComboGrade {
   return 'F'
 }
 
+// Grades worst-to-best, so "went up" is a comparison rather than string
+// trivia — what the §7.3 grade-up toast tests.
+export const COMBO_GRADE_ORDER: readonly ComboGrade[] = [
+  'F',
+  'D',
+  'C',
+  'B',
+  'A',
+]
+
+export function gradeRank(grade: ComboGrade): number {
+  return COMBO_GRADE_ORDER.indexOf(grade)
+}
+
 // A chord's grade for Home's "In play" row (§7.1) when it spans several
 // voicing combos: the *worst* (lowest-scoring) combo's grade, surfacing the
 // weakest voicing rather than averaging it away. null when no combo has any

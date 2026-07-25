@@ -7,6 +7,8 @@ import {
   comboGrade,
   comboMetrics,
   comboScore,
+  COMBO_GRADE_ORDER,
+  gradeRank,
   IMPROVED_MIN_ATTEMPTS,
   InMemoryComboStats,
   NO_HISTORY,
@@ -202,6 +204,15 @@ describe('comboScore / comboGrade (§5 prioritization, §7 chord stats grade)', 
     expect(comboGrade(0.4)).toBe('D')
     expect(comboGrade(0.1)).toBe('F')
     expect(comboGrade(0)).toBe('F')
+  })
+
+  it('ranks grades worst to best (§7.3 grade-up notice)', () => {
+    expect(COMBO_GRADE_ORDER).toEqual(['F', 'D', 'C', 'B', 'A'])
+    expect(gradeRank('F')).toBe(0)
+    expect(gradeRank('A')).toBe(COMBO_GRADE_ORDER.length - 1)
+    // What the toast asks: did the letter climb?
+    expect(gradeRank('B') > gradeRank('C')).toBe(true)
+    expect(gradeRank('D') > gradeRank('C')).toBe(false)
   })
 })
 

@@ -1,8 +1,6 @@
-[] Timer start from first input
-[x] Add recent avg and best to summary
-[x] Chord stat page
-[x] Add not mastered to learn mode
-[x] Add chord score from recent acc + time, use it to prioritize
-  [x] Add practice grade
-[] Settings to sidebar
-[] Tablet support
+[x] Tap screen or any note to show First prompt to get ready to play in practice mode (And not have first chord time inflated)
+[x] Combo still show when it break. It removed in next prompt.
+[x] Show timer to keep streak in progress in infinite mode.
+[x] Click 🔒 to show locked chords
+[x] Add grade up noti when chord grade go up mid session
+[x] Include learning chord in worst chord only toggle

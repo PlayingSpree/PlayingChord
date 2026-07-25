@@ -353,8 +353,13 @@ or machines.
   whenever the pool changes (preset, key, mode, worst-only, or a library
   edit).
 - **Worst chords only** (a Practice-mode setting, §7.2) inverts the emphasis: it draws
-  only from the selected preset's worst combos instead of gently biasing the normal
-  stream.
+  only from the selected preset's weak spots instead of gently biasing the normal
+  stream — its **worst combos** (worst-ranked first, so the ranking still leads the
+  weighted draw) *plus* its **not-yet-passed chords** (§5.1). A chord that has never
+  been passed belongs in a weak-spots drill even with a clean record: most likely it
+  has barely been played, and excluding it would leave the toggle able to revisit old
+  mistakes but never the gaps. Only when every unlocked chord is passed and nothing
+  was ever missed does it fall back to the whole unlocked pool.
 - Only Practice-mode attempts are recorded: Learn mode feeds neither the per-combo stats
   nor the weighting (§7), though its active time still counts toward the daily goal.
 - **Song mode** generates differently: it builds a whole *progression* up front rather
@@ -588,7 +593,9 @@ The entry screen — the app boots here, not into practice. The no-device gate
   an **In play** chip row — every unlocked chord with its letter grade (chord
   score §5 → A–F), not-yet-passed chords tagged *learning*, plus one
   `🔒 N locked` chip — this row is the per-chord breakdown that used to live
-  behind the top-bar unlock chip; the **mode selector** (Learn / Practice /
+  behind the top-bar unlock chip. The 🔒 chip is a **disclosure**: clicking it
+  names the locked chords, in unlock order (§5.1), so "what's coming next" is
+  answerable without guessing. Then the **mode selector** (Learn / Practice /
   Song) — configuration only, like everything else outside a session (§7.2);
   and the **Start** button, labeled per mode.
 - **Daily goal ring**: today's active minutes vs the goal (§7.6) and what's
@@ -645,14 +652,33 @@ counts a new progression in).
 └─────────────────────────────────────────────────────┘   escalate per §6.4
 ```
 
+- **Ready gate** (Practice only): the Stage opens on a **Ready?** panel instead
+  of a prompt — the first chord is dealt by a tap on the panel or by any note
+  played, and only then does its time-to-correct clock start (§6.2). Otherwise
+  the walk-up to the keyboard lands in the first sample, which routinely pushes
+  it past the §5.1 pass bar for no musical reason. It gates the *first* prompt
+  of every Stage entry, a resume (the sheet, the §6.1 gate) included, and any
+  pool change arriving while it's still up leaves it up. Learn is stats-neutral
+  (§5) and Song counts itself in (§6.5), so neither gates. The on-screen
+  keyboard stays live behind the panel for warming up.
 - **Top bar, per mode**: the session label (preset + mode) opening the sheet, an
   **End** button, and in the center — Learn and Practice: a progress bar with
-  `done / length` (∞ shows the count alone, with no bar), Learn adding the
+  `done / length`; ∞ keeps the count but has no length to fill, so its bar and
+  readout track **today's goal minutes** instead (`🔥 6 / 10 min`, then
+  `🔥 Streak safe` — §7.6), the only thing still pacing an endless session. It
+  advances as active time flushes, so it moves only while playing. Learn adding the
   *Not passed only* state and a compact `🔓 N/total` unlock count; Song: tempo
   and loop chips (the length doesn't apply). The old
   always-visible unlock chip is gone — Home's In play row carries the per-chord
   breakdown — but the transient unlock **toast** ("🔓 New chords unlocked:
   A, E") still fires at the mid-session unlock moment.
+- **Grade-up toast**: a combo's grade rides a *recent* window (§5), so it can
+  climb mid-session; when it does, a toast says so ("📈 C maj grade up: D → C")
+  in the same slot and window as the unlock toast, rather than leaving the news
+  for the player's next visit to the chord stats page (§7.5). Both grades must
+  rest on at least the most-improved evidence floor (§7.5's 5 attempts) — below
+  that a letter swings on one rep and the notice would be noise. Practice only:
+  Learn records nothing (§5) and Song's bar chips already report themselves.
 - **Session modes**:
   - **Learn**: the prompt's `example` voicing is shown from the start — highlighted on
     the on-screen keyboard, and drawn on the grand staff when the staff setting is on
@@ -665,7 +691,8 @@ counts a new progression in).
     name, keyboard hints escalate per §6.4 — but the grand staff (if its setting is on)
     is visible from the first prompt, independent of misses. Runs to the session
     length (§7.2). Practice-mode setting (in the session sheet):
-    - **Worst chords only**: drills the selected preset's worst combos (§5).
+    - **Worst chords only**: drills the selected preset's worst combos and its
+      not-yet-passed chords (§5).
   - **Song**: a looped progression from the active preset against a metronome —
     clock-paced judging per §6.5. The preset picker (and, for the diatonic preset,
     its key picker) works exactly as in the other modes; switching mid-song rebuilds
@@ -705,7 +732,11 @@ counts a new progression in).
   chime, auto-advance (default 800 ms). Misses are always **visual-only** (§9). Skip
   button available (excluded from stats and weighting). A **combo streak**
   (consecutive first-try correct prompts, reset by any miss; skips leave it
-  untouched) rides the same flash once it reaches 10 ("🔥 10 combo"). Session-only —
+  untouched) rides the same flash once it reaches 10 ("🔥 10 combo"). Both edges
+  land on the judgment itself: the ✔ counts itself (so the 10th first-try
+  correct is the one that says 10), and a miss drops the streak the instant the
+  ✘ lands — silently, with no lost-combo callout, and whether or not the prompt
+  is later completed or skipped. Session-only —
   not shown elsewhere — but the longest streak ever reached is tracked lifetime
   (§7.5 Progress). There is no separate live stats panel — session stats surface in
   the Report.

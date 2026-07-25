@@ -6,8 +6,11 @@ import {
   type VoicingRule,
 } from '../theory'
 import {
+  comboGrade,
   comboKey,
+  comboMetrics,
   DEFAULT_PRACTICE_SETTINGS,
+  FAST_TIME_MS,
   INITIAL_UNLOCK_COUNT,
   InMemoryComboStats,
   UNLOCK_BATCH_SIZE,
@@ -90,6 +93,10 @@ function setup(
   }
   if (autoStart) {
     store.getState().start()
+    // Answer the §7.3 ready gate the way the Stage's panel (or any note) does,
+    // so these tests see the prompt the Stage shows once the player is set.
+    // A no-op in Learn/Song, which don't gate.
+    store.getState().ready()
     // Default to ∞ so length-agnostic tests can drill as many prompts as they
     // like; the session-length suite sets its own length explicitly.
     store.getState().setSessionLength(null)
@@ -108,6 +115,13 @@ function promptComboKey(prompt: Prompt): string {
     typeId: prompt.chord.type.id,
     voicingId: prompt.voicing.id,
   })
+}
+
+// The Stage mounting over a session (§7.2) with the §7.3 ready gate answered —
+// what autoStart does, for the tests that drive start() themselves.
+const enterStage = (s: ReturnType<typeof setup>) => {
+  s.store.getState().start()
+  s.store.getState().ready()
 }
 
 const playCorrectAndAdvance = (s: ReturnType<typeof setup>, prompt: Prompt) => {
@@ -363,7 +377,11 @@ describe('practiceStore — upcoming queue (§5/§7)', () => {
       ],
     })
     stats.record('0:maj:any', 'missed', 4000)
-    const s = setup({ presets: explicit, stats })
+    // Roots 1 and 2 passed, so the worst-only pool really is the one combo —
+    // not-yet-passed chords would otherwise join it (§7.3).
+    const progress = new InMemoryPresetProgress()
+    progress.set('test', { unlockedCount: 3, masteredIndices: [1, 2] })
+    const s = setup({ presets: explicit, stats, progress })
 
     s.store.getState().setWorstOnly(true)
 
@@ -712,14 +730,50 @@ describe('practiceStore — session stats & worst chords (§7)', () => {
 
     const prompt = s.store.getState().prompt!
     s.press(61, 62, 63) // miss…
+    // …and the streak is gone at the ✘, not at the end of the prompt: the ✔
+    // flash of a missed prompt must not claim a streak that already broke.
+    expect(s.store.getState().comboStreak).toBe(0)
     s.releaseAll()
-    playCorrectAndAdvance(s, prompt) // …then correct: breaks the streak
+    playCorrectAndAdvance(s, prompt)
     expect(s.store.getState().comboStreak).toBe(0)
     expect(bestCombo.best()).toBe(2) // the lifetime high mark stays
 
     playCorrectAndAdvance(s, s.store.getState().prompt!) // first-try again
     expect(s.store.getState().comboStreak).toBe(1)
     expect(bestCombo.best()).toBe(2)
+  })
+
+  it('a first-try ✔ counts itself, in time for its own flash', () => {
+    const s = setup({ presets: onePreset })
+
+    s.press(...correctNotes(s.store.getState().prompt!))
+    expect(s.store.getState().phase).toBe('advancing')
+    expect(s.store.getState().comboStreak).toBe(1) // shown, not off by one
+    s.releaseAll()
+    vi.advanceTimersByTime(ADVANCE)
+    expect(s.store.getState().comboStreak).toBe(1)
+  })
+
+  it('a miss followed by a skip still breaks the streak (§7.3)', () => {
+    const s = setup({ presets: onePreset })
+    playCorrectAndAdvance(s, s.store.getState().prompt!)
+    expect(s.store.getState().comboStreak).toBe(1)
+
+    s.press(61, 62, 63) // miss…
+    s.releaseAll()
+    s.store.getState().skip() // …then out of the prompt entirely
+    expect(s.store.getState().comboStreak).toBe(0)
+  })
+
+  it('Learn prompts leave the streak alone (§5)', () => {
+    const s = setup({ presets: onePreset })
+    playCorrectAndAdvance(s, s.store.getState().prompt!)
+    s.store.getState().setMode('learn')
+
+    playCorrectAndAdvance(s, s.store.getState().prompt!)
+    expect(s.store.getState().comboStreak).toBe(1) // neither up nor down
+    s.press(61, 62, 63) // a Learn miss records nothing either
+    expect(s.store.getState().comboStreak).toBe(1)
   })
 
   it('skips leave the session tallies untouched', () => {
@@ -929,18 +983,27 @@ describe('practiceStore — worst chords only (§5/§7)', () => {
     chordTypes: ['maj'],
   })
 
-  it('draws only from the preset combos missed somewhere', () => {
+  it('draws from the missed combos and the not-yet-passed ones', () => {
     const stats = new InMemoryComboStats()
-    stats.record('0:maj:any', 'missed', 4000)
-    stats.record('3:maj:any', 'missed', 4000)
-    stats.record('1:maj:any', 'first-try', 1000) // clean — never drawn
+    stats.record('0:maj:any', 'missed', 4000) // missed → worst
+    stats.record('1:maj:any', 'first-try', 1000) // passed and clean → skipped
 
-    const s = setup({ presets: sixRoots, stats })
+    // Everything unlocked, all passed except roots 3 and 4 — the chords still
+    // being learned, which the toggle drills alongside the missed one.
+    const progress = new InMemoryPresetProgress()
+    progress.set('test', { unlockedCount: 6, masteredIndices: [0, 1, 2, 5] })
+
+    const s = setup({ presets: sixRoots, stats, progress })
     s.store.getState().setWorstOnly(true)
-    for (let i = 0; i < 20; i++) {
-      expect([0, 3]).toContain(s.store.getState().prompt!.chord.root)
+    const seen = new Set<number>()
+    for (let i = 0; i < 30; i++) {
+      const root = s.store.getState().prompt!.chord.root
+      expect([0, 3, 4]).toContain(root)
+      seen.add(root)
       s.store.getState().skip()
     }
+    expect(seen).toContain(3) // the learning chords really are in the draw
+    expect(seen).toContain(4)
   })
 
   it('falls back to the whole pool while nothing qualifies', () => {
@@ -1108,7 +1171,7 @@ describe('practiceStore — session length & report (§7.2/§7.4)', () => {
     expect(s.store.getState().report).not.toBeNull()
 
     s.store.getState().dismissReport()
-    s.store.getState().start() // Go again
+    enterStage(s) // Go again
     const state = s.store.getState()
     expect(state.report).toBeNull()
     expect(state.prompt).not.toBeNull()
@@ -1137,6 +1200,153 @@ describe('practiceStore — session length & report (§7.2/§7.4)', () => {
 // session (§7.2). Home's mode chips and the session sheet's pickers run
 // against a store with no session live, so none of them may deal a prompt,
 // judge input or record anything.
+// A combo's grade rides a recent window (§5), so it can climb mid-session —
+// the toast says so while the player is still on that chord (§7.3), instead of
+// leaving it for their next visit to the chord stats page.
+describe('practiceStore — grade-up notice (§7.3)', () => {
+  const onePreset = presetsOf({
+    kind: 'explicit',
+    chords: [{ root: 0, typeId: 'maj' }],
+  })
+  const KEY = '0:maj:any'
+
+  // Enough history to grade honestly: 5 attempts, 3 of them missed — 40%
+  // recent accuracy at the pass speed bar, which is a D.
+  const seeded = () => {
+    const stats = new InMemoryComboStats()
+    const history = [
+      'missed',
+      'missed',
+      'missed',
+      'first-try',
+      'first-try',
+    ] as const
+    for (const outcome of history) stats.record(KEY, outcome, FAST_TIME_MS)
+    return stats
+  }
+
+  it('announces a combo whose grade climbs, then clears itself', () => {
+    const stats = seeded()
+    expect(comboGrade(comboMetrics(stats.get(KEY)!).score)).toBe('D')
+    const s = setup({ presets: onePreset, stats })
+
+    playCorrectAndAdvance(s, s.store.getState().prompt!) // 4/5 → C
+
+    expect(s.store.getState().gradeUp).toEqual({
+      label: 'C maj',
+      from: 'D',
+      to: 'C',
+    })
+    vi.advanceTimersByTime(JUST_UNLOCKED_FLASH_MS)
+    expect(s.store.getState().gradeUp).toBeNull()
+  })
+
+  it('stays quiet while a grade would still be noise', () => {
+    // A combo with no history at all grades A off its first success — true but
+    // meaningless, and the §7.5 stats page has the same floor.
+    const s = setup({ presets: onePreset })
+    playCorrectAndAdvance(s, s.store.getState().prompt!)
+    expect(s.store.getState().gradeUp).toBeNull()
+  })
+
+  it('stays quiet when the grade holds or drops', () => {
+    const stats = seeded()
+    const s = setup({ presets: onePreset, stats })
+
+    const prompt = s.store.getState().prompt!
+    s.press(61, 62, 63) // miss…
+    s.releaseAll()
+    playCorrectAndAdvance(s, prompt) // …recorded as missed: 2/5, still D or worse
+
+    expect(s.store.getState().gradeUp).toBeNull()
+  })
+})
+
+// The §7.3 ready gate: Practice holds its first prompt until the player is
+// set, so the time-to-correct it records is the time to play the chord — not
+// the walk-up to the keyboard (which used to inflate the first sample past the
+// §5.1 pass bar).
+describe('practiceStore — ready gate (§7.3)', () => {
+  const onePreset = presetsOf({
+    kind: 'explicit',
+    chords: [{ root: 0, typeId: 'maj' }],
+  })
+
+  it('Practice deals nothing until the gate is answered', () => {
+    const s = setup({ presets: onePreset }, false)
+    s.store.getState().start()
+
+    expect(s.store.getState().awaitingReady).toBe(true)
+    expect(s.store.getState().prompt).toBeNull()
+    expect(s.store.getState().phase).toBe('idle')
+
+    s.store.getState().ready() // the Stage's Ready panel
+    expect(s.store.getState().awaitingReady).toBe(false)
+    expect(s.store.getState().prompt).not.toBeNull()
+    expect(s.store.getState().phase).toBe('armed')
+  })
+
+  it('any note answers the gate, and arms on release (§6.2 step 1)', () => {
+    const s = setup({ presets: onePreset }, false)
+    s.store.getState().start()
+
+    s.press(48) // any key at all — not the chord
+    expect(s.store.getState().prompt).not.toBeNull()
+    expect(s.store.getState().phase).toBe('awaiting-release')
+
+    s.releaseAll()
+    expect(s.store.getState().phase).toBe('armed')
+  })
+
+  it('the waiting time never lands in time-to-correct', () => {
+    const stats = new InMemoryComboStats()
+    const s = setup({ presets: onePreset, stats }, false)
+    s.store.getState().start()
+
+    vi.advanceTimersByTime(9000) // finding the stool, plugging in, whatever
+    s.store.getState().ready()
+    vi.advanceTimersByTime(700)
+    playCorrectAndAdvance(s, s.store.getState().prompt!)
+
+    expect(stats.get('0:maj:any')?.timeToCorrectMs).toEqual([700])
+  })
+
+  it('Learn and Song deal on start, ungated', () => {
+    const learn = setup({ presets: onePreset }, false)
+    learn.store.getState().setMode('learn')
+    learn.store.getState().start()
+    expect(learn.store.getState().awaitingReady).toBe(false)
+    expect(learn.store.getState().prompt).not.toBeNull()
+
+    const song = setup({ presets: onePreset }, false)
+    song.store.getState().setMode('song')
+    song.store.getState().start()
+    expect(song.store.getState().awaitingReady).toBe(false)
+    expect(song.store.getState().song?.countingIn).toBe(true)
+  })
+
+  it('a pool change while the gate is up leaves it up', () => {
+    const s = setup({ presets: onePreset }, false)
+    s.store.getState().start()
+
+    // The sheet's Practice toggle over a gated session (it pauses the session,
+    // so there's no prompt on screen to replace).
+    s.store.getState().setWorstOnly(true)
+
+    expect(s.store.getState().awaitingReady).toBe(true)
+    expect(s.store.getState().prompt).toBeNull()
+  })
+
+  it('switching to Learn while gated deals immediately', () => {
+    const s = setup({ presets: onePreset }, false)
+    s.store.getState().start()
+    s.store.getState().setMode('learn')
+
+    expect(s.store.getState().awaitingReady).toBe(false)
+    expect(s.store.getState().prompt).not.toBeNull()
+  })
+})
+
 describe('practiceStore — session lifecycle (§7.2)', () => {
   const onePreset = presetsOf({
     kind: 'explicit',
@@ -1189,7 +1399,7 @@ describe('practiceStore — session lifecycle (§7.2)', () => {
   it('a config change between sessions never leaks into the next one', () => {
     const s = setup({ presets: onePreset }, false)
     s.store.getState().setSessionLength(2)
-    s.store.getState().start()
+    enterStage(s)
     for (let i = 0; i < 2; i++) {
       playCorrectAndAdvance(s, s.store.getState().prompt!)
     }
@@ -1200,7 +1410,7 @@ describe('practiceStore — session lifecycle (§7.2)', () => {
     s.store.getState().setPreset('test') // the sheet's picker, unchanged
     expect(s.store.getState().prompt).toBeNull()
 
-    s.store.getState().start()
+    enterStage(s)
     expect(s.store.getState().done).toBe(0)
     expect(s.store.getState().session).toEqual({
       prompts: 0,
@@ -1218,13 +1428,13 @@ describe('practiceStore — session lifecycle (§7.2)', () => {
     // Stage: the Stage unmounts and remounts around the same session.
     const s = setup({ presets: onePreset }, false)
     s.store.getState().setSessionLength(null)
-    s.store.getState().start()
+    enterStage(s)
     playCorrectAndAdvance(s, s.store.getState().prompt!)
 
     s.store.getState().pause()
     expect(s.store.getState().prompt).toBeNull()
 
-    s.store.getState().start()
+    enterStage(s)
     expect(s.store.getState().done).toBe(1)
     expect(s.store.getState().session.prompts).toBe(1)
     expect(s.store.getState().prompt).not.toBeNull()
@@ -1233,10 +1443,10 @@ describe('practiceStore — session lifecycle (§7.2)', () => {
   it('a resumed session reports everything it played, across the pause', () => {
     const s = setup({ presets: onePreset }, false)
     s.store.getState().setSessionLength(null)
-    s.store.getState().start()
+    enterStage(s)
     playCorrectAndAdvance(s, s.store.getState().prompt!)
     s.store.getState().pause()
-    s.store.getState().start()
+    enterStage(s)
     playCorrectAndAdvance(s, s.store.getState().prompt!)
 
     s.store.getState().endSession()
@@ -1246,14 +1456,14 @@ describe('practiceStore — session lifecycle (§7.2)', () => {
   it('discardSession makes the next start a fresh session', () => {
     const s = setup({ presets: onePreset }, false)
     s.store.getState().setSessionLength(null)
-    s.store.getState().start()
+    enterStage(s)
     playCorrectAndAdvance(s, s.store.getState().prompt!)
 
     s.store.getState().discardSession() // Start / Go again
     expect(s.store.getState().prompt).toBeNull()
     expect(s.store.getState().report).toBeNull() // discarded, not reported
 
-    s.store.getState().start()
+    enterStage(s)
     expect(s.store.getState().done).toBe(0)
     expect(s.store.getState().session.prompts).toBe(0)
   })
@@ -1261,7 +1471,7 @@ describe('practiceStore — session lifecycle (§7.2)', () => {
   it('discardSession still counts a pending ✔ toward lifetime stats', () => {
     const stats = new InMemoryComboStats()
     const s = setup({ presets: onePreset, stats }, false)
-    s.store.getState().start()
+    enterStage(s)
     s.press(...correctNotes(s.store.getState().prompt!))
     expect(s.store.getState().phase).toBe('advancing')
 
@@ -1336,7 +1546,13 @@ describe('practiceStore — pause/resume (Phase 7 History nav)', () => {
     expect(s.store.getState().prompt).toBeNull()
     expect(s.store.getState().phase).toBe('idle')
 
+    // Returning re-raises the §7.3 gate: the resumed prompt's clock starts
+    // when the player says they're back, not when the Stage remounts.
     s.store.getState().start()
+    expect(s.store.getState().awaitingReady).toBe(true)
+    expect(s.store.getState().prompt).toBeNull()
+
+    s.store.getState().ready()
     expect(s.store.getState().prompt).not.toBeNull()
     expect(s.store.getState().phase).toBe('armed')
   })

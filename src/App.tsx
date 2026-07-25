@@ -7,13 +7,14 @@ import { MidiGate } from './components/MidiGate'
 import { PromptCard } from './components/PromptCard'
 import { KeyboardView } from './components/KeyboardView'
 import { SettingsView } from './components/SettingsView'
-import { UnlockToast } from './components/UnlockToast'
+import { Toasts } from './components/Toasts'
 import { HomeView } from './components/HomeView'
 import { SessionSheet } from './components/SessionSheet'
 import { ReportView } from './components/ReportView'
 import { ProgressView } from './components/ProgressView'
 import { ChordStatsView } from './components/ChordStatsView'
 import { Chip, RaisedButton } from './components/ui'
+import { cx } from './components/cx'
 import {
   SimulatedMidiSource,
   WebMidiSource,
@@ -217,7 +218,7 @@ export default function App() {
       {sheetOpen && (
         <SessionSheet onStart={startSession} onClose={closeSheet} />
       )}
-      <UnlockToast />
+      <Toasts />
     </>
   )
 }
@@ -240,24 +241,31 @@ function StageView({
   const presets = usePractice((s) => s.presets)
   const presetId = usePractice((s) => s.presetId)
   const mode = usePractice((s) => s.mode)
+  const awaitingReady = usePractice((s) => s.awaitingReady)
+  const ready = usePractice((s) => s.ready)
   const done = usePractice((s) => s.done)
   const sessionLength = usePractice((s) => s.sessionLength)
   const progress = usePractice((s) => s.progress)
   const notPassedOnly = usePractice((s) => s.notPassedOnly)
   const song = usePractice((s) => s.song)
+  const goal = usePractice((s) => s.goal)
   const tempo = useSettings((s) => s.settings.songTempoBpm)
+  const goalMinutes = useSettings((s) => s.settings.dailyGoalMinutes)
 
   const presetName = presets.find((p) => p.id === presetId)?.name ?? 'Practice'
   const modeLabel =
     mode === 'song' ? '♪ Song' : mode === 'learn' ? '🎓 Learn' : '▶ Practice'
   // The length applies to Learn as well as Practice (§7.2), so both get the
-  // done/length readout; ∞ shows the count alone, with no bar to fill (§7.3).
+  // done/length readout; ∞ has no length to fill, so the bar tracks today's
+  // goal minutes instead — the one thing still on a clock in an endless
+  // session (§7.3).
   const counted = mode !== 'song'
   const bounded = sessionLength !== null && sessionLength > 0
   const pct =
     sessionLength !== null && sessionLength > 0
       ? Math.min(100, (100 * done) / sessionLength)
-      : 0
+      : Math.min(100, (100 * goal.todayMinutes) / Math.max(1, goalMinutes))
+  const goalMet = goal.todayMinutes >= goalMinutes
 
   return (
     <main className="flex min-h-screen flex-col bg-surface text-ink">
@@ -266,18 +274,31 @@ function StageView({
           {presetName} · {modeLabel} ▾
         </RaisedButton>
 
-        {counted && bounded && (
+        {counted && (
           <div className="h-3 flex-1 overflow-hidden rounded-full bg-track">
             <div
-              className="h-full rounded-full bg-primary"
+              className={cx(
+                'h-full rounded-full',
+                bounded || goalMet ? 'bg-primary' : 'bg-info',
+              )}
               style={{ width: `${pct}%` }}
             />
           </div>
         )}
-        {counted && !bounded && <span className="flex-1" />}
         {counted && (
           <span className="text-sm font-semibold tabular-nums text-ink-muted">
             {bounded ? `${done} / ${sessionLength}` : done}
+          </span>
+        )}
+        {/* ∞ has no length to run out, so the streak does the pacing (§7.3):
+            today's active minutes against the daily goal (§7.6). It advances
+            as the buffered active time flushes — only while actually playing,
+            which is what the goal measures. */}
+        {counted && !bounded && (
+          <span className="text-sm font-semibold tabular-nums text-ink-muted">
+            {goalMet
+              ? '🔥 Streak safe'
+              : `🔥 ${Math.floor(goal.todayMinutes)} / ${goalMinutes} min`}
           </span>
         )}
         {mode === 'learn' && (
@@ -311,12 +332,33 @@ function StageView({
       </header>
 
       <div className="flex flex-1 items-center justify-center px-6 py-8">
-        <PromptCard />
+        {awaitingReady ? <ReadyPanel onReady={ready} /> : <PromptCard />}
       </div>
 
       <footer className="px-4 pb-8">
         <KeyboardView />
       </footer>
     </main>
+  )
+}
+
+// The §7.3 ready gate: a Practice session's first prompt waits here, so the
+// time-to-correct it records is the time to *play* the chord, not the time to
+// walk up to the keyboard. The whole panel is the tap target (any note answers
+// it too, via the store) and the keyboard below stays live for warming up.
+function ReadyPanel({ onReady }: { onReady: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onReady}
+      className="flex w-full max-w-2xl flex-col items-center gap-3 rounded-[20px] border-2 border-dashed border-muted-border px-8 py-14 text-center transition-colors hover:border-primary"
+    >
+      <span className="text-5xl font-extrabold tracking-tight sm:text-6xl">
+        Ready?
+      </span>
+      <span className="text-lg text-ink-muted">
+        Tap here or play any note — the timer starts with the first chord.
+      </span>
+    </button>
   )
 }
