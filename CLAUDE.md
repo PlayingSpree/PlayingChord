@@ -65,3 +65,9 @@ stats and weighted generation are keyed per **combo** `(root, typeId, voicingId)
   hand-formatted). Line endings are LF, enforced via `.gitattributes`.
 - New chord types / built-in voicing rules are added as *data* in `src/theory/`,
   not as matcher code changes.
+
+## Working with me
+
+- If a request is ambiguous — unclear scope, more than one reasonable
+  interpretation, or a detail the spec doesn't resolve — **ask before coding**.
+  Prefer a short clarifying question over guessing and building the wrong thing.

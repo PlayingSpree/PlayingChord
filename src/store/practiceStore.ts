@@ -2,6 +2,7 @@ import { createStore } from 'zustand/vanilla'
 import { useStore } from 'zustand'
 import {
   ActiveTimeTracker,
+  applyOutcome,
   AttemptLifecycle,
   builtInPresets,
   chordOrderOf,
@@ -17,6 +18,9 @@ import {
   gradeRank,
   IMPROVED_MIN_ATTEMPTS,
   initialProgress,
+  isChordInLearning,
+  isPassingGrade,
+  MAX_TIME_TO_CORRECT_MS,
   notPassedChordKeys,
   poolChordKey,
   rankWorstCombos,
@@ -24,6 +28,7 @@ import {
   reconcileProgress,
   recordChordAttempt,
   romanNumeral,
+  worstChordGrade,
   sanitizeSessionLength,
   DEFAULT_SESSION_LENGTH,
   songChordLabel,
@@ -198,6 +203,12 @@ export interface PracticeStoreState {
   presetId: string
   diatonicKey: PitchClass
   prompt: Prompt | null
+  // Did the rep the ✔ flash is showing lift a chord that was still being
+  // learned (§5.1: unlocked, not yet passed) to a passing grade? Set on the
+  // judgment edge and read by the §7.3 pill, which is on screen before the
+  // outcome is actually recorded (that happens on advance) — so this is the
+  // same pass call applyProgress will make, one advance window early.
+  justLearned: boolean
   // The §7.3 ready gate: a Practice session (fresh or resumed) holds its first
   // prompt until the player says they're set — a tap on the Stage or any note.
   // Nothing is dealt while this is true, so time-to-correct can't absorb the
@@ -469,21 +480,40 @@ export function createPracticeStore({
       )
     }
 
-    // Feeds a completed Practice prompt into the §5 unlock progress. On an
-    // unlock, the queue is dropped so newly opened chords can enter the very
-    // next preview refill (the pool changed, same rule as every other pool
-    // change).
-    const applyProgress = (
-      combo: Combo,
-      outcome: PromptOutcome,
-      timeToCorrectMs: number,
-    ) => {
+    // The §5.1 pass grade of a whole chord: the worst of its combos in the
+    // current pool, from the persisted records — the same figure Home's In play
+    // row shows (§7.1), so a chord can't read red there and pass here. Combos of
+    // the chord with no history yet don't count against it (worstChordGrade
+    // takes only the records that exist); with none at all it has no grade.
+    // `projected` swaps in a record that hasn't been written yet, which is how
+    // the pill calls the pass during the advance window (see judgeLearned).
+    const chordGrade = (
+      chordKey: string,
+      projected?: { key: string; record: ComboStatRecord },
+    ): ComboGrade | null => {
+      const records: ComboStatRecord[] = []
+      for (const combo of expansion.combos) {
+        if (poolChordKey(combo) !== chordKey) continue
+        const key = comboKey(combo)
+        const record =
+          projected !== undefined && projected.key === key
+            ? projected.record
+            : stats.get(key)
+        if (record !== null) records.push(record)
+      }
+      return worstChordGrade(records)
+    }
+
+    // Feeds a completed Practice prompt into the §5 unlock progress — as the
+    // chord's grade, so it must run *after* stats.record(). On an unlock, the
+    // queue is dropped so newly opened chords can enter the very next preview
+    // refill (the pool changed, same rule as every other pool change).
+    const applyProgress = (combo: Combo) => {
       const update = recordChordAttempt(
         chordOrder,
         progressRecord,
         poolChordKey(combo),
-        outcome,
-        timeToCorrectMs,
+        chordGrade(poolChordKey(combo)),
       )
       if (!update.changed) return
       // The chord just passed this attempt (§5.1) — collect it for the Report.
@@ -579,6 +609,7 @@ export function createPracticeStore({
       )
       set({
         prompt,
+        justLearned: false,
         worstChords: worstChords(),
         upcoming: queue.map((c) => ({
           key: comboKey(c),
@@ -640,7 +671,13 @@ export function createPracticeStore({
       if (get().mode === 'learn') return false
       const outcome: PromptOutcome =
         machine.state.missCount > 0 ? 'missed' : 'first-try'
-      const timeToCorrectMs = machine.state.reactionMs ?? 0
+      // One clamp point for the whole recording path (§6.2): combo stats and
+      // weighting, unlock progress, the session tallies, the Report log and —
+      // through stats.record — the day's summed time.
+      const timeToCorrectMs = Math.min(
+        machine.state.reactionMs ?? 0,
+        MAX_TIME_TO_CORRECT_MS,
+      )
       const key = comboKey(currentCombo)
       const label = comboLabel(
         currentCombo,
@@ -650,7 +687,7 @@ export function createPracticeStore({
       const before = stats.get(key)
       stats.record(key, outcome, timeToCorrectMs)
       announceGradeUp(key, label, before)
-      applyProgress(currentCombo, outcome, timeToCorrectMs)
+      applyProgress(currentCombo)
       sessionEvents.push({ key, label, outcome, timeToCorrectMs })
       // Defensive: a ✔ is recorded exactly once — clear the combo so a stray
       // second recordOutcome (still 'advancing') can't double-count it.
@@ -696,6 +733,32 @@ export function createPracticeStore({
       }
     }
 
+    // The §7.3 `learned` callout, decided on the same judgment edge as the
+    // streak: outcomes are recorded on advance, so by the time applyProgress
+    // passes the chord the flash announcing it is already gone. This replays
+    // that call one window early — the same chord grade, over the same records,
+    // with this rep's record projected in — so the pill can say it and
+    // applyProgress can't disagree. Learn records nothing (§5) and Song bars
+    // never reach the machine.
+    const judgeLearned = (next: LifecycleState): boolean => {
+      if (currentCombo === null || get().mode !== 'practice') return false
+      const chordKey = poolChordKey(currentCombo)
+      if (!isChordInLearning(chordOrder, progressRecord, chordKey)) return false
+      const key = comboKey(currentCombo)
+      const record = applyOutcome(
+        stats.get(key),
+        next.missCount > 0 ? 'missed' : 'first-try',
+        Math.min(next.reactionMs ?? 0, MAX_TIME_TO_CORRECT_MS),
+      )
+      return isPassingGrade(chordGrade(chordKey, { key, record }))
+    }
+
+    const applyLearned = (next: LifecycleState) => {
+      if (next.phase !== 'advancing' || get().phase === 'advancing') return
+      const justLearned = judgeLearned(next)
+      if (justLearned !== get().justLearned) set({ justLearned })
+    }
+
     const machine = new AttemptLifecycle({
       settings,
       now,
@@ -703,7 +766,9 @@ export function createPracticeStore({
       // escalate to the redundant miss-3 reveal (§6.4).
       revealOnMisses: () => get().mode !== 'learn',
       onState: (state) => {
-        applyStreak(state) // reads the pre-transition state, so it runs first
+        // Both read the pre-transition state, so they run before the set()
+        applyStreak(state)
+        applyLearned(state)
         set(state)
       },
       onAdvance: () => {
@@ -895,7 +960,7 @@ export function createPracticeStore({
       machine.stop()
       flushActivity()
       sessionLive = false
-      set({ prompt: null, awaitingReady: false })
+      set({ prompt: null, justLearned: false, awaitingReady: false })
     }
 
     // End the current session (§7.2): freeze practice and show the Report — or
@@ -944,6 +1009,7 @@ export function createPracticeStore({
       presetId: initialId,
       diatonicKey: initialKey,
       prompt: null,
+      justLearned: false,
       awaitingReady: false,
       phase: 'idle',
       reactionMs: null,

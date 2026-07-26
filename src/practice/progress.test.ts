@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { ALL_PITCH_CLASSES } from '../theory'
 import type { Combo } from './combos'
+import { PASS_MIN_GRADE } from './stats'
 import {
   chordOrderOf,
   chordPassList,
-  FAST_TIME_MS,
   filterUnlockedCombos,
   INITIAL_UNLOCK_COUNT,
   initialProgress,
+  isChordInLearning,
   isFullyUnlocked,
   notPassedChordKeys,
   poolChordKey,
@@ -192,17 +193,31 @@ describe('chordPassList (§7 unlock chip drill-down)', () => {
   })
 })
 
-describe('recordChordAttempt (§5 pass and unlock)', () => {
+describe('isChordInLearning (§5.1)', () => {
+  const order = orderOf(4)
+
+  it('is true only for an unlocked chord that has not passed', () => {
+    const record: PresetProgressRecord = {
+      unlockedCount: 3,
+      masteredIndices: [0],
+    }
+    expect(isChordInLearning(order, record, '0:maj')).toBe(false) // passed
+    expect(isChordInLearning(order, record, '1:maj')).toBe(true)
+    expect(isChordInLearning(order, record, '3:maj')).toBe(false) // locked
+    expect(isChordInLearning(order, record, '0:min')).toBe(false) // not in pool
+  })
+})
+
+describe('recordChordAttempt (§5.1 pass and unlock)', () => {
   const order = orderOf(12)
   const fresh = initialProgress(12)
 
-  it('a fast first-try passes the chord', () => {
+  it('a grade at the pass bar passes the chord', () => {
     const { record, changed, justUnlocked } = recordChordAttempt(
       order,
       fresh,
       '0:maj',
-      'first-try',
-      FAST_TIME_MS,
+      PASS_MIN_GRADE,
     )
     expect(changed).toBe(true)
     expect(justUnlocked).toBe(false)
@@ -210,54 +225,40 @@ describe('recordChordAttempt (§5 pass and unlock)', () => {
     expect(record.unlockedCount).toBe(INITIAL_UNLOCK_COUNT)
   })
 
-  it('a miss does not count', () => {
-    const update = recordChordAttempt(order, fresh, '0:maj', 'missed', 500)
-    expect(update.changed).toBe(false)
-    expect(update.record).toBe(fresh)
+  it('every grade above the bar passes too', () => {
+    for (const grade of ['C', 'B', 'A', 'S'] as const) {
+      expect(recordChordAttempt(order, fresh, '0:maj', grade).changed).toBe(
+        true,
+      )
+    }
   })
 
-  it('a slow first-try does not count', () => {
-    const update = recordChordAttempt(
-      order,
-      fresh,
-      '0:maj',
-      'first-try',
-      FAST_TIME_MS + 1,
-    )
-    expect(update.changed).toBe(false)
+  it('an F does not pass, and neither does no grade at all', () => {
+    expect(recordChordAttempt(order, fresh, '0:maj', 'F').changed).toBe(false)
+    expect(recordChordAttempt(order, fresh, '0:maj', null).record).toBe(fresh)
   })
 
   it('a locked or unknown chord does not count', () => {
-    expect(
-      recordChordAttempt(order, fresh, '5:maj', 'first-try', 100).changed,
-    ).toBe(false)
-    expect(
-      recordChordAttempt(order, fresh, '0:min', 'first-try', 100).changed,
-    ).toBe(false)
+    expect(recordChordAttempt(order, fresh, '5:maj', 'S').changed).toBe(false)
+    expect(recordChordAttempt(order, fresh, '0:min', 'S').changed).toBe(false)
   })
 
   it('an already-passed chord is a no-op', () => {
-    const once = recordChordAttempt(order, fresh, '1:maj', 'first-try', 100)
-    const twice = recordChordAttempt(
-      order,
-      once.record,
-      '1:maj',
-      'first-try',
-      100,
-    )
+    const once = recordChordAttempt(order, fresh, '1:maj', 'S')
+    const twice = recordChordAttempt(order, once.record, '1:maj', 'S')
     expect(twice.changed).toBe(false)
   })
 
   it('passing fewer than all unlocked chords does not unlock', () => {
     const record = passedExcept(fresh, 1, 2)
-    const update = recordChordAttempt(order, record, '1:maj', 'first-try', 100)
+    const update = recordChordAttempt(order, record, '1:maj', 'B')
     expect(update.record.unlockedCount).toBe(INITIAL_UNLOCK_COUNT)
     expect(update.justUnlocked).toBe(false)
   })
 
   it('passing the last unlocked chord unlocks the next batch', () => {
     const record = passedExcept(fresh, 2)
-    const update = recordChordAttempt(order, record, '2:maj', 'first-try', 100)
+    const update = recordChordAttempt(order, record, '2:maj', 'B')
     expect(update.justUnlocked).toBe(true)
     expect(update.record.unlockedCount).toBe(
       INITIAL_UNLOCK_COUNT + UNLOCK_BATCH_SIZE,
@@ -268,7 +269,7 @@ describe('recordChordAttempt (§5 pass and unlock)', () => {
   it('unlocking clamps at the end of the pool', () => {
     const order4 = orderOf(4)
     const record = passedExcept(initialProgress(4), 2)
-    const update = recordChordAttempt(order4, record, '2:maj', 'first-try', 100)
+    const update = recordChordAttempt(order4, record, '2:maj', 'B')
     expect(update.justUnlocked).toBe(true)
     expect(update.record.unlockedCount).toBe(4)
   })
@@ -276,7 +277,7 @@ describe('recordChordAttempt (§5 pass and unlock)', () => {
   it('a fully-unlocked pool still records a pass but never grows', () => {
     const order3 = orderOf(3)
     const record = passedExcept(initialProgress(3), 2)
-    const update = recordChordAttempt(order3, record, '2:maj', 'first-try', 100)
+    const update = recordChordAttempt(order3, record, '2:maj', 'B')
     expect(update.changed).toBe(true)
     expect(update.justUnlocked).toBe(false)
     expect(update.record.unlockedCount).toBe(3)

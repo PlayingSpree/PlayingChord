@@ -39,6 +39,10 @@
   --color-danger: #ff8080;
   --color-danger-tint: #3a1414;
 
+  /* Warn (amber) — correct but slow (§7.3), editor validation notes */
+  --color-warn: #fbbf24;
+  --color-warn-tint: #3a2a0c;
+
   /* Hard offset shadow (no blur) — cards 3px, buttons 2px, primary 4px green */
   --shadow-hard: 0 3px 0 #0a0c1a;
   --shadow-hard-sm: 0 2px 0 #0a0c1a;

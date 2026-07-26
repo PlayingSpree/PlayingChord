@@ -4,6 +4,7 @@ import {
   allComboRows,
   comboLabel,
   comboMetrics,
+  GRADE_TIME_MS,
   RECENT_OUTCOME_WINDOW,
   RECENT_TIME_WINDOW,
   type ComboMetrics,
@@ -12,6 +13,7 @@ import { voicingLibrary } from '../theory'
 import { useLibrary } from '../store/libraryStore'
 import { Card, RaisedButton } from './ui'
 import { cx } from './cx'
+import { gradeTint } from './grades'
 
 // The §7.5 chord stats drill-down (reached from Progress): every combo ever
 // practiced, not just the top-3 worst/most-improved lists — sortable so any
@@ -225,7 +227,12 @@ export function ChordStatsView({ onBack }: { onBack: () => void }) {
               window that drives weighting); recent avg time is the last{' '}
               {RECENT_TIME_WINDOW}. Grade (A–F) folds recent accuracy and speed
               into one figure — the same one that drives which chords come up
-              more often, and that gates new unlocks.
+              more often, and that gates new unlocks. On a clean window the
+              letters are seconds — S within {GRADE_TIME_MS.S / 1000}s, A{' '}
+              {GRADE_TIME_MS.A / 1000}s, B {GRADE_TIME_MS.B / 1000}s, C{' '}
+              {GRADE_TIME_MS.C / 1000}s, D {GRADE_TIME_MS.D / 1000}s — and
+              accuracy costs a letter just as a second does: one miss in{' '}
+              {RECENT_OUTCOME_WINDOW} can't grade above A, however fast.
             </p>
           </>
         )}
@@ -234,22 +241,12 @@ export function ChordStatsView({ onBack }: { onBack: () => void }) {
   )
 }
 
-// Grade cell tint (§7.5): A/B green, C neutral, D/F red — the same three tiers
-// the prototype shows, so a glance down the column reads as a heat map.
-const GRADE_TINT: Record<ComboMetrics['grade'], string> = {
-  A: 'bg-primary-tint text-primary-light',
-  B: 'bg-primary-tint text-primary-light',
-  C: 'bg-track text-ink-soft',
-  D: 'bg-danger-tint text-danger',
-  F: 'bg-danger-tint text-danger',
-}
-
 function GradeBadge({ grade }: { grade: ComboMetrics['grade'] }) {
   return (
     <span
       className={cx(
         'inline-flex h-7 w-7 items-center justify-center rounded-lg text-sm font-extrabold',
-        GRADE_TINT[grade],
+        gradeTint(grade),
       )}
     >
       {grade}

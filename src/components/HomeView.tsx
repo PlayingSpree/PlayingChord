@@ -13,6 +13,7 @@ import { worstChordGrade, type ComboGrade, type SessionMode } from '../practice'
 import { DevicePicker } from './DevicePicker'
 import { Card, Chip, RaisedButton, SectionLabel } from './ui'
 import { cx } from './cx'
+import { gradeText } from './grades'
 
 // The Home screen (DESIGN.md §7.1): the entry point. The no-device gate
 // (§6.1) doesn't block it. Top bar, the Continue card (preset, unlock
@@ -297,18 +298,10 @@ function InPlayChip({
     <Chip className="px-3 py-1.5 text-sm">
       {label}
       {grade !== null && (
-        <b className={cx('font-extrabold', GRADE_COLOR[grade])}>{grade}</b>
+        <b className={cx('font-extrabold', gradeText(grade))}>{grade}</b>
       )}
     </Chip>
   )
-}
-
-const GRADE_COLOR: Record<ComboGrade, string> = {
-  A: 'text-primary-light',
-  B: 'text-primary-light',
-  C: 'text-ink-soft',
-  D: 'text-danger',
-  F: 'text-danger',
 }
 
 // The conic-gradient goal ring (§7.1): filled proportion = today's active

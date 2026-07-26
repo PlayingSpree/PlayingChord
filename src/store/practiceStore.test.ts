@@ -10,9 +10,10 @@ import {
   comboKey,
   comboMetrics,
   DEFAULT_PRACTICE_SETTINGS,
-  FAST_TIME_MS,
+  GRADE_TIME_MS,
   INITIAL_UNLOCK_COUNT,
   InMemoryComboStats,
+  MAX_TIME_TO_CORRECT_MS,
   UNLOCK_BATCH_SIZE,
   type ChordPool,
   type Preset,
@@ -439,6 +440,36 @@ describe('practiceStore — outcome recording (§5/§7)', () => {
     })
   })
 
+  it('caps a walked-away-from prompt at the time-to-correct ceiling', () => {
+    const stats = new InMemoryComboStats()
+    const s = setup({ presets: onePreset, stats })
+    const prompt = s.store.getState().prompt!
+
+    vi.advanceTimersByTime(90_000) // left the keyboard mid-session
+    playCorrectAndAdvance(s, prompt)
+
+    expect(stats.get(promptComboKey(prompt))?.timeToCorrectMs).toEqual([
+      MAX_TIME_TO_CORRECT_MS,
+    ])
+    // The session average and the Report log see the same capped value.
+    expect(s.store.getState().session.totalTimeToCorrectMs).toBe(
+      MAX_TIME_TO_CORRECT_MS,
+    )
+  })
+
+  it('leaves a time under the ceiling alone', () => {
+    const stats = new InMemoryComboStats()
+    const s = setup({ presets: onePreset, stats })
+    const prompt = s.store.getState().prompt!
+
+    vi.advanceTimersByTime(MAX_TIME_TO_CORRECT_MS - 1)
+    playCorrectAndAdvance(s, prompt)
+
+    expect(stats.get(promptComboKey(prompt))?.timeToCorrectMs).toEqual([
+      MAX_TIME_TO_CORRECT_MS - 1,
+    ])
+  })
+
   it('records nothing for a skip, even after a miss (§6.2 step 4)', () => {
     const stats = new InMemoryComboStats()
     const s = setup({ presets: onePreset, stats })
@@ -572,13 +603,72 @@ describe('practiceStore — unlock progress (§5)', () => {
     }
   })
 
-  it('a slow first-try success does not pass', () => {
+  it('clean but F-slow reps do not pass (§5.1)', () => {
     const s = setup({ presets: sixRoots })
     for (let i = 0; i < 6; i++) {
-      vi.advanceTimersByTime(3000) // over FAST_TIME_MS before answering
+      vi.advanceTimersByTime(6000) // past D's second: F on speed alone
       playCorrectAndAdvance(s, s.store.getState().prompt!)
     }
     expect(s.store.getState().progress.unlocked).toBe(INITIAL_UNLOCK_COUNT)
+    expect(s.store.getState().progress.passed).toBe(0)
+  })
+
+  it('merely slow reps still pass — the bar is D, not speed (§5.1)', () => {
+    const s = setup({ presets: sixRoots })
+    let advances = 0
+    while (
+      s.store.getState().progress.unlocked === INITIAL_UNLOCK_COUNT &&
+      advances < 10
+    ) {
+      vi.advanceTimersByTime(4500) // D-paced: slow, but not failing
+      playCorrectAndAdvance(s, s.store.getState().prompt!)
+      advances++
+    }
+    expect(s.store.getState().progress.unlocked).toBe(
+      INITIAL_UNLOCK_COUNT + UNLOCK_BATCH_SIZE,
+    )
+  })
+
+  it('flags the rep that learns a chord, one window before it lands (§7.3)', () => {
+    const s = setup({ presets: sixRoots })
+    const prompt = s.store.getState().prompt!
+    s.press(...correctNotes(prompt))
+    s.releaseAll()
+
+    // The pass itself is applied on advance; the flag calls it on the judgment
+    // edge so the ✔ flash can say so while it's still up.
+    expect(s.store.getState().phase).toBe('advancing')
+    expect(s.store.getState().justLearned).toBe(true)
+    expect(s.store.getState().progress.passed).toBe(0)
+
+    vi.advanceTimersByTime(ADVANCE)
+    expect(s.store.getState().progress.passed).toBe(1)
+    expect(s.store.getState().justLearned).toBe(false) // the next prompt clears it
+  })
+
+  it('does not flag a failing rep, or a chord that already passed', () => {
+    const oneChord = presetsOf({
+      kind: 'explicit',
+      chords: [{ root: 0, typeId: 'maj' }],
+    })
+    const s = setup({ presets: oneChord })
+
+    vi.advanceTimersByTime(6000) // F on speed alone: not learned
+    s.press(...correctNotes(s.store.getState().prompt!))
+    s.releaseAll()
+    expect(s.store.getState().justLearned).toBe(false)
+    vi.advanceTimersByTime(ADVANCE)
+
+    // A clean rep lifts it out of F — that one is the callout…
+    s.press(...correctNotes(s.store.getState().prompt!))
+    s.releaseAll()
+    expect(s.store.getState().justLearned).toBe(true)
+    vi.advanceTimersByTime(ADVANCE)
+
+    // …and the next one, on the now-passed chord, says nothing.
+    s.press(...correctNotes(s.store.getState().prompt!))
+    s.releaseAll()
+    expect(s.store.getState().justLearned).toBe(false)
   })
 
   it('a missed-then-corrected prompt does not pass', () => {
@@ -1210,8 +1300,9 @@ describe('practiceStore — grade-up notice (§7.3)', () => {
   })
   const KEY = '0:maj:any'
 
-  // Enough history to grade honestly: 5 attempts, 3 of them missed — 40%
-  // recent accuracy at the pass speed bar, which is a D.
+  // Enough history to grade honestly: 5 attempts, 3 of them missed. Seeded at
+  // S speed (§7.5's 1 s) so the speed axis is full credit and the letter is
+  // pure accuracy — 2/5 is a C.
   const seeded = () => {
     const stats = new InMemoryComboStats()
     const history = [
@@ -1221,28 +1312,28 @@ describe('practiceStore — grade-up notice (§7.3)', () => {
       'first-try',
       'first-try',
     ] as const
-    for (const outcome of history) stats.record(KEY, outcome, FAST_TIME_MS)
+    for (const outcome of history) stats.record(KEY, outcome, GRADE_TIME_MS.S)
     return stats
   }
 
   it('announces a combo whose grade climbs, then clears itself', () => {
     const stats = seeded()
-    expect(comboGrade(comboMetrics(stats.get(KEY)!).score)).toBe('D')
+    expect(comboGrade(comboMetrics(stats.get(KEY)!).score)).toBe('C')
     const s = setup({ presets: onePreset, stats })
 
-    playCorrectAndAdvance(s, s.store.getState().prompt!) // 4/5 → C
+    playCorrectAndAdvance(s, s.store.getState().prompt!) // 3/5 → B
 
     expect(s.store.getState().gradeUp).toEqual({
       label: 'C maj',
-      from: 'D',
-      to: 'C',
+      from: 'C',
+      to: 'B',
     })
     vi.advanceTimersByTime(JUST_UNLOCKED_FLASH_MS)
     expect(s.store.getState().gradeUp).toBeNull()
   })
 
   it('stays quiet while a grade would still be noise', () => {
-    // A combo with no history at all grades A off its first success — true but
+    // A combo with no history at all grades S off its first success — true but
     // meaningless, and the §7.5 stats page has the same floor.
     const s = setup({ presets: onePreset })
     playCorrectAndAdvance(s, s.store.getState().prompt!)
@@ -1256,7 +1347,7 @@ describe('practiceStore — grade-up notice (§7.3)', () => {
     const prompt = s.store.getState().prompt!
     s.press(61, 62, 63) // miss…
     s.releaseAll()
-    playCorrectAndAdvance(s, prompt) // …recorded as missed: 2/5, still D or worse
+    playCorrectAndAdvance(s, prompt) // …recorded as missed: 2/5, still C or worse
 
     expect(s.store.getState().gradeUp).toBeNull()
   })

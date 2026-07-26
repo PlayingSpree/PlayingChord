@@ -251,14 +251,14 @@ export function PresetEditor({
       </ChipGroup>
 
       {problems.length > 0 ? (
-        <p className="text-xs text-amber-400">⚠ {problems.join(' · ')}</p>
+        <p className="text-xs text-warn">⚠ {problems.join(' · ')}</p>
       ) : (
         <p className="text-xs text-slate-400">
           {comboCount} combo{comboCount === 1 ? '' : 's'} to drill
         </p>
       )}
       {warnings.length > 0 && (
-        <ul className="flex flex-col gap-1 text-xs text-amber-400">
+        <ul className="flex flex-col gap-1 text-xs text-warn">
           {warnings.map((warning) => (
             <li key={`${warning.typeId}:${warning.voicingId}:${warning.kind}`}>
               ⚠ {warning.message}

@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { comboKey, type Combo } from './combos'
-import { FAST_TIME_MS } from './progress'
 import {
   allComboRows,
   applyOutcome,
@@ -8,15 +7,20 @@ import {
   comboMetrics,
   comboScore,
   COMBO_GRADE_ORDER,
+  FAST_TIME_MS,
   gradeRank,
   IMPROVED_MIN_ATTEMPTS,
   InMemoryComboStats,
+  isPassingGrade,
+  MAX_TIME_TO_CORRECT_MS,
   NO_HISTORY,
+  PASS_MIN_GRADE,
   rankMostImproved,
   rankWorstCombos,
   recentHistoryOf,
   RECENT_OUTCOME_WINDOW,
   RECENT_TIME_WINDOW,
+  SLOW_TIME_MS,
   TIME_TO_CORRECT_SAMPLE_CAP,
   worstChordGrade,
   type ComboStatRecord,
@@ -35,13 +39,13 @@ describe('worstChordGrade (§7.1 In play)', () => {
   })
 
   it('takes the lowest-scoring combo grade, not the average', () => {
-    const strong = cleanRecord(5, 500) // fast, clean → A
+    const strong = cleanRecord(5, 500) // fast, clean → S
     const weakRecord = applyOutcome(
       applyOutcome(cleanRecord(3, 500), 'missed', 4000),
       'missed',
       4000,
     ) // several recent misses → low grade
-    expect(comboGrade(comboMetrics(strong).score)).toBe('A')
+    expect(comboGrade(comboMetrics(strong).score)).toBe('S')
     // The chord's grade is the weaker of the two, matching the weak combo.
     expect(worstChordGrade([strong, weakRecord])).toBe(
       comboGrade(comboMetrics(weakRecord).score),
@@ -170,26 +174,75 @@ describe('comboScore / comboGrade (§5 prioritization, §7 chord stats grade)', 
     )
   })
 
-  it('gives full speed credit at or under the pass bar', () => {
-    expect(
-      comboScore({ misses: 0, total: 5, avgTimeToCorrectMs: FAST_TIME_MS }),
-    ).toBe(1)
+  it('grades a flawless window on round seconds (§7.5)', () => {
+    const gradeAt = (avgTimeToCorrectMs: number) =>
+      comboGrade(
+        comboScore({
+          misses: 0,
+          total: RECENT_OUTCOME_WINDOW,
+          avgTimeToCorrectMs,
+        }),
+      )
+    // The point of the ramp: each letter ends exactly on its own second.
+    expect([1000, 2000, 3000, 4000, 5000].map(gradeAt)).toEqual([
+      'S',
+      'A',
+      'B',
+      'C',
+      'D',
+    ])
+    expect([1001, 2001, 3001, 4001, 5001].map(gradeAt)).toEqual([
+      'A',
+      'B',
+      'C',
+      'D',
+      'F',
+    ])
+    // Under S's second is full credit, never a bonus — so a well-drilled combo
+    // sits at the same score as an untouched one and §5 doesn't over-drill it.
+    expect(comboScore({ misses: 0, total: 5, avgTimeToCorrectMs: 400 })).toBe(1)
+    expect(comboScore({ misses: 0, total: 5, avgTimeToCorrectMs: 1000 })).toBe(
+      1,
+    )
+  })
+
+  it('bottoms out at zero on the §6.2 recording ceiling', () => {
     expect(
       comboScore({
         misses: 0,
         total: 5,
-        avgTimeToCorrectMs: FAST_TIME_MS / 2,
+        avgTimeToCorrectMs: MAX_TIME_TO_CORRECT_MS,
       }),
-    ).toBe(1) // faster than the bar caps at full credit, never a bonus
+    ).toBe(0)
   })
 
-  it('decays past the pass bar, multiplicatively with accuracy', () => {
+  it('scales speed multiplicatively with accuracy', () => {
     const score = comboScore({
       misses: 1,
       total: 4, // 75% accuracy
-      avgTimeToCorrectMs: FAST_TIME_MS * 2, // half credit on speed
+      avgTimeToCorrectMs: 2000, // 0.8 on the speed ramp (A's second)
     })
-    expect(score).toBeCloseTo(0.75 * 0.5)
+    expect(score).toBeCloseTo(0.75 * 0.8)
+  })
+
+  it('lets accuracy alone cap the letter, however fast the answers', () => {
+    const gradeAtAccuracy = (misses: number) =>
+      comboGrade(
+        comboScore({
+          misses,
+          total: RECENT_OUTCOME_WINDOW,
+          avgTimeToCorrectMs: 0, // as fast as it gets
+        }),
+      )
+    // A miss costs exactly one letter, the same as a second does.
+    expect([0, 1, 2, 3, 4, 5].map(gradeAtAccuracy)).toEqual([
+      'S',
+      'A',
+      'B',
+      'C',
+      'D',
+      'F',
+    ])
   })
 
   it('a miss floors the score at 0 regardless of speed', () => {
@@ -197,19 +250,47 @@ describe('comboScore / comboGrade (§5 prioritization, §7 chord stats grade)', 
   })
 
   it('grades bucket the score into letter tiers', () => {
-    expect(comboGrade(1)).toBe('A')
+    expect(comboGrade(1)).toBe('S') // S is the top of the scale, nothing less
     expect(comboGrade(0.9)).toBe('A')
-    expect(comboGrade(0.8)).toBe('B')
-    expect(comboGrade(0.6)).toBe('C')
-    expect(comboGrade(0.4)).toBe('D')
+    expect(comboGrade(0.8)).toBe('A')
+    expect(comboGrade(0.6)).toBe('B')
+    expect(comboGrade(0.4)).toBe('C')
+    expect(comboGrade(0.2)).toBe('D')
     expect(comboGrade(0.1)).toBe('F')
     expect(comboGrade(0)).toBe('F')
   })
 
+  it('puts the §7.3 slow bar exactly on the D/F speed boundary', () => {
+    const gradeAt = (avgTimeToCorrectMs: number) =>
+      comboGrade(comboScore({ misses: 0, total: 5, avgTimeToCorrectMs }))
+    // A window of flawless reps at the bar still holds D; past it, F on speed
+    // alone — which is precisely when a single such rep earns the chip.
+    expect(gradeAt(SLOW_TIME_MS)).toBe('D')
+    expect(gradeAt(SLOW_TIME_MS + 1)).toBe('F')
+  })
+
+  it('puts the §7.3 fast bar exactly on the A speed boundary', () => {
+    const gradeAt = (avgTimeToCorrectMs: number) =>
+      comboGrade(comboScore({ misses: 0, total: 5, avgTimeToCorrectMs }))
+    // At the bar a flawless window grades A; a hair past it drops to B — so the
+    // chip marks the reps that hold an A on speed alone.
+    expect(gradeAt(FAST_TIME_MS)).toBe('A')
+    expect(gradeAt(FAST_TIME_MS + 1)).toBe('B')
+  })
+
+  it('passes every grade but F (§5.1)', () => {
+    expect(PASS_MIN_GRADE).toBe('D')
+    for (const grade of COMBO_GRADE_ORDER) {
+      expect(isPassingGrade(grade)).toBe(grade !== 'F')
+    }
+    // No history at all is not a pass — an attempt has just ruled that out.
+    expect(isPassingGrade(null)).toBe(false)
+  })
+
   it('ranks grades worst to best (§7.3 grade-up notice)', () => {
-    expect(COMBO_GRADE_ORDER).toEqual(['F', 'D', 'C', 'B', 'A'])
+    expect(COMBO_GRADE_ORDER).toEqual(['F', 'D', 'C', 'B', 'A', 'S'])
     expect(gradeRank('F')).toBe(0)
-    expect(gradeRank('A')).toBe(COMBO_GRADE_ORDER.length - 1)
+    expect(gradeRank('S')).toBe(COMBO_GRADE_ORDER.length - 1)
     // What the toast asks: did the letter climb?
     expect(gradeRank('B') > gradeRank('C')).toBe(true)
     expect(gradeRank('D') > gradeRank('C')).toBe(false)
@@ -370,17 +451,17 @@ describe('comboMetrics (§7 chord stats page)', () => {
     expect(metrics.recentAvgTimeToCorrectMs).toBeNull()
     // No time data → pure accuracy score (1 of 2 recent outcomes missed).
     expect(metrics.score).toBe(0.5)
-    expect(metrics.grade).toBe('D')
+    expect(metrics.grade).toBe('C')
   })
 
   it('folds recent accuracy and recent speed into a score and grade', () => {
     let record: ComboStatRecord | null = null
     for (let i = 0; i < 4; i++) {
-      record = applyOutcome(record, 'first-try', FAST_TIME_MS)
+      record = applyOutcome(record, 'first-try', 1000)
     }
     const metrics = comboMetrics(record!)
-    expect(metrics.score).toBe(1)
-    expect(metrics.grade).toBe('A')
+    expect(metrics.score).toBe(1) // clean, and right on S's second
+    expect(metrics.grade).toBe('S')
   })
 })
 

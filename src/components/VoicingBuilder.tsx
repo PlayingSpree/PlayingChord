@@ -320,7 +320,7 @@ export function VoicingBuilder({
       {draft ? (
         <p className="text-xs text-slate-400">{describeVoicingRule(draft)}</p>
       ) : (
-        <p className="text-xs text-amber-400">⚠ {problems.join(' · ')}</p>
+        <p className="text-xs text-warn">⚠ {problems.join(' · ')}</p>
       )}
 
       <div className="flex items-center gap-2 pt-1">

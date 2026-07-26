@@ -11,18 +11,33 @@ and a **length in prompts** (10/20/40/∞, replacing the Draft-v5 minute timer),
 session grade (the §5 chord-score formula applied to the session) and deltas against
 a trailing-30-practiced-day baseline (§7). History becomes **Progress**, the upcoming
 preview shrinks to the next 2 shown inline, and the visual language is redone
-(reference mock: `doc/Prototype.dc.html`). Draft v8 added flashcard-style
+(reference mock: `doc/Prototype.dc.html`). A 2026-07-26 revision reworked the
+**grade** and the speed feedback around it: the grade is now stated in round
+seconds with an **S** tier on top (§7.5) — S ≤ 1 s, A 2 s, B 3 s, C 4 s, D 5 s at
+flawless accuracy, a miss costing a letter exactly as a second does. The old A–D
+bands keep their seconds and are simply relabeled one letter down, so a returning
+player's chords read a letter higher without having changed; the one substantive
+move is 4–5 s (and 1-of-5 accuracy), which used to be F and now grades D. The same
+revision added the §7.3 **`· slow` chip** on answers past D's second and the §6.2
+**time-to-correct ceiling** (10 s) on everything recorded. A same-day follow-up
+put the grade in charge of unlocking too: a chord is **passed once its grade is D
+or better** (§5.1), replacing the one-fast-first-try bar, and the pill gained a
+**`· fast` chip** (A's second, the mirror of `· slow`) plus a **`learned`**
+callout on the rep that lifts a chord past the pass bar (§7.3). Red moved with
+it: **F alone is red** now and D reads neutral like C (§7.5), while the slow
+flash keeps its amber at the unchanged F boundary.
+Draft v8 added flashcard-style
 **chord unlocking** (2026-07-19): each preset
-starts with only its first 3 chords in play, and a fast first-try success on every
-unlocked chord opens 2 more, until the whole pool is available (§5). Learn/Practice
+starts with only its first 3 chords in play, and passing every unlocked chord opens
+2 more, until the whole pool is available (§5). Learn/Practice
 generate only from unlocked chords; Song mode stays full-pool. A same-day revision
 added an optional **circle-of-fifths unlock order** for root-ordered pools and an
 unlock **toast** naming the newly opened chords (§5.1, §7). A 2026-07-20 revision
 added a Learn-mode **"Not passed only"** setting, mirroring Practice's worst-chords
 toggle, that narrows generation to unlocked-but-not-yet-passed chords (§5.1, §7). A
 same-day follow-up renamed the unlock concept from "mastered" to **passed** throughout
-(it's one fast first-try success, not real mastery) and added a per-chord breakdown to
-the unlock chip, expandable by clicking it (§5.1, §7).
+(a bar well short of real mastery — see §5.1 for the current one) and added a per-chord
+breakdown to the unlock chip, expandable by clicking it (§5.1, §7).
 Draft v7 made Song mode
 draw its progression from the **active preset's
 chord pool** instead of a separate key selection (2026-07-18), so all three modes share
@@ -328,13 +343,17 @@ or machines.
 - A preset's pool expands to **combos** of (chord × voicingId). Stats are keyed per combo
   — `(root, typeId, voicingId)` — so missing "C maj7, 2nd inversion" doesn't up-weight
   root-position C maj7 (§8).
-- **Chord score**: a combo's recent accuracy scaled down by how far its recent average
-  time-to-correct sits above the pass speed bar (§5.1's 2000 ms) — full credit at or
-  under it, decaying smoothly past it, multiplicatively (being fast can't offset being
-  wrong, or vice versa — the same AND logic the pass gate itself uses). Combos with
-  no time samples (Song-mode-only, or no history) get full speed credit. A combo with no
-  recent history scores at the uniform baseline (1). Drives both weighted pick below and
-  the §7 chord stats grade.
+- **Chord score**: a combo's recent accuracy times a **speed factor** — the
+  piecewise-linear ramp defined by the §7.5 grade seconds: full credit (1) at or under
+  **1 s**, then **0.2 lower per second** — 0.8 at 2 s, 0.6 at 3 s, 0.4 at 4 s, 0.2 at
+  5 s — running down to **0** at the §6.2 recording ceiling (10 s). The two axes
+  multiply, so being fast can't offset being wrong or vice versa — which is also
+  what makes this score fit to gate §5.1's pass. Because the ramp's cut points *are* the grade thresholds,
+  a flawless recent window grades exactly on those round seconds (§7.5). Combos with no
+  time samples (Song-mode-only, or no history) get full speed credit, and a combo with
+  no recent history scores at the uniform baseline (1) — the same score a clean,
+  S-speed combo earns, so drilling a chord to an S never makes it crowd out an
+  untouched one. Drives both weighted pick below and the §7 chord stats grade.
 - **Weighted pick**: combos with a lower chord score are more likely to be selected —
   so both a higher recent-miss rate and a slower recent average time-to-correct pull a
   combo toward the front. Combos with no history get a uniform baseline weight, so a
@@ -383,11 +402,20 @@ flashcard-style batches instead of the whole pool at once:
   positional passed indices, like a diatonic key change) carries onto the new
   order, so no progress is lost, though which chords are open shifts with it.
 - A fresh preset starts with the **first 3** chords unlocked (clamped to the pool).
-- A chord is **passed** by one Practice-mode attempt that is both **first-try
-  correct** and **under 2000 ms** time-to-correct — one fast success, not real
-  mastery, hence the wording. All the chord's voicing combos count toward the
-  same chord; Learn-mode prompts, skips, and Song-mode bars never pass anything
-  (they record no self-paced outcome).
+- A chord is **passed** by a Practice-mode attempt after which its **grade is D or
+  better** (§7.5) — every letter but F. The pass bar is therefore the grade the
+  player already reads everywhere else rather than a private threshold: "learned"
+  means the recent window of reps is no longer failing, not real mastery, hence
+  the wording. (Draft v9 replaced the original bar — one first-try success under
+  2000 ms — because a single lucky rep passed a chord the stats still graded F,
+  and because a steady-but-unhurried player could never unlock anything at all.)
+  A chord spanning several voicing combos takes the **worst** combo's grade, the
+  same figure Home's In play row shows, so a chord can't read red there and pass
+  here; combos with no history yet don't count against it. Passing is a **latch** —
+  a chord whose grade later falls back to F stays passed and its unlock stays
+  open, since the unlock queue is a ratchet and the live grade is reported
+  elsewhere anyway. Learn-mode prompts, skips, and Song-mode bars never pass
+  anything (they record no self-paced outcome).
 - Once **every** unlocked chord is passed, the **next 2** unlock, repeating until
   the whole pool is open — after which generation behaves exactly as above. The
   upcoming-preview queue is rebuilt at the moment of an unlock (the pool changed,
@@ -453,6 +481,18 @@ lifecycle per prompt:
    punished, and doesn't advance hint stages).
 4. **Skip:** a manual Skip button advances without counting against accuracy stats or
    the missed-chord weighting.
+
+**Time-to-correct ceiling.** A recorded time-to-correct is clamped to **10 000 ms**.
+A prompt left sitting — a pause to think, a distraction, a walk away from the
+keyboard — is not a 47-second recall, and one of them would otherwise drag the
+combo's recent average, and so its weighting (§5) and grade (§7.5), for the whole
+window after. The clamp is applied once, where the completed prompt is recorded, so
+per-combo stats, unlock progress, the session tallies, the Report log and the day's
+summed time all see the same capped value; past it the feedback pill reads `10.0s+`
+(§7.3). The ceiling sits well above the §7.3 slow bar, so a clamped rep is always
+already flagged slow — the clamp only decides *how far* past it counts. The §7.3
+ready gate handles the other end of the same problem — the walk-up before the
+*first* prompt.
 
 ### 6.3 Matching rules
 
@@ -591,7 +631,7 @@ The entry screen — the app boots here, not into practice. The no-device gate
   control (the preset picker, incl. the diatonic key picker); unlock progress —
   `N/total chords unlocked`, a bar, and how many unlock on the next pass (§5.1);
   an **In play** chip row — every unlocked chord with its letter grade (chord
-  score §5 → A–F), not-yet-passed chords tagged *learning*, plus one
+  score §5 → S–F), not-yet-passed chords tagged *learning*, plus one
   `🔒 N locked` chip — this row is the per-chord breakdown that used to live
   behind the top-bar unlock chip. The 🔒 chip is a **disclosure**: clicking it
   names the locked chords, in unlock order (§5.1), so "what's coming next" is
@@ -655,8 +695,8 @@ counts a new progression in).
 - **Ready gate** (Practice only): the Stage opens on a **Ready?** panel instead
   of a prompt — the first chord is dealt by a tap on the panel or by any note
   played, and only then does its time-to-correct clock start (§6.2). Otherwise
-  the walk-up to the keyboard lands in the first sample, which routinely pushes
-  it past the §5.1 pass bar for no musical reason. It gates the *first* prompt
+  the walk-up to the keyboard lands in the first sample, dragging the combo's
+  grade — and with it the §5.1 pass — for no musical reason. It gates the *first* prompt
   of every Stage entry, a resume (the sheet, the §6.1 gate) included, and any
   pool change arriving while it's still up leaves it up. Learn is stats-neutral
   (§5) and Song counts itself in (§6.5), so neither gates. The on-screen
@@ -729,7 +769,24 @@ counts a new progression in).
   as one shape, the answer overlay as another — so the voicing's shape stays intact; a
   shape wider than the drawn range folds the leftover notes per note.
 - **Feedback**: a pill under the prompt — correct flash + reaction time + optional
-  chime, auto-advance (default 800 ms). Misses are always **visual-only** (§9). Skip
+  chime, auto-advance (default 800 ms). A Practice-mode answer past the **slow
+  bar** turns the flash amber and adds a **`· slow`** chip. The bar is not a
+  number of its own: it is **D's second (5 s)**, the last one that still grades
+  (§7.5) — so one rep earns the chip exactly when a window of such reps would
+  grade the combo F on speed alone, and the in-the-moment feedback can't drift
+  from the letter it feeds. An answer at or under **A's second (2 s)** is the
+  mirror image — the flash turns blue with a **`· fast`** chip, marking the reps
+  that hold an A on speed alone. Between the two bars the pill is plain green: a
+  perfectly ordinary answer says nothing extra. Both chips follow the number
+  displayed, so a slow answer after a retry gets it too
+  (time-to-correct includes retries), and past the §6.2 ceiling the pill reads
+  `10.0s+` — what was actually recorded. Learn shows the answer from the start
+  and Song is clock-paced, so neither grades speed. When a rep takes a chord that
+  was still in learning (§5.1: unlocked, not yet passed) to a passing grade, the
+  pill also says **`★ learned`** — the one moment that word is news. It is the
+  same pass call §5.1 makes, decided on the judgment edge rather than on the
+  advance, so the flash announcing it is still on screen. Misses are always
+  **visual-only** (§9). Skip
   button available (excluded from stats and weighting). A **combo streak**
   (consecutive first-try correct prompts, reset by any miss; skips leave it
   untouched) rides the same flash once it reaches 10 ("🔥 10 combo"). Both edges
@@ -749,11 +806,12 @@ on the first attempt ÷ prompts (skips and Learn-mode prompts excluded);
 *time-to-correct* = prompt shown → correct match, retries included; Song bars
 count as prompts, a hit being a first-try success (§6.5).
 
-- **Session grade** (A–F): the session's first-try accuracy and average
+- **Session grade** (S–F): the session's first-try accuracy and average
   time-to-correct fed through the §5 chord-score formula — accuracy scaled by
-  the speed factor against the 2000 ms bar — mapped to the same letter
-  thresholds as the chord-stats grade, so session and per-chord grades mean the
-  same thing. Song sessions have no time samples → full speed credit, exactly
+  the speed ramp — mapped to the same letter thresholds as the chord-stats
+  grade, so session and per-chord grades mean the same thing, and a session's
+  letter reads on the same round seconds (§7.5). Note the top of the scale is
+  literal: an S session is a flawless one averaging under a second. Song sessions have no time samples → full speed credit, exactly
   as §5 scores such combos. Learn sessions are stats-neutral (§5): no grade, no
   accuracy/speed cards — just prompts played, active time, and the goal line.
 - **Stat cards**: session *First-try accuracy* and *Avg time-to-correct*, each
@@ -791,9 +849,30 @@ all sessions:
   prompts ever reached, across all sessions). The accuracy trend divides by the
   day's prompts, the time trend by its **timed** prompts (§8); a day with
   prompts but no time samples (Song only) is a gap in the time chart, not a zero.
+- **The grade (S–F)**, used here, on Home's In play row and in the session
+  report, is the §5 chord score in letters. Both of its axes are stated in the
+  units the player reads and both step one letter at a time, so the letter is
+  predictable rather than the output of a curve — **a second costs a letter, and
+  so does a miss**:
+  - **Speed** — at flawless recent accuracy: **S ≤ 1 s, A ≤ 2 s, B ≤ 3 s,
+    C ≤ 4 s, D ≤ 5 s**, F beyond. Faster than 1 s is never a bonus.
+  - **Accuracy** — the recent window is 5 outcomes, so the evenly spaced cut
+    points are exactly **5/5 → S, 4/5 → A, 3/5 → B, 2/5 → C, 1/5 → D**, 0/5 → F.
+    Since the score multiplies the axes, accuracy alone caps the letter: one miss
+    in five can't grade above A however fast the answers were.
+  - **Color**, one tier map behind every grade surface: **S blue** (the top of
+    the scale, deliberately rare), **A/B green**, **C/D neutral**, **F red**.
+    Red is F alone, because D is the §5.1 pass — a letter that unlocks the next
+    chords can't read the same as the one that doesn't. The §7.3 slow flash sits
+    at the same F boundary but stays **amber**, deliberately: one rep is a
+    warning about pace, while the red letter is a verdict on a window of them.
+  - So an **S means flawless and inside a second** — the top of the scale is
+    literal and deliberately hard, with A as the ordinary "doing well" letter.
+    §5's no-history baseline sits at that same top score (an untouched combo is
+    treated as S-equivalent, neither penalized nor favored).
 - A **chord stats** drill-down (its own screen, linked from Progress)
   lists every practiced combo — not just the top-3 worst/most-improved — with a letter
-  **grade** (A–F, from the combo's chord score, §5), attempts, lifetime and recent
+  **grade** (S–F, from the combo's chord score, §5), attempts, lifetime and recent
   accuracy, and lifetime and recent avg time-to-correct, sortable by any column. *Recent*
   windows differently per metric: accuracy uses the same window that drives weighting
   (§5, the most outcomes ever kept per combo); avg time uses its own wider window, since

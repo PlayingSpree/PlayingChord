@@ -4,6 +4,7 @@ import { useSettings } from '../store/settingsStore'
 import type { SessionReport } from '../practice'
 import { Card, RaisedButton, SectionLabel } from './ui'
 import { cx } from './cx'
+import { gradeRing } from './grades'
 
 // The end-of-session Report (DESIGN.md §7.4): a full screen replacing the
 // Draft-v5 summary modal. Headline + grade, the four stat cards with
@@ -43,7 +44,14 @@ export function ReportView({
           <span className="flex-1" />
           {report.grade !== null && (
             <div className="flex flex-col items-center gap-1">
-              <div className="flex h-[74px] w-[74px] items-center justify-center rounded-full border-[3px] border-primary bg-primary-tint text-3xl font-extrabold text-primary-light">
+              {/* The badge takes the letter's own color (§7.5) — an F in a
+                  green ring read as praise for a session that wasn't. */}
+              <div
+                className={cx(
+                  'flex h-[74px] w-[74px] items-center justify-center rounded-full border-[3px] text-3xl font-extrabold',
+                  gradeRing(report.grade),
+                )}
+              >
                 {report.grade}
               </div>
               <SectionLabel className="text-[11px]">Session grade</SectionLabel>

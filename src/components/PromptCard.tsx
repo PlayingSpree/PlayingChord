@@ -3,6 +3,9 @@ import { usePractice } from '../store/practiceStore'
 import { useSettings } from '../store/settingsStore'
 import {
   COMBO_STREAK_DISPLAY_MIN,
+  FAST_TIME_MS,
+  MAX_TIME_TO_CORRECT_MS,
+  SLOW_TIME_MS,
   type ChordNameSize,
   type Hint,
 } from '../practice'
@@ -143,7 +146,10 @@ export function PromptCard() {
 
 // The fixed-height feedback line (§7.3): a pill under the prompt. Always pairs
 // color with an icon (§6.4); misses are visual-only (§9). The combo streak
-// rides the ✔ flash once it reaches 10.
+// rides the ✔ flash once it reaches 10; a Practice answer past the §7.5 D/F
+// speed boundary turns the flash amber with a `· slow` chip, and one at or
+// under A's second earns `· fast` — plus a `learned` callout when that rep
+// lifted a chord still in learning to a passing grade (§5.1).
 function FeedbackPill() {
   const phase = usePractice((s) => s.phase)
   const reactionMs = usePractice((s) => s.reactionMs)
@@ -151,6 +157,7 @@ function FeedbackPill() {
   const hint = usePractice((s) => s.hint)
   const song = usePractice((s) => s.song)
   const mode = usePractice((s) => s.mode)
+  const justLearned = usePractice((s) => s.justLearned)
 
   const base =
     'inline-flex items-center gap-2 rounded-full px-[18px] py-1.5 font-extrabold'
@@ -165,11 +172,53 @@ function FeedbackPill() {
       </span>
     )
   } else if (phase === 'advancing' && reactionMs !== null) {
+    // Slow is a Practice-mode judgment: Learn shows the answer from the start
+    // and Song is clock-paced, so neither has a reaction time worth grading.
+    // The bar is the grade's own D/F boundary (§7.5), so the chip fires on
+    // exactly the reps that would grade the combo F on speed alone. Amber, not
+    // F's red: this is one rep, a warning about pace, while the red letter is a
+    // verdict on a whole window of them.
+    const graded = mode === 'practice' && song === null
+    const slow = graded && reactionMs > SLOW_TIME_MS
+    // Fast is the same idea from the other end (§7.3): A's second, so the chip
+    // fires on exactly the reps that would grade the combo A on speed alone.
+    const fast = graded && reactionMs <= FAST_TIME_MS
+    // At the cap the pill reports what was actually recorded (§6.2), so the
+    // number the player sees is the number their stats moved by.
+    const capped = Math.min(reactionMs, MAX_TIME_TO_CORRECT_MS)
     content = (
-      <span className={cx(base, 'bg-primary-tint text-lg text-primary-light')}>
-        ✓ {(reactionMs / 1000).toFixed(1)}s
+      <span
+        className={cx(
+          base,
+          'text-lg',
+          slow
+            ? 'bg-warn-tint text-warn'
+            : fast
+              ? 'bg-info-tint text-info-light'
+              : 'bg-primary-tint text-primary-light',
+        )}
+      >
+        ✓ {(capped / 1000).toFixed(1)}s{capped < reactionMs && '+'}
+        {slow && <span className="text-base font-semibold">· slow</span>}
+        {fast && <span className="text-base font-semibold">· fast</span>}
+        {/* The rep that took a chord still in learning to a passing grade
+            (§5.1) — the one moment "learned" is news. */}
+        {justLearned && (
+          <span className="text-base font-semibold text-primary-light">
+            ★ learned
+          </span>
+        )}
         {comboStreak >= COMBO_STREAK_DISPLAY_MIN && (
-          <span className="text-base text-primary-light">
+          <span
+            className={cx(
+              'text-base',
+              slow
+                ? 'text-warn'
+                : fast
+                  ? 'text-info-light'
+                  : 'text-primary-light',
+            )}
+          >
             🔥 {comboStreak} combo
           </span>
         )}

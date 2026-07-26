@@ -1,10 +1,10 @@
 // Flashcard-style unlock progress (DESIGN.md §5): a preset starts with only
 // its first few chords in play, and more unlock once every unlocked chord is
-// passed — a first-try success under the fast-time threshold. Pure TS; the
-// persisted record lives in storage/ and the store applies the gating.
+// passed — its grade risen to D or better (§5.1). Pure TS; the persisted record
+// lives in storage/ and the store applies the gating.
 
+import { isPassingGrade, type ComboGrade } from './stats'
 import type { Combo } from './combos'
-import type { PromptOutcome } from './stats'
 import type { ChordTypeId, PitchClass } from '../theory'
 
 // A fresh preset opens with this many chords unlocked (clamped to the pool).
@@ -12,9 +12,6 @@ export const INITIAL_UNLOCK_COUNT = 3
 
 // How many chords each completed unlock step adds.
 export const UNLOCK_BATCH_SIZE = 2
-
-// A first-try success at or under this time-to-correct passes the chord.
-export const FAST_TIME_MS = 2000
 
 // Progress is tracked per chord (root + type, across all its voicing
 // combos), keyed like comboKey minus the voicing.
@@ -66,7 +63,7 @@ export function chordOrderOf(
 // means "scale degree N" and survives a key change (§5). The field is still
 // named masteredIndices in the persisted JSON — renaming it would need a
 // schema migration for existing users, disproportionate for a wording-only
-// change (the concept itself is just "passed", see FAST_TIME_MS).
+// change (the concept itself is just "passed", see recordChordAttempt).
 export interface PresetProgressRecord {
   unlockedCount: number
   masteredIndices: number[] // sorted ascending, each < unlockedCount
@@ -121,6 +118,19 @@ export function notPassedChordKeys(
   )
 }
 
+// Is this chord unlocked but not yet passed — still being learned (§5.1)? The
+// same two conditions recordChordAttempt gates on before it looks at the grade,
+// so the Stage can say a rep was the one that learned the chord (§7.3).
+export function isChordInLearning(
+  chordOrder: readonly string[],
+  record: PresetProgressRecord,
+  chordKey: string,
+): boolean {
+  const index = chordOrder.indexOf(chordKey)
+  if (index < 0 || index >= record.unlockedCount) return false
+  return !record.masteredIndices.includes(index)
+}
+
 // Per-chord status (§7 unlock chip drill-down): every pool chord in unlock
 // order, tagged locked/unlocked/passed — the same three states the
 // generator itself gates on, just surfaced instead of aggregated into counts.
@@ -156,24 +166,30 @@ export interface ProgressUpdate {
   justUnlocked: boolean
 }
 
-// Feeds one Practice-mode outcome into the record. Only a fast first-try
-// success on a not-yet-passed unlocked chord changes anything; passing
-// the last outstanding chord unlocks the next batch (§5).
+// Feeds one Practice-mode outcome into the record, as the chord's grade *after*
+// that outcome was recorded (§5.1): a not-yet-passed unlocked chord whose grade
+// has reached D passes, and passing the last outstanding chord unlocks the
+// next batch (§5). The grade is the chord's, not one voicing's — the caller
+// folds its combos together (worstChordGrade) — and null (no history at all,
+// which an attempt just ruled out) never passes.
+//
+// Passing is a latch: a chord whose grade later falls back to F stays passed
+// and its unlock stays open. The unlock queue is a ratchet — re-locking
+// chords mid-session would take away pool the player is mid-drill on — and the
+// current grade is already reported live on Home and in Progress, so nothing is
+// hidden by the latch.
 export function recordChordAttempt(
   chordOrder: readonly string[],
   record: PresetProgressRecord,
   chordKey: string,
-  outcome: PromptOutcome,
-  timeToCorrectMs: number,
+  grade: ComboGrade | null,
 ): ProgressUpdate {
   const unchanged: ProgressUpdate = {
     record,
     changed: false,
     justUnlocked: false,
   }
-  if (outcome !== 'first-try' || timeToCorrectMs > FAST_TIME_MS) {
-    return unchanged
-  }
+  if (!isPassingGrade(grade)) return unchanged
   const index = chordOrder.indexOf(chordKey)
   if (index < 0 || index >= record.unlockedCount) return unchanged
   if (record.masteredIndices.includes(index)) return unchanged
