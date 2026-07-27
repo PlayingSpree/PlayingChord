@@ -4,7 +4,7 @@ A web app for practicing piano chords with a MIDI keyboard. The app shows a rand
 from a chosen preset, the user plays it on their connected MIDI keyboard, and the app
 validates the input and moves on to the next chord.
 
-Spec version: **9.4.0** (2026-07-27) — session-based UI. Revision history lives in
+Spec version: **9.5.0** (2026-07-27) — session-based UI. Revision history lives in
 [CHANGELOG.md](CHANGELOG.md); this document describes only what the app *is* today.
 Both previously open questions are resolved (see [§9](#9-resolved-questions)). Build
 sequencing (what gets implemented first) is intentionally left outside this document.
@@ -308,9 +308,20 @@ or machines.
   what makes this score fit to gate §5.1's pass. Because the ramp's cut points *are* the grade thresholds,
   a flawless recent window grades exactly on those round seconds (§7.5). Combos with no
   time samples (Song-mode-only, or no history) get full speed credit, and a combo with
-  no recent history scores at the uniform baseline (1) — the same score a clean,
+  no recent history *at all* scores at the uniform baseline (1) — the same score a clean,
   S-speed combo earns, so drilling a chord to an S never makes it crowd out an
   untouched one. Drives both weighted pick below and the §7 chord stats grade.
+- **Recent window**: the last **10** outcomes, the most ever kept per combo (§8).
+  Ten is a multiple of the five grade bands, so every cut point lands exactly on a
+  bucket of the window and a letter takes **two** misses to move — one rep can no
+  longer flip a grade.
+- **Evidence floor**: once a combo has *any* history, its accuracy is divided by
+  **5** until the window holds that many — the reps it hasn't played yet count as
+  misses. A combo is unproven rather than flawless or hopeless: one clean rep is
+  1/5, not 1/1. This is what keeps a single lucky rep from grading S and passing a
+  chord on its own (§5.1), and a single miss from reading as a settled F. The floor
+  is half the window, the same shape as the time window in §7.5, and it applies
+  wherever the score does — grade, weighting and pass alike, so they can't disagree.
 - **Weighted pick**: combos with a lower chord score are more likely to be selected —
   so both a higher recent-miss rate and a slower recent average time-to-correct pull a
   combo toward the front. Combos with no history get a uniform baseline weight, so a
@@ -366,6 +377,9 @@ flashcard-style batches instead of the whole pool at once:
   the wording. (9.2.0 replaced the original bar — one first-try success under
   2000 ms — because a single lucky rep passed a chord the stats still graded F,
   and because a steady-but-unhurried player could never unlock anything at all.)
+  With the §5 evidence floor the bar is **about two clean reps** at an ordinary
+  pace rather than one — one rep is 1/5 of a window, which only clears D if it
+  also lands inside S's second, where a single rep is unambiguous evidence.
   A chord spanning several voicing combos takes the **worst** combo's grade, the
   same figure Home's In play row shows, so a chord can't read red there and pass
   here; combos with no history yet don't count against it. Passing is a **latch** —
@@ -588,7 +602,8 @@ The entry screen — the app boots here, not into practice. The no-device gate
   control (the preset picker, incl. the diatonic key picker); unlock progress —
   `N/total chords unlocked`, a bar, and how many unlock on the next pass (§5.1);
   an **In play** chip row — every unlocked chord with its letter grade (chord
-  score §5 → S–F), not-yet-passed chords tagged *learning*, plus one
+  score §5 → S–F, or `new` where the evidence floor hasn't been reached, §7.5),
+  not-yet-passed chords tagged *learning* instead of lettered at all, plus one
   `🔒 N locked` chip — this row is the per-chord breakdown that used to live
   behind the top-bar unlock chip. The 🔒 chip is a **disclosure**: clicking it
   names the locked chords, in unlock order (§5.1), so "what's coming next" is
@@ -813,27 +828,41 @@ all sessions:
   so does a miss**:
   - **Speed** — at flawless recent accuracy: **S ≤ 1 s, A ≤ 2 s, B ≤ 3 s,
     C ≤ 4 s, D ≤ 5 s**, F beyond. Faster than 1 s is never a bonus.
-  - **Accuracy** — the recent window is 5 outcomes, so the evenly spaced cut
-    points are exactly **5/5 → S, 4/5 → A, 3/5 → B, 2/5 → C, 1/5 → D**, 0/5 → F.
-    Since the score multiplies the axes, accuracy alone caps the letter: one miss
-    in five can't grade above A however fast the answers were.
+  - **Accuracy** — the recent window is 10 outcomes (§5), so the evenly spaced cut
+    points land on its buckets two at a time: **10/10 → S, 8/10 → A, 6/10 → B,
+    4/10 → C, 2/10 → D**, 0/10 → F. Since the score multiplies the axes, accuracy
+    alone caps the letter: one miss in the window can't grade S however fast the
+    answers were.
   - **Color**, one tier map behind every grade surface: **S blue** (the top of
     the scale, deliberately rare), **A/B green**, **C/D neutral**, **F red**.
     Red is F alone, because D is the §5.1 pass — a letter that unlocks the next
     chords can't read the same as the one that doesn't. The §7.3 slow flash sits
     at the same F boundary but stays **amber**, deliberately: one rep is a
     warning about pace, while the red letter is a verdict on a window of them.
+  - **`new`** replaces the letter where a combo would grade F but hasn't reached
+    the §5 evidence floor — a below-floor F is arithmetic, not a verdict, and the
+    missing reps are what produced it. Neutral, never red, for that reason. Only
+    the F is hidden: a below-floor **D still shows its letter**, because passing is
+    its own proof (§5.1) and the badge must never contradict the `★ learned` pill
+    beside it. Display only — the score underneath is the floored one, so §5
+    weighting keeps drilling the combo and the pass gate keeps reading the real
+    letter. A chord folds to `new` only when nothing *proven* is failing: one
+    proven F still reads red however many unproven combos sit beside it.
   - So an **S means flawless and inside a second** — the top of the scale is
     literal and deliberately hard, with A as the ordinary "doing well" letter.
     §5's no-history baseline sits at that same top score (an untouched combo is
-    treated as S-equivalent, neither penalized nor favored).
+    treated as S-equivalent, neither penalized nor favored); a combo that has been
+    played but not yet to the floor sits below it, since its unplayed reps count
+    against it.
 - A **chord stats** drill-down (its own screen, linked from Progress)
   lists every practiced combo — not just the top-3 worst/most-improved — with a letter
   **grade** (S–F, from the combo's chord score, §5), attempts, lifetime and recent
-  accuracy, and lifetime and recent avg time-to-correct, sortable by any column. *Recent*
-  windows differently per metric: accuracy uses the same window that drives weighting
-  (§5, the most outcomes ever kept per combo); avg time uses its own wider window, since
-  more time samples are kept per combo than outcomes.
+  accuracy, and lifetime and recent avg time-to-correct, sortable by any column. Both
+  *recent* windows are the last 10, though they are capped independently (§5 outcomes,
+  §8 time samples) and need not stay equal. The accuracy *column* reports the plain
+  ratio over reps actually played — the evidence floor shapes the grade, not the
+  percentage beside it. Sorting the grade column sorts on the score behind it, so a
+  `new` row sits where its real number puts it.
 
 ### 7.6 Goals, streaks & settings
 
@@ -890,7 +919,10 @@ all matching, weighting, goal/streak, and persistence logic gets unit tests; MID
 is simulated for development without hardware.
 
 Per-combo stat record (keyed `(root, typeId, voicingId)`, §5): attempts, first-try
-successes, recent-miss window, time-to-correct samples. Daily record: date, active
+successes, recent-miss window (the last **10** outcomes), time-to-correct samples
+(the last 20). The outcome window widened from 5 to 10 in 9.5.0 without a schema
+bump: records written under the narrower one are short, not invalid, and simply
+fill up from there. Daily record: date, active
 minutes, prompts (every judged prompt, Song bars included), first-try successes,
 **timed prompts** (those carrying a time sample, i.e. prompts minus the day's Song
 bars) and the day's summed time-to-correct ms — the Progress trends (§7.5) and the

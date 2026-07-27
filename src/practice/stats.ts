@@ -8,20 +8,35 @@ import type { VoicingLibrary } from '../theory'
 
 export type PromptOutcome = 'first-try' | 'missed'
 
-// How many most-recent prompt outcomes per combo feed the miss rate.
-export const RECENT_OUTCOME_WINDOW = 5
+// How many most-recent prompt outcomes per combo feed the miss rate — also
+// the most outcomes ever persisted per combo, so accuracy can't recover a
+// wider window than this. A multiple of 5 keeps every grade cut (§7.5:
+// .2/.4/.6/.8) landing exactly on a bucket of the window, so the letters
+// never turn on a rounding edge; 10 buys two misses per letter band, which is
+// what stops one rep from flipping a grade.
+export const RECENT_OUTCOME_WINDOW = 10
+
+// The window an accuracy is divided by even when fewer outcomes exist, so a
+// combo with almost no history reads as unproven rather than as flawless or
+// hopeless (§5). Missing evidence counts against the combo: one clean rep
+// scores 1/5, not 1/1 — an S has to be earned across a run, and a single
+// miss can't drop a chord to a red F it hasn't had the chance to disprove.
+// Half the window, the same shape as RECENT_TIME_WINDOW.
+//
+// 5 is also where IMPROVED_MIN_ATTEMPTS gates the §7.3 grade-up toast, so a
+// combo is proven exactly when it becomes eligible to announce a climb —
+// deliberate, and worth keeping in step if either moves.
+export const GRADE_EVIDENCE_FLOOR = RECENT_OUTCOME_WINDOW / 2
 
 // How many time-to-correct samples are kept per combo — enough for a stable
 // per-combo average without letting persisted records grow unbounded.
 export const TIME_TO_CORRECT_SAMPLE_CAP = 20
 
 // How many of those samples count as "recent" for the §7 chord stats page's
-// recent-average time-to-correct. Deliberately its own constant rather than
-// RECENT_OUTCOME_WINDOW: that window is sized for weighting (and is the most
-// outcomes ever persisted per combo, so accuracy can't recover a bigger
-// one), while time samples have room up to TIME_TO_CORRECT_SAMPLE_CAP. Half
-// the cap smooths out one lucky/unlucky rep while still reading as "recent"
-// against the full lifetime average.
+// recent-average time-to-correct. Its own constant rather than a reuse of
+// RECENT_OUTCOME_WINDOW — the two happen to be equal, but they answer to
+// different caps (outcomes are capped by their own window, time samples by
+// TIME_TO_CORRECT_SAMPLE_CAP) and would move independently.
 export const RECENT_TIME_WINDOW = TIME_TO_CORRECT_SAMPLE_CAP / 2
 
 // Every recorded time-to-correct is clamped here (§6.2). A prompt left sitting
@@ -46,9 +61,8 @@ export interface ComboRecentHistory {
   misses: number
   total: number // outcomes in the window (≤ RECENT_OUTCOME_WINDOW)
   // Recent time-to-correct average feeding comboScore below — its own
-  // window (RECENT_TIME_WINDOW), the same split comboMetrics uses since
-  // more time samples are kept per combo than outcomes. Null when every
-  // sample is a Song-mode bar, or there's no time history yet.
+  // window (RECENT_TIME_WINDOW). Null when every sample is a Song-mode bar,
+  // or there's no time history yet.
   avgTimeToCorrectMs: number | null
 }
 
@@ -120,14 +134,16 @@ export type ComboGrade = 'S' | 'A' | 'B' | 'C' | 'D' | 'F'
 // one letter at a time, which is the whole trick: a second costs a letter, and
 // so does a miss.
 //
-// Accuracy: the recent window is RECENT_OUTCOME_WINDOW = 5 outcomes, so these
-// evenly spaced cut points are exactly the buckets 5/5 → S, 4/5 → A, 3/5 → B,
-// 2/5 → C, 1/5 → D, 0/5 → F. Since the score multiplies the two axes, accuracy
-// alone caps the letter: one miss in five can't grade above A however fast it
-// was. S's cut is a full 1 because S's second is where the speed ramp reaches
-// full credit — so an S means flawless *and* fast, and a timeless-but-clean
-// combo (no time data, a fresh one) sits at that same 1, neither penalized nor
-// favored by §5 weighting.
+// Accuracy: the recent window is RECENT_OUTCOME_WINDOW = 10 outcomes, and the
+// evenly spaced cut points land on its buckets two at a time — 10/10 → S, 8/10
+// → A, 6/10 → B, 4/10 → C, 2/10 → D, 0/10 → F — so a single rep never flips a
+// letter on its own. Since the score multiplies the two axes, accuracy alone
+// caps the letter: one miss in the window can't grade S however fast it was.
+// S's cut is a full 1 because S's second is where the speed ramp reaches full
+// credit — so an S means flawless *and* fast, and a timeless-but-clean combo
+// (no time data) sits at that same 1, neither penalized nor favored by §5
+// weighting. A combo short of GRADE_EVIDENCE_FLOOR reps can't reach the top of
+// the scale at all: its unplayed reps divide into the accuracy as misses.
 const GRADE_MIN_SCORE: Record<Exclude<ComboGrade, 'F'>, number> = {
   S: 1,
   A: 0.8,
@@ -194,16 +210,26 @@ function scoreOf(accuracy: number, avgTimeToCorrectMs: number | null): number {
   )
 }
 
-// A combo with no recent history scores at the uniform baseline (1), same
-// as comboWeight's old no-history case — a fresh combo is neither penalized
-// nor favored.
+// A combo with no recent history at all scores at the uniform baseline (1),
+// same as comboWeight's old no-history case — an untouched combo is neither
+// penalized nor favored, since §5 has nothing to go on yet.
+//
+// Once there *is* history the divisor is GRADE_EVIDENCE_FLOOR until the window
+// fills that far, so the missing reps count as misses. One clean rep is 1/5,
+// not a flawless 1/1: without this, the first outcome on a combo decided its
+// whole letter — a lone miss read F and a lone lucky rep read S *and passed
+// the chord* (§5.1), which is the bar 9.2.0 was trying to raise.
 export function comboScore(history: ComboRecentHistory | null): number {
   if (history === null || history.total === 0) return 1
-  // (total − misses) / total, not 1 − misses/total: the cut points sit exactly
-  // on the window's buckets, and the latter lands 1/5 a hair under 0.2.
-  return scoreOf(
-    (history.total - history.misses) / history.total,
-    history.avgTimeToCorrectMs,
+  return scoreOf(recentAccuracyOf(history), history.avgTimeToCorrectMs)
+}
+
+// (total − misses) / divisor, not 1 − misses/divisor: the cut points sit
+// exactly on the window's buckets, and the latter lands a hair under them.
+function recentAccuracyOf(history: ComboRecentHistory): number {
+  return (
+    (history.total - history.misses) /
+    Math.max(history.total, GRADE_EVIDENCE_FLOOR)
   )
 }
 
@@ -286,11 +312,9 @@ export function worstChordGrade(
 
 // A per-combo metrics snapshot for the §7 chord stats page — every persisted
 // combo, not just the top-N worst/most-improved lists. Lifetime figures use
-// the full stored history. The two recent figures use different windows:
-// recentAccuracy uses RECENT_OUTCOME_WINDOW, the same one that drives
-// weighting and rankWorstCombos, because that's the most outcomes ever kept
-// per combo; recentAvgTimeToCorrectMs uses the wider RECENT_TIME_WINDOW,
-// since time samples have more room to work with (see both constants above).
+// the full stored history; the recent ones use RECENT_OUTCOME_WINDOW and
+// RECENT_TIME_WINDOW, which are both 10 but capped independently (see the
+// constants above).
 export interface ComboMetrics {
   attempts: number
   lifetimeAccuracy: number
@@ -313,20 +337,52 @@ function average(samples: readonly number[]): number | null {
 
 export function comboMetrics(record: ComboStatRecord): ComboMetrics {
   const recent = recentHistoryOf(record)
-  const recentAccuracy = recent === null ? 1 : 1 - recent.misses / recent.total
-  const recentAvgTimeToCorrectMs = average(
-    record.timeToCorrectMs.slice(-RECENT_TIME_WINDOW),
-  )
-  const score = scoreOf(recentAccuracy, recentAvgTimeToCorrectMs)
+  const score = comboScore(recent)
   return {
     attempts: record.attempts,
     lifetimeAccuracy: record.firstTrySuccesses / record.attempts,
-    recentAccuracy,
+    // The plain ratio over the reps actually played, *not* the floored one
+    // the score uses: a combo that has gone 2-for-2 really is at 100%, even
+    // though it grades D until there's more of a window to read.
+    recentAccuracy: recent === null ? 1 : 1 - recent.misses / recent.total,
     lifetimeAvgTimeToCorrectMs: average(record.timeToCorrectMs),
-    recentAvgTimeToCorrectMs,
+    recentAvgTimeToCorrectMs:
+      recent === null ? null : recent.avgTimeToCorrectMs,
     score,
     grade: comboGrade(score),
   }
+}
+
+// Has this combo enough recent outcomes for its letter to mean anything
+// (§7.5)? Below the floor an F is arithmetic, not a verdict — the missing
+// reps are what produced it.
+function isProven(record: ComboStatRecord): boolean {
+  const recent = recentHistoryOf(record)
+  return recent !== null && recent.total >= GRADE_EVIDENCE_FLOOR
+}
+
+// The grade as shown (§7.5). `new` stands in for an F a combo hasn't had the
+// chance to disprove yet — everything else shows its letter, including a
+// below-floor D, because passing is its own proof (§5.1) and the `★ learned`
+// pill must never contradict the badge beside it. Display only: comboScore
+// still returns the floored number, so §5 weighting keeps drilling the combo
+// and the pass gate keeps seeing the real letter.
+export type DisplayGrade = ComboGrade | 'new'
+
+export function displayGrade(record: ComboStatRecord): DisplayGrade {
+  const { grade } = comboMetrics(record)
+  return grade === 'F' && !isProven(record) ? 'new' : grade
+}
+
+// The same rule folded over a chord's combos for Home's In play row (§7.1):
+// `new` only when nothing proven is failing. A chord with one proven F still
+// reads F however many unproven combos sit beside it.
+export function worstChordDisplayGrade(
+  records: readonly ComboStatRecord[],
+): DisplayGrade | null {
+  const worst = worstChordGrade(records)
+  if (worst !== 'F') return worst
+  return records.some((record) => displayGrade(record) === 'F') ? 'F' : 'new'
 }
 
 export interface ComboRow {

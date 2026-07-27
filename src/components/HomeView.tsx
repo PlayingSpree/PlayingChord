@@ -9,7 +9,11 @@ import {
   meetsGoal,
   weekFirstTryDelta,
 } from '../storage'
-import { worstChordGrade, type ComboGrade, type SessionMode } from '../practice'
+import {
+  worstChordDisplayGrade,
+  type DisplayGrade,
+  type SessionMode,
+} from '../practice'
 import { DevicePicker } from './DevicePicker'
 import { Card, Chip, RaisedButton, SectionLabel } from './ui'
 import { cx } from './cx'
@@ -75,7 +79,7 @@ export function HomeView({
           key: chord.key,
           label: chord.label,
           passed: chord.passed,
-          grade: worstChordGrade(records),
+          grade: worstChordDisplayGrade(records),
         }
       })
     // Locked chords keep their unlock order (§5.1) — the list reads as
@@ -285,7 +289,7 @@ function InPlayChip({
 }: {
   label: string
   passed: boolean
-  grade: ComboGrade | null
+  grade: DisplayGrade | null
 }) {
   if (!passed) {
     return (

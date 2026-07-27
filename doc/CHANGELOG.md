@@ -15,6 +15,29 @@ artifact and are not recoverable.
 
 ---
 
+## 9.5.0 — 2026-07-27
+
+**A grade now has to be earned.** Two changes to the §5 chord score, and one to
+how it's shown.
+
+The **recent window widens from 5 to 10** outcomes, so a letter takes two misses
+to move and no single rep flips a grade. Ten keeps every cut point landing exactly
+on a bucket of the window.
+
+An **evidence floor** divides accuracy by 5 until the window holds that many —
+the reps a combo hasn't played count as misses. At one recorded outcome the letter
+used to be meaningless in both directions: a lone miss graded F, and a lone lucky
+rep graded S *and passed the chord* (§5.1), which is the bar 9.2.0 was raising.
+Passing is now about two clean reps at an ordinary pace, or one inside S's second
+where a single rep is unambiguous. The floor is 5 — the old window — so **no
+already-practiced combo changes grade**; it bites only on new ones. It applies
+wherever the score does, so grade, weighting and pass can't disagree.
+
+**`new`** replaces the letter where a combo would grade F but hasn't reached the
+floor (§7.5) — neutral, never red, because a below-floor F is arithmetic rather
+than a verdict. A below-floor D still shows its letter: passing is its own proof,
+and the badge must never contradict the `★ learned` pill beside it.
+
 ## 9.4.0 — 2026-07-27
 
 **Switching mode ends the combo streak** (§7.3). Only Practice can break a

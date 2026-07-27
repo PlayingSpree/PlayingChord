@@ -93,6 +93,20 @@ describe('sanitizeComboStats', () => {
     expect(stats.key?.timeToCorrectMs?.at(-1)).toBe(0) // -5.7 clamped
   })
 
+  it('carries a record stored under the older, narrower window through as-is', () => {
+    // The outcome window widened to 10 without a schema bump: records written
+    // when it was 5 are short, not invalid, and simply fill up from here.
+    const stats = sanitizeComboStats({
+      key: {
+        attempts: 5,
+        firstTrySuccesses: 4,
+        recentOutcomes: ['first-try', 'first-try', 'missed', 'first-try', 'first-try'], // prettier-ignore
+        timeToCorrectMs: [1000, 1000, 4000, 1000, 1000],
+      },
+    })
+    expect(stats.key?.recentOutcomes).toHaveLength(5)
+  })
+
   it('returns empty for non-objects', () => {
     expect(sanitizeComboStats(undefined)).toEqual({})
     expect(sanitizeComboStats([1, 2])).toEqual({})

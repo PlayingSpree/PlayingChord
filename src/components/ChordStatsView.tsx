@@ -4,10 +4,13 @@ import {
   allComboRows,
   comboLabel,
   comboMetrics,
+  displayGrade,
+  GRADE_EVIDENCE_FLOOR,
   GRADE_TIME_MS,
   RECENT_OUTCOME_WINDOW,
   RECENT_TIME_WINDOW,
   type ComboMetrics,
+  type DisplayGrade,
 } from '../practice'
 import { voicingLibrary } from '../theory'
 import { useLibrary } from '../store/libraryStore'
@@ -18,14 +21,17 @@ import { gradeTint } from './grades'
 // The §7.5 chord stats drill-down (reached from Progress): every combo ever
 // practiced, not just the top-3 worst/most-improved lists — sortable so any
 // axis (accuracy, speed, volume) can lead. Lifetime and recent figures sit
-// side by side per metric — "recent" windows differently per metric
-// (comboMetrics): accuracy uses the same window as weighting, time uses its
-// own wider one, since more time samples are kept per combo.
+// side by side per metric, both "recent" windows being the last 10
+// (comboMetrics).
 
 interface Row {
   key: string
   label: string
   metrics: ComboMetrics
+  // The letter as shown: `new` where the combo hasn't the reps to justify an
+  // F yet (§7.5). Sorting still uses metrics.score, so a `new` row sorts by
+  // the real number behind the badge.
+  grade: DisplayGrade
 }
 
 type ColumnId =
@@ -57,7 +63,7 @@ const COLUMNS: ColumnDef[] = [
     label: 'Grade',
     defaultDir: 'asc',
     value: (row) => row.metrics.score,
-    format: (row) => row.metrics.grade,
+    format: (row) => row.grade,
   },
   {
     id: 'attempts',
@@ -128,6 +134,7 @@ export function ChordStatsView({ onBack }: { onBack: () => void }) {
       key: row.key,
       label: comboLabel(row.combo, undefined, library),
       metrics: comboMetrics(row.record),
+      grade: displayGrade(row.record),
     }))
   }, [customRules])
 
@@ -220,7 +227,7 @@ export function ChordStatsView({ onBack }: { onBack: () => void }) {
                       {COLUMNS.map((col) => (
                         <td key={col.id} className="px-4 py-2.5 text-ink-soft">
                           {col.id === 'grade' ? (
-                            <GradeBadge grade={row.metrics.grade} />
+                            <GradeBadge grade={row.grade} />
                           ) : (
                             col.format(row)
                           )}
@@ -235,14 +242,19 @@ export function ChordStatsView({ onBack }: { onBack: () => void }) {
               Every combo practiced so far, lifetime across all presets. Recent
               accuracy is the last {RECENT_OUTCOME_WINDOW} attempts (the same
               window that drives weighting); recent avg time is the last{' '}
-              {RECENT_TIME_WINDOW}. Grade (A–F) folds recent accuracy and speed
+              {RECENT_TIME_WINDOW}. Grade (S–F) folds recent accuracy and speed
               into one figure — the same one that drives which chords come up
               more often, and that gates new unlocks. On a clean window the
               letters are seconds — S within {GRADE_TIME_MS.S / 1000}s, A{' '}
               {GRADE_TIME_MS.A / 1000}s, B {GRADE_TIME_MS.B / 1000}s, C{' '}
               {GRADE_TIME_MS.C / 1000}s, D {GRADE_TIME_MS.D / 1000}s — and
               accuracy costs a letter just as a second does: one miss in{' '}
-              {RECENT_OUTCOME_WINDOW} can't grade above A, however fast.
+              {RECENT_OUTCOME_WINDOW} can't grade S, however fast. Under{' '}
+              {GRADE_EVIDENCE_FLOOR} recent attempts the reps you haven't played
+              count against the grade, so a combo that has only ever been missed
+              can't pass on one bad rep and a lucky one can't take the top of
+              the scale — <b className="text-ink-soft">new</b> stands in for a
+              failing grade there until the window fills.
             </p>
           </>
         )}
@@ -251,11 +263,13 @@ export function ChordStatsView({ onBack }: { onBack: () => void }) {
   )
 }
 
-function GradeBadge({ grade }: { grade: ComboMetrics['grade'] }) {
+function GradeBadge({ grade }: { grade: DisplayGrade }) {
   return (
     <span
       className={cx(
-        'inline-flex h-7 w-7 items-center justify-center rounded-lg text-sm font-extrabold',
+        // min-w rather than a fixed square: the letters and the `new` stand-in
+        // share one badge, so the word widens it instead of overflowing.
+        'inline-flex h-7 min-w-7 items-center justify-center rounded-lg px-1.5 text-sm font-extrabold',
         gradeTint(grade),
       )}
     >

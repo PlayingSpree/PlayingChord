@@ -132,9 +132,9 @@ describe('comboWeight (§5)', () => {
     expect(comboWeight({ misses: 5, total: 5, avgTimeToCorrectMs: null })).toBe(
       1 + MISS_WEIGHT_BOOST,
     )
-    expect(comboWeight({ misses: 1, total: 2, avgTimeToCorrectMs: null })).toBe(
-      1 + MISS_WEIGHT_BOOST / 2,
-    )
+    expect(
+      comboWeight({ misses: 5, total: 10, avgTimeToCorrectMs: null }),
+    ).toBe(1 + MISS_WEIGHT_BOOST / 2)
   })
 
   it('also scales with recent average time-to-correct, independent of accuracy', () => {

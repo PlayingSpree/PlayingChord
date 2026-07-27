@@ -11,6 +11,7 @@ import {
   comboMetrics,
   DEFAULT_PRACTICE_SETTINGS,
   GRADE_TIME_MS,
+  RECENT_OUTCOME_WINDOW,
   INITIAL_UNLOCK_COUNT,
   InMemoryComboStats,
   MAX_TIME_TO_CORRECT_MS,
@@ -616,9 +617,11 @@ describe('practiceStore — unlock progress (§5)', () => {
   it('merely slow reps still pass — the bar is D, not speed (§5.1)', () => {
     const s = setup({ presets: sixRoots })
     let advances = 0
+    // Slow reps clear the bar by accumulating a window rather than by being
+    // quick, so this takes several reps per chord (§5 evidence floor).
     while (
       s.store.getState().progress.unlocked === INITIAL_UNLOCK_COUNT &&
-      advances < 10
+      advances < 40
     ) {
       vi.advanceTimersByTime(4500) // D-paced: slow, but not failing
       playCorrectAndAdvance(s, s.store.getState().prompt!)
@@ -1315,17 +1318,17 @@ describe('practiceStore — grade-up notice (§7.3)', () => {
   })
   const KEY = '0:maj:any'
 
-  // Enough history to grade honestly: 5 attempts, 3 of them missed. Seeded at
-  // S speed (§7.5's 1 s) so the speed axis is full credit and the letter is
-  // pure accuracy — 2/5 is a C.
+  // A full recent window, oldest first, seeded at S speed (§7.5's 1 s) so the
+  // speed axis is full credit and the letter is pure accuracy: 7 of 10 is a B.
+  // The next first-try pushes the oldest miss out of the window — 8 of 10, an
+  // A — which is what a climb looks like once two misses make a letter.
   const seeded = () => {
     const stats = new InMemoryComboStats()
     const history = [
       'missed',
       'missed',
       'missed',
-      'first-try',
-      'first-try',
+      ...Array<'first-try'>(RECENT_OUTCOME_WINDOW - 3).fill('first-try'),
     ] as const
     for (const outcome of history) stats.record(KEY, outcome, GRADE_TIME_MS.S)
     return stats
@@ -1333,15 +1336,15 @@ describe('practiceStore — grade-up notice (§7.3)', () => {
 
   it('announces a combo whose grade climbs, then clears itself', () => {
     const stats = seeded()
-    expect(comboGrade(comboMetrics(stats.get(KEY)!).score)).toBe('C')
+    expect(comboGrade(comboMetrics(stats.get(KEY)!).score)).toBe('B')
     const s = setup({ presets: onePreset, stats })
 
-    playCorrectAndAdvance(s, s.store.getState().prompt!) // 3/5 → B
+    playCorrectAndAdvance(s, s.store.getState().prompt!) // 8/10 → A
 
     expect(s.store.getState().gradeUp).toEqual({
       label: 'C maj',
-      from: 'C',
-      to: 'B',
+      from: 'B',
+      to: 'A',
     })
     vi.advanceTimersByTime(JUST_UNLOCKED_FLASH_MS)
     expect(s.store.getState().gradeUp).toBeNull()
@@ -1362,7 +1365,7 @@ describe('practiceStore — grade-up notice (§7.3)', () => {
     const prompt = s.store.getState().prompt!
     s.press(61, 62, 63) // miss…
     s.releaseAll()
-    playCorrectAndAdvance(s, prompt) // …recorded as missed: 2/5, still C or worse
+    playCorrectAndAdvance(s, prompt) // …recorded as missed: 7/11, still B or worse
 
     expect(s.store.getState().gradeUp).toBeNull()
   })

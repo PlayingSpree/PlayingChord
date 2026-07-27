@@ -26,8 +26,10 @@ The comment on `bestAvgTimeToCorrectMs` (`src/practice/session.ts`) claims the
 per-chord average means "one lucky rep on an easy chord can't win best" — but a
 chord attempted exactly once in the session has that one rep as its average.
 
-- [ ] Gate the stat on ≥2 session attempts for that chord, or soften the
-      comment.
+- [x] Gate the stat on ≥2 session attempts for that chord, or soften the
+      comment. Resolved by deleting the stat (9.3.0): it, `slowest` and `worst`
+      were computed and typed but never rendered — the v9 Report dropped them
+      and the spec never noticed.
 
 ## 3. Grades are noisy at low sample counts
 
@@ -35,8 +37,15 @@ chord attempted exactly once in the session has that one rep as its average.
 missed attempt shows an immediate F on the chord stats page. The pattern for
 the fix already exists: `IMPROVED_MIN_ATTEMPTS = 5` gates "most improved".
 
-- [ ] Show "—" instead of a grade below a small attempt floor. (Weighting is
+- [x] Show "—" instead of a grade below a small attempt floor. (Weighting is
       unaffected — low-evidence swings there are fine and self-correcting.)
+      Fixed differently in 9.5.0, because 9.2.0 put the grade in charge of
+      unlocking and a display-only floor would have left the pass gate, Home's
+      chips and the `★ learned` pill each needing their own answer. Instead the
+      *score* gained an evidence floor — unplayed reps count as misses — which
+      fixes the noise at both ends (a lucky rep no longer grades S or passes a
+      chord), and `new` stands in for the letter only where an F isn't yet
+      earned. Weighting inherits the floor deliberately: one number, one meaning.
 
 ## 4. Streak quietly survives mode detours
 
@@ -44,11 +53,13 @@ the fix already exists: `IMPROVED_MIN_ATTEMPTS = 5` gates "most improved".
 Learn/Song excursion and resumes after — Learn records no misses, so a detour
 can never break it. DESIGN.md §7 only says it resets on "any miss".
 
-- [ ] Either reset the streak on mode switch or note the behavior in the spec.
+- [x] Either reset the streak on mode switch or note the behavior in the spec.
+      Reset (9.4.0). Narrower than it read here: session start/end already
+      zeroed the streak, so only within-session detours were affected.
 
 ## Smaller cleanups
 
-- [ ] `src/practice/stats.ts` — `comboMetrics` recomputes the recent time
+- [x] `src/practice/stats.ts` — `comboMetrics` recomputes the recent time
       average that `recentHistoryOf` already returned as
       `recent.avgTimeToCorrectMs`; drop the duplicate slice/average.
 - [x] `src/components/PromptCard.tsx` — the streak display threshold `10` is a

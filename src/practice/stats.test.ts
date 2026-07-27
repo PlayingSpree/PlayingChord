@@ -7,7 +7,9 @@ import {
   comboMetrics,
   comboScore,
   COMBO_GRADE_ORDER,
+  displayGrade,
   FAST_TIME_MS,
+  GRADE_EVIDENCE_FLOOR,
   gradeRank,
   IMPROVED_MIN_ATTEMPTS,
   InMemoryComboStats,
@@ -22,6 +24,7 @@ import {
   RECENT_TIME_WINDOW,
   SLOW_TIME_MS,
   TIME_TO_CORRECT_SAMPLE_CAP,
+  worstChordDisplayGrade,
   worstChordGrade,
   type ComboStatRecord,
 } from './stats'
@@ -50,6 +53,87 @@ describe('worstChordGrade (§7.1 In play)', () => {
     expect(worstChordGrade([strong, weakRecord])).toBe(
       comboGrade(comboMetrics(weakRecord).score),
     )
+  })
+})
+
+describe('the evidence floor (§5, §7.5)', () => {
+  const scoreAfter = (cleanReps: number) =>
+    comboScore(recentHistoryOf(cleanRecord(cleanReps, 2500)))
+
+  it('divides by the floor until the window fills that far', () => {
+    // ~2.5s is 0.7 on the speed ramp, so these are accuracy × 0.7. The reps
+    // not yet played count as misses: one clean rep is 1/5, not 1/1.
+    expect(scoreAfter(1)).toBeCloseTo(0.2 * 0.7)
+    expect(scoreAfter(2)).toBeCloseTo(0.4 * 0.7)
+    expect(scoreAfter(GRADE_EVIDENCE_FLOOR)).toBeCloseTo(0.7)
+    // Past the floor the divisor is the real count again, so the floor can
+    // never hold a proven combo down.
+    expect(scoreAfter(GRADE_EVIDENCE_FLOOR + 3)).toBeCloseTo(0.7)
+  })
+
+  it('keeps a lone lucky rep off the top of the scale', () => {
+    // One flawless rep inside S's second used to grade S — and pass the chord
+    // (§5.1) on that single rep.
+    expect(comboGrade(comboScore(recentHistoryOf(cleanRecord(1, 500))))).toBe(
+      'D',
+    )
+    expect(
+      comboGrade(
+        comboScore(recentHistoryOf(cleanRecord(GRADE_EVIDENCE_FLOOR, 500))),
+      ),
+    ).toBe('S')
+  })
+
+  it('leaves every already-proven record untouched', () => {
+    // The floor is the old window, so nothing persisted before it existed
+    // changes grade: a full window of 5 divides by 5 either way.
+    const proven = cleanRecord(GRADE_EVIDENCE_FLOOR, 2000)
+    expect(comboMetrics(proven).score).toBeCloseTo(0.8)
+    expect(comboMetrics(proven).grade).toBe('A')
+  })
+
+  it('cannot pass a chord that has only ever been missed (§5.1)', () => {
+    const missedOnce = applyOutcome(null, 'missed', 3000)
+    expect(comboMetrics(missedOnce).grade).toBe('F')
+    expect(isPassingGrade(worstChordGrade([missedOnce]))).toBe(false)
+  })
+})
+
+describe('displayGrade / worstChordDisplayGrade (§7.5 `new`)', () => {
+  const missedRecord = (n: number): ComboStatRecord => {
+    let record: ComboStatRecord | null = null
+    for (let i = 0; i < n; i++) record = applyOutcome(record, 'missed', 3000)
+    return record!
+  }
+
+  it('shows `new` for an F the combo has not had the reps to disprove', () => {
+    expect(displayGrade(missedRecord(1))).toBe('new')
+    expect(displayGrade(missedRecord(GRADE_EVIDENCE_FLOOR - 1))).toBe('new')
+  })
+
+  it('shows the F once the window reaches the floor', () => {
+    expect(displayGrade(missedRecord(GRADE_EVIDENCE_FLOOR))).toBe('F')
+  })
+
+  it('shows a below-floor letter as itself — passing is its own proof', () => {
+    // Two clean reps grade D and pass the chord, so the badge has to say D:
+    // a `new` beside the ★ learned pill would contradict it.
+    expect(displayGrade(cleanRecord(2, 2500))).toBe('D')
+  })
+
+  it('folds a chord to `new` only when nothing proven is failing', () => {
+    const unprovenF = missedRecord(1)
+    const provenF = missedRecord(GRADE_EVIDENCE_FLOOR)
+    const passing = cleanRecord(GRADE_EVIDENCE_FLOOR, 2000)
+
+    expect(worstChordDisplayGrade([unprovenF])).toBe('new')
+    // A proven F drags the chord red however many unproven combos sit beside it.
+    expect(worstChordDisplayGrade([unprovenF, provenF])).toBe('F')
+    // An unproven F still outranks a passing combo — the chord isn't passed,
+    // it just has nothing to show yet.
+    expect(worstChordDisplayGrade([unprovenF, passing])).toBe('new')
+    expect(worstChordDisplayGrade([passing])).toBe('A')
+    expect(worstChordDisplayGrade([])).toBeNull()
   })
 })
 
@@ -169,7 +253,7 @@ describe('comboScore / comboGrade (§5 prioritization, §7 chord stats grade)', 
   })
 
   it('is pure recent accuracy when there is no time data', () => {
-    expect(comboScore({ misses: 1, total: 4, avgTimeToCorrectMs: null })).toBe(
+    expect(comboScore({ misses: 2, total: 8, avgTimeToCorrectMs: null })).toBe(
       0.75,
     )
   })
@@ -218,8 +302,8 @@ describe('comboScore / comboGrade (§5 prioritization, §7 chord stats grade)', 
 
   it('scales speed multiplicatively with accuracy', () => {
     const score = comboScore({
-      misses: 1,
-      total: 4, // 75% accuracy
+      misses: 2,
+      total: 8, // 75% accuracy
       avgTimeToCorrectMs: 2000, // 0.8 on the speed ramp (A's second)
     })
     expect(score).toBeCloseTo(0.75 * 0.8)
@@ -234,8 +318,9 @@ describe('comboScore / comboGrade (§5 prioritization, §7 chord stats grade)', 
           avgTimeToCorrectMs: 0, // as fast as it gets
         }),
       )
-    // A miss costs exactly one letter, the same as a second does.
-    expect([0, 1, 2, 3, 4, 5].map(gradeAtAccuracy)).toEqual([
+    // Two misses cost exactly one letter over a window of ten, so the cut
+    // points still land on buckets and no single rep flips a grade.
+    expect([0, 2, 4, 6, 8, 10].map(gradeAtAccuracy)).toEqual([
       'S',
       'A',
       'B',
@@ -243,6 +328,8 @@ describe('comboScore / comboGrade (§5 prioritization, §7 chord stats grade)', 
       'D',
       'F',
     ])
+    // A lone miss can't take the top of the scale, however fast.
+    expect(gradeAtAccuracy(1)).toBe('A')
   })
 
   it('a miss floors the score at 0 regardless of speed', () => {
@@ -412,7 +499,9 @@ describe('comboMetrics (§7 chord stats page)', () => {
     }
     const metrics = comboMetrics(record!)
     expect(metrics.attempts).toBe(3 + RECENT_OUTCOME_WINDOW)
-    expect(metrics.lifetimeAccuracy).toBeCloseTo(5 / 8)
+    expect(metrics.lifetimeAccuracy).toBeCloseTo(
+      RECENT_OUTCOME_WINDOW / (3 + RECENT_OUTCOME_WINDOW),
+    )
     expect(metrics.recentAccuracy).toBe(1) // old misses fell out of the window
   })
 
@@ -449,14 +538,17 @@ describe('comboMetrics (§7 chord stats page)', () => {
     expect(metrics.attempts).toBe(2)
     expect(metrics.lifetimeAvgTimeToCorrectMs).toBeNull()
     expect(metrics.recentAvgTimeToCorrectMs).toBeNull()
-    // No time data → pure accuracy score (1 of 2 recent outcomes missed).
-    expect(metrics.score).toBe(0.5)
-    expect(metrics.grade).toBe('C')
+    // No time data → pure accuracy score. One of two landed, and the three
+    // reps still owed to the evidence floor count as misses: 1/5.
+    expect(metrics.score).toBe(0.2)
+    expect(metrics.grade).toBe('D')
+    // The accuracy *column* stays honest about the reps actually played.
+    expect(metrics.recentAccuracy).toBe(0.5)
   })
 
   it('folds recent accuracy and recent speed into a score and grade', () => {
     let record: ComboStatRecord | null = null
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < GRADE_EVIDENCE_FLOOR; i++) {
       record = applyOutcome(record, 'first-try', 1000)
     }
     const metrics = comboMetrics(record!)
