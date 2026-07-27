@@ -27,7 +27,7 @@ export function sanitizeSessionLength(value: unknown): number | null {
 export const FIRST_TRY_STREAK_DISPLAY_MIN = 10
 
 // One recorded prompt in a session (§7.4): a self-paced Practice prompt, or a
-// Song bar. Skips and Learn prompts never appear. The label is captured at
+// Song bar. Learn prompts never appear. The label is captured at
 // completion time so the report doesn't need the preset's spelling context
 // later. `timeToCorrectMs` is null for Song bars — a clock-paced bar has no
 // "prompt shown → correct" span (§6.5), same convention as the per-combo

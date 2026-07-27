@@ -132,6 +132,14 @@ const playCorrectAndAdvance = (s: ReturnType<typeof setup>, prompt: Prompt) => {
   vi.advanceTimersByTime(ADVANCE)
 }
 
+// Advance past a prompt without moving the §5.1 unlock queue: a clean rep
+// slower than D's second grades F on speed alone, so it can never pass a
+// chord. Generation tests use it to cycle prompts over a fixed pool.
+const playSlowAndAdvance = (s: ReturnType<typeof setup>, prompt: Prompt) => {
+  vi.advanceTimersByTime(6000) // past D's second (§7.5)
+  playCorrectAndAdvance(s, prompt)
+}
+
 beforeEach(() => {
   vi.useFakeTimers()
 })
@@ -266,26 +274,6 @@ describe('practiceStore — miss & retry (§6.2 steps 2–3)', () => {
       kind: 'constraint',
       text: 'Bass must be the 3rd',
     })
-  })
-})
-
-describe('practiceStore — skip (§6.2 step 4)', () => {
-  it('advances to a new prompt immediately', () => {
-    const { store } = setup()
-    const first = store.getState().prompt!
-    store.getState().skip()
-    expect(store.getState().prompt).not.toBe(first)
-    expect(store.getState().phase).toBe('armed')
-    expect(store.getState().missCount).toBe(0)
-  })
-
-  it('clears any hint from the skipped prompt', () => {
-    const { store, press, releaseAll } = setup()
-    press(61, 62, 63)
-    expect(store.getState().hint).not.toBeNull()
-    releaseAll()
-    store.getState().skip()
-    expect(store.getState().hint).toBeNull()
   })
 })
 
@@ -495,18 +483,6 @@ describe('practiceStore — outcome recording (§5/§7)', () => {
     expect(s.store.getState().session.firstTrySuccesses).toBe(2)
     expect(s.store.getState().firstTryStreak).toBe(2)
   })
-
-  it('records nothing for a skip, even after a miss (§6.2 step 4)', () => {
-    const stats = new InMemoryComboStats()
-    const s = setup({ presets: onePreset, stats })
-    const prompt = s.store.getState().prompt!
-
-    s.press(61, 62, 63)
-    s.releaseAll()
-    s.store.getState().skip()
-
-    expect(stats.recentHistory(promptComboKey(prompt))).toBeNull()
-  })
 })
 
 describe('practiceStore — unlock progress (§5)', () => {
@@ -534,7 +510,7 @@ describe('practiceStore — unlock progress (§5)', () => {
       s.store.getState().upcoming.forEach((u) => {
         expect(unlockedRoots).toContain(Number(u.key.split(':')[0]))
       })
-      s.store.getState().skip() // skips never pass anything
+      playSlowAndAdvance(s, s.store.getState().prompt!) // never passes
     }
     expect(s.store.getState().progress.unlocked).toBe(INITIAL_UNLOCK_COUNT)
   })
@@ -593,7 +569,7 @@ describe('practiceStore — unlock progress (§5)', () => {
     // E♭=9, F=11 — so the first unlocked three are 0, 2, 4.
     for (let i = 0; i < 20; i++) {
       expect([0, 2, 4]).toContain(s.store.getState().prompt!.chord.root)
-      s.store.getState().skip()
+      playSlowAndAdvance(s, s.store.getState().prompt!)
     }
   })
 
@@ -606,7 +582,7 @@ describe('practiceStore — unlock progress (§5)', () => {
     // of the diatonic roots (which would surface C first).
     for (let i = 0; i < 20; i++) {
       expect([7, 9, 11]).toContain(s.store.getState().prompt!.chord.root)
-      s.store.getState().skip()
+      playSlowAndAdvance(s, s.store.getState().prompt!)
     }
   })
 
@@ -625,7 +601,7 @@ describe('practiceStore — unlock progress (§5)', () => {
     s.store.getState().refreshUnlockOrder()
     for (let i = 0; i < 20; i++) {
       expect([0, 2, 4]).toContain(s.store.getState().prompt!.chord.root)
-      s.store.getState().skip()
+      playSlowAndAdvance(s, s.store.getState().prompt!)
     }
   })
 
@@ -872,17 +848,6 @@ describe('practiceStore — session stats & worst chords (§7)', () => {
     expect(s.store.getState().firstTryStreak).toBe(1)
   })
 
-  it('a miss followed by a skip still breaks the streak (§7.3)', () => {
-    const s = setup({ presets: onePreset })
-    playCorrectAndAdvance(s, s.store.getState().prompt!)
-    expect(s.store.getState().firstTryStreak).toBe(1)
-
-    s.press(61, 62, 63) // miss…
-    s.releaseAll()
-    s.store.getState().skip() // …then out of the prompt entirely
-    expect(s.store.getState().firstTryStreak).toBe(0)
-  })
-
   it('a mode switch ends the streak (§7.3)', () => {
     const s = setup({ presets: onePreset })
     playCorrectAndAdvance(s, s.store.getState().prompt!)
@@ -907,15 +872,6 @@ describe('practiceStore — session stats & worst chords (§7)', () => {
     expect(s.store.getState().firstTryStreak).toBe(0) // a Learn ✔ never counts
     s.press(61, 62, 63) // a Learn miss records nothing either
     expect(s.store.getState().firstTryStreak).toBe(0)
-  })
-
-  it('skips leave the session tallies untouched', () => {
-    const s = setup({ presets: onePreset })
-    s.store.getState().skip()
-    s.press(61, 62, 63) // even a missed-then-skipped prompt stays out
-    s.releaseAll()
-    s.store.getState().skip()
-    expect(s.store.getState().session.prompts).toBe(0)
   })
 
   it('lists missed combos under worst chords with lifetime accuracy', () => {
@@ -1031,17 +987,17 @@ describe('practiceStore — preset selection (§4)', () => {
   })
 
   it('the diatonic preset drills the chosen key with key spelling', () => {
-    const { store } = setup()
-    store.getState().setPreset('diatonic')
-    store.getState().setDiatonicKey(11) // B major
+    const s = setup()
+    s.store.getState().setPreset('diatonic')
+    s.store.getState().setDiatonicKey(11) // B major
 
     const scalePcs = new Set([11, 1, 3, 4, 6, 8, 10])
     for (let i = 0; i < 10; i++) {
-      const prompt = store.getState().prompt!
+      const prompt = s.store.getState().prompt!
       expect(scalePcs.has(prompt.chord.root)).toBe(true)
       // Key spelling, e.g. D♯ min — never the default policy's E♭.
       expect(prompt.displayName).not.toContain('♭')
-      store.getState().skip()
+      playSlowAndAdvance(s, prompt)
     }
   })
 
@@ -1133,7 +1089,7 @@ describe('practiceStore — worst chords only (§5/§7)', () => {
       const root = s.store.getState().prompt!.chord.root
       expect([0, 3, 4]).toContain(root)
       seen.add(root)
-      s.store.getState().skip()
+      playSlowAndAdvance(s, s.store.getState().prompt!)
     }
     expect(seen).toContain(3) // the learning chords really are in the draw
     expect(seen).toContain(4)
@@ -1156,7 +1112,7 @@ describe('practiceStore — worst chords only (§5/§7)', () => {
     const seen = new Set<number>()
     for (let i = 0; i < 30; i++) {
       seen.add(s.store.getState().prompt!.chord.root)
-      s.store.getState().skip()
+      playSlowAndAdvance(s, s.store.getState().prompt!)
     }
     expect(seen.size).toBeGreaterThan(1) // not pinned to the one missed combo
   })
@@ -1183,7 +1139,7 @@ describe('practiceStore — not passed only (§5.1/§7)', () => {
     s.store.getState().setNotPassedOnly(true)
     for (let i = 0; i < 20; i++) {
       expect([1, 2, 4, 5]).toContain(s.store.getState().prompt!.chord.root)
-      s.store.getState().skip()
+      playSlowAndAdvance(s, s.store.getState().prompt!)
     }
   })
 
@@ -1207,7 +1163,7 @@ describe('practiceStore — not passed only (§5.1/§7)', () => {
     const seen = new Set<number>()
     for (let i = 0; i < 30; i++) {
       seen.add(s.store.getState().prompt!.chord.root)
-      s.store.getState().skip()
+      playSlowAndAdvance(s, s.store.getState().prompt!)
     }
     expect(seen.size).toBeGreaterThan(4) // passed roots 0/3 still appear
   })
@@ -1234,18 +1190,19 @@ describe('practiceStore — session length & report (§7.2/§7.4)', () => {
     expect(state.phase).toBe('idle')
   })
 
-  it('a skip still consumes a length slot', () => {
+  it('a Learn prompt consumes a length slot without being recorded', () => {
     const s = setup({ presets: onePreset })
+    s.store.getState().setMode('learn')
     s.store.getState().setSessionLength(2)
-    s.store.getState().skip() // slot 1 — records nothing
+    playCorrectAndAdvance(s, s.store.getState().prompt!) // slot 1
     expect(s.store.getState().report).toBeNull()
     expect(s.store.getState().done).toBe(1)
 
-    s.store.getState().skip() // slot 2 — reaches the length
+    playCorrectAndAdvance(s, s.store.getState().prompt!) // slot 2 — the length
     const report = s.store.getState().report
     expect(report).not.toBeNull()
     expect(report!.promptsPlayed).toBe(2)
-    expect(report!.recordedPrompts).toBe(0) // skips aren't recorded
+    expect(report!.recordedPrompts).toBe(0) // Learn records nothing (§5)
     expect(report!.accuracy).toBeNull()
   })
 
@@ -1996,15 +1953,6 @@ describe('practiceStore — Song mode (§6.5)', () => {
     s.store.getState().start()
     expect(s.store.getState().mode).toBe('song')
     expect(s.store.getState().song?.countingIn).toBe(true)
-  })
-
-  it('skip is inert in Song', () => {
-    const s = enterSong()
-    vi.advanceTimersByTime(BAR)
-    const before = s.store.getState().song
-    s.store.getState().skip()
-    expect(s.store.getState().song).toBe(before)
-    expect(s.store.getState().prompt?.displayName).toBe('C maj')
   })
 
   it('active minutes accrue from Song-mode playing', () => {

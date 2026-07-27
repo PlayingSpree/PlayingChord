@@ -56,12 +56,12 @@ export interface ShakyChord {
 
 export interface SessionReport {
   mode: SessionMode
-  // Prompts advanced past this session — correct + skip + Learn (§7.2 length
+  // Prompts advanced past this session — correct + Learn (§7.2 length
   // counts them all). The zero-prompt guard and the "prompts played" figure.
   promptsPlayed: number
-  // Recorded prompts (skips & Learn excluded) — the accuracy denominator.
+  // Recorded prompts (Learn excluded) — the accuracy denominator.
   recordedPrompts: number
-  // null for Learn or a session with no recorded prompts (e.g. all skips).
+  // null for Learn or a session with no recorded prompts.
   accuracy: number | null
   avgTimeMs: number | null
   // null for Learn (stats-neutral, §5) — the view renders the reduced variant.

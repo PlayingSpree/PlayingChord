@@ -345,44 +345,6 @@ describe('lifecycle — retry until correct (§6.2 step 3)', () => {
   })
 })
 
-describe('lifecycle — skip (§6.2 step 4)', () => {
-  it('asks the host to advance immediately', () => {
-    const { machine, advances } = setup()
-    machine.promptShown(prompt(0, 'maj', 'any'))
-    machine.skip()
-    expect(advances).toHaveLength(1)
-    expect(machine.state.missCount).toBe(0)
-  })
-
-  it('works from the missed state', () => {
-    const { machine, advances, press } = setup()
-    machine.promptShown(prompt(0, 'maj', 'any'))
-    press(61)
-    machine.skip()
-    expect(advances).toHaveLength(1)
-  })
-
-  it('cancels a pending stall so the old prompt cannot miss late', () => {
-    const { machine, press } = setup()
-    machine.promptShown(prompt(0, 'maj', 'first-inversion'))
-    press(60, 64, 67)
-    machine.skip()
-    vi.advanceTimersByTime(STALL * 20)
-    expect(machine.state.missCount).toBe(0)
-  })
-
-  it('is ignored while advancing (auto-advance already pending)', () => {
-    const { machine, advances, press } = setup()
-    machine.promptShown(prompt(0, 'maj', 'any'))
-    press(60, 64, 67)
-    machine.skip()
-    machine.skip()
-    expect(advances).toHaveLength(0) // only the timer advances
-    vi.advanceTimersByTime(ADVANCE)
-    expect(advances).toHaveLength(1)
-  })
-})
-
 describe('lifecycle — next prompt resets per-prompt state', () => {
   it('clears miss count, hint, and reaction time', () => {
     const { machine, press, releaseAll } = setup()

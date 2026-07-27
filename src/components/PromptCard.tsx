@@ -56,7 +56,6 @@ export function PromptCard() {
   const prompt = usePractice((s) => s.prompt)
   const upcoming = usePractice((s) => s.upcoming)
   const song = usePractice((s) => s.song)
-  const skip = usePractice((s) => s.skip)
   const staffEnabled = useSettings((s) => s.settings.staffEnabled)
   const staffKeyEnabled = useSettings((s) => s.settings.staffKeyEnabled)
   const chordNameSize = useSettings((s) => s.settings.chordNameSize)
@@ -128,18 +127,6 @@ export function PromptCard() {
       )}
 
       <FeedbackPill />
-
-      {/* Skip advances without counting against stats or weighting (§6.2).
-          Song is clock-paced — no skipping (§6.5). */}
-      {song === null && (
-        <button
-          type="button"
-          onClick={skip}
-          className="rounded-[14px] border-2 border-muted-border px-4 py-1.5 text-sm font-semibold text-ink-muted transition-colors hover:text-ink-soft"
-        >
-          Skip →
-        </button>
-      )}
     </section>
   )
 }
@@ -148,9 +135,9 @@ export function PromptCard() {
 // color with an icon (§6.4); misses are visual-only (§9). The combo streak
 // rides the ✔ flash once it reaches 10; a Practice answer past the §7.5 D/F
 // speed boundary turns the flash amber with a `· slow` chip, and one at or
-// under A's second earns `· fast` — plus a `learned` callout when that rep
-// lifted a chord still in learning to a passing grade (§5.1), and a grade-up
-// line beneath when it climbed the combo a letter (§7.3).
+// under A's second earns `· fast`. The grade news of the rep — a combo that
+// climbed a letter (§7.3), a chord that reached a passing grade (§5.1) — rides
+// a second line beneath, so the pill itself stays the speed report.
 function FeedbackPill() {
   const phase = usePractice((s) => s.phase)
   const reactionMs = usePractice((s) => s.reactionMs)
@@ -203,13 +190,6 @@ function FeedbackPill() {
         ✓ {(capped / 1000).toFixed(1)}s{capped < reactionMs && '+'}
         {slow && <span className="text-base font-semibold">· slow</span>}
         {fast && <span className="text-base font-semibold">· fast</span>}
-        {/* The rep that took a chord still in learning to a passing grade
-            (§5.1) — the one moment "learned" is news. */}
-        {justLearned && (
-          <span className="text-base font-semibold text-primary-light">
-            ★ learned
-          </span>
-        )}
         {firstTryStreak >= FIRST_TRY_STREAK_DISPLAY_MIN && (
           <span
             className={cx(
@@ -242,11 +222,15 @@ function FeedbackPill() {
     )
   }
 
-  // The grade-up notice (§7.3) sits directly under the pill and lives exactly
-  // as long as it does — it is news about the rep the ✔ is flashing for, so it
-  // arrives with it rather than in a toast of its own, minutes-old by the time
-  // it appears.
-  const showGradeUp = gradeUp !== null && phase === 'advancing'
+  // The grade news (§7.3) sits directly under the pill and lives exactly as
+  // long as it does — it is about the rep the ✔ is flashing for, so it arrives
+  // with it rather than in a toast of its own, minutes-old by the time it
+  // appears. Both halves are the same news at two scales — this combo climbed a
+  // letter, this chord is no longer failing — so they share one chip instead of
+  // splitting the moment between the pill and the line under it.
+  const advancing = phase === 'advancing'
+  const showGradeUp = gradeUp !== null && advancing
+  const showLearned = justLearned && advancing
 
   return (
     <div
@@ -255,11 +239,19 @@ function FeedbackPill() {
     >
       {content}
       {/* Out of flow: the line keeps the feedback area a fixed height, so the
-          Skip button below it doesn't hop every time a grade climbs. */}
-      {showGradeUp && (
+          keyboard below it doesn't hop every time a grade climbs. */}
+      {(showGradeUp || showLearned) && (
         <span className="absolute top-full mt-1 inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-primary-tint px-3.5 py-0.5 text-sm font-semibold text-primary-light">
-          📈 <span className="font-extrabold">{gradeUp.label}</span> grade up:{' '}
-          {gradeUp.from} → <span className="font-extrabold">{gradeUp.to}</span>
+          {showGradeUp && (
+            <>
+              📈 <span className="font-extrabold">{gradeUp.label}</span> grade
+              up: {gradeUp.from} →{' '}
+              <span className="font-extrabold">{gradeUp.to}</span>
+            </>
+          )}
+          {/* The rep that took a chord still in learning to a passing grade
+              (§5.1) — the one moment "learned" is news. */}
+          {showLearned && <span className="font-extrabold">★ learned</span>}
         </span>
       )}
     </div>

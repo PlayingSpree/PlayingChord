@@ -340,7 +340,7 @@ flashcard-style batches instead of the whole pool at once:
   here; combos with no history yet don't count against it. Passing is a **latch** —
   a chord whose grade later falls back to F stays passed and its unlock stays
   open, since the unlock queue is a ratchet and the live grade is reported
-  elsewhere anyway. Learn-mode prompts, skips, and Song-mode bars never pass
+  elsewhere anyway. Learn-mode prompts and Song-mode bars never pass
   anything (they record no self-paced outcome).
 - Once **every** unlocked chord is passed, the **next 2** unlock, repeating until
   the whole pool is open — after which generation behaves exactly as above. The
@@ -405,8 +405,6 @@ lifecycle per prompt:
    the current hint stage (§6.4). Releasing all keys starts a new attempt. Releasing all
    keys *before* any judgment abandons the attempt silently (self-correction isn't
    punished, and doesn't advance hint stages).
-4. **Skip:** a manual Skip button advances without counting against accuracy stats or
-   the missed-chord weighting.
 
 **Time-to-correct ceiling.** A recorded time-to-correct is clamped to **10 000 ms**.
 A prompt left sitting — a pause to think, a distraction, a walk away from the
@@ -630,7 +628,7 @@ counts a new progression in).
 ├─────────────────────────────────────────────────────┤   sheet; center varies by mode
 │    D min7 — 2nd inv     (G maj)  (A min)            │ ← prompt + next 2 inline
 │    𝄞 (grand staff, if staff setting on)             │
-│          [ ✔ Correct! 1.2s ]     [Skip →]           │ ← feedback pill
+│              [ ✔ Correct! 1.2s ]                   │ ← feedback pill
 ├─────────────────────────────────────────────────────┤
 │  🎹 on-screen keyboard (~3 octaves)                 │ ← live held keys; overlays
 └─────────────────────────────────────────────────────┘   escalate per §6.4
@@ -662,7 +660,11 @@ counts a new progression in).
   next visit to the chord stats page (§7.5). It belongs to the rep that earned
   it, so it is decided on the same judgment edge as the `learned` callout and
   lasts exactly as long as that rep's ✔ flash — a toast on a window of its own
-  arrived after the prompt it was about had already gone. Both grades must rest
+  arrived after the prompt it was about had already gone. The **`★ learned`**
+  callout (§5.1) shares this line rather than the pill above it: both are the
+  same news at two scales — this combo climbed a letter, this chord is no longer
+  failing — and they almost always land on the same rep, so splitting them left
+  one grade announcement above the reaction time and one below it. Both grades must rest
   on at least the most-improved evidence floor (§7.5's 5 attempts) — below that
   a letter swings on one rep and the notice would be noise. Each letter is news
   **once per session per combo**: a moving window means a combo hovering on a
@@ -733,18 +735,21 @@ counts a new progression in).
   (time-to-correct includes retries), and past the §6.2 ceiling the pill reads
   `10.0s+` — what was actually recorded. Learn shows the answer from the start
   and Song is clock-paced, so neither grades speed. When a rep takes a chord that
-  was still in learning (§5.1: unlocked, not yet passed) to a passing grade, the
-  pill also says **`★ learned`** — the one moment that word is news. It is the
-  same pass call §5.1 makes, decided on the judgment edge rather than on the
-  advance, so the flash announcing it is still on screen. Misses are always
-  **visual-only** (§9). Skip
-  button available (excluded from stats and weighting). A **combo streak**
-  (consecutive first-try correct prompts, reset by any miss; skips leave it
-  untouched) rides the same flash once it reaches 10 ("🔥 10 combo"). Both edges
+  was still in learning (§5.1: unlocked, not yet passed) to a passing grade,
+  **`★ learned`** joins the grade-up line beneath the pill — the one moment that
+  word is news. It is the same pass call §5.1 makes, decided on the judgment
+  edge rather than on the advance, so the flash announcing it is still on
+  screen. Misses are always **visual-only** (§9). There is **no skip**: a prompt
+  is left only by answering it or by ending the session. A way out that costs
+  nothing is taken on exactly the chords the drill exists for, and the weighting
+  (§5) can only work from reps that happened — a skipped chord looks untouched
+  rather than hard, so it comes back no more often than any other. A **combo
+  streak** (consecutive first-try correct prompts, reset by any miss) rides the
+  same flash once it reaches 10 ("🔥 10 combo"). Both edges
   land on the judgment itself: the ✔ counts itself (so the 10th first-try
   correct is the one that says 10), and a miss drops the streak the instant the
   ✘ lands — silently, with no lost-combo callout, and whether or not the prompt
-  is later completed or skipped. **Switching mode** ends the run too: only
+  is later completed. **Switching mode** ends the run too: only
   Practice can break a streak — Learn records no outcome and Song is
   clock-paced — so a detour would otherwise park the count and hand it back
   intact. Session-only —
@@ -756,7 +761,7 @@ counts a new progression in).
 
 Every session ends here, full-screen (replacing the Draft-v5 summary modal).
 Stat definitions carry over unchanged: *accuracy* = prompts answered correctly
-on the first attempt ÷ prompts (skips and Learn-mode prompts excluded);
+on the first attempt ÷ prompts (Learn-mode prompts excluded);
 *time-to-correct* = prompt shown → correct match, retries included; Song bars
 count as prompts, a hit being a first-try success (§6.5).
 
@@ -828,8 +833,8 @@ all sessions:
     the §5 evidence floor — a below-floor F is arithmetic, not a verdict, and the
     missing reps are what produced it. Neutral, never red, for that reason. Only
     the F is hidden: a below-floor **D still shows its letter**, because passing is
-    its own proof (§5.1) and the badge must never contradict the `★ learned` pill
-    beside it. Display only — the score underneath is the floored one, so §5
+    its own proof (§5.1) and the badge must never contradict the `★ learned`
+    callout (§7.3). Display only — the score underneath is the floored one, so §5
     weighting keeps drilling the combo and the pass gate keeps reading the real
     letter. A chord folds to `new` only when nothing *proven* is failing: one
     proven F still reads red however many unproven combos sit beside it.

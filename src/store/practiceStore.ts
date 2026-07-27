@@ -106,8 +106,8 @@ function sanitizeDiatonicKey(value: unknown): PitchClass {
 }
 
 // Live session tallies (§7). A "session" runs from start() to endSession()
-// (§7.2); each fresh session zeroes these. Skips and Learn-mode prompts never
-// count toward accuracy (§7); time-to-correct includes retries. Song bars
+// (§7.2); each fresh session zeroes these. Learn-mode prompts never count
+// toward accuracy (§7); time-to-correct includes retries. Song bars
 // count as prompts with no time sample (§6.5).
 export interface SessionStats {
   prompts: number
@@ -193,7 +193,7 @@ export const ACTIVE_FLUSH_MS = 5_000
 // Thin adapter over the pure practice engine: picks weighted prompts from
 // the selected preset, feeds held-set changes into the §6.2 machine, mirrors
 // machine state out for the UI, and records prompt outcomes into the
-// persisted stats (§7: skips excluded; miss = any miss before the eventual
+// persisted stats (§7: miss = any miss before the eventual
 // correct). It also owns the §7.2 session layer: Learn/Practice/Song modes,
 // the prompt-count length with its end-of-session Report (§7.4),
 // worst-chords-only drilling, and active-minutes → daily goal/streak tracking.
@@ -234,7 +234,7 @@ export interface PracticeStoreState {
   // Session length in prompts (§7.2): reaching it ends the session. null = ∞;
   // session-only (not persisted). Applies to Learn/Practice; Song ignores it.
   sessionLength: number | null
-  // Prompts advanced past this session — correct + skip + Learn — the Stage's
+  // Prompts advanced past this session — correct + Learn — the Stage's
   // done/length readout and the report's zero-prompt guard.
   done: number
   // The end-of-session Report (§7.4); null while a session is live or after
@@ -242,8 +242,7 @@ export interface PracticeStoreState {
   report: SessionReport | null
   session: SessionStats
   // Consecutive first-try correct prompts; resets on any miss and whenever
-  // the session itself resets. Skips leave it untouched, same as the session
-  // tallies. The UI calls this a *combo* (§7.3 "🔥 10 combo"), rhythm-game
+  // the session itself resets. The UI calls this a *combo* (§7.3 "🔥 10 combo"), rhythm-game
   // sense — unrelated to a Combo, the (root, typeId, voicingId) triple stats
   // are keyed by.
   firstTryStreak: number
@@ -270,7 +269,6 @@ export interface PracticeStoreState {
   // unless a gated session is actually waiting.
   ready(): void
   onHeldChange(held: ReadonlySet<number>): void
-  skip(): void
   setPreset(id: string): void
   setDiatonicKey(key: PitchClass): void
   setMode(mode: SessionMode): void
@@ -627,15 +625,14 @@ export function createPracticeStore({
     }
 
     // Advance the session's played-prompt count (§7.2): every prompt that
-    // advances counts a slot — correct, skip, or Learn.
+    // advances counts a slot — correct or Learn.
     const bumpDone = () => set((state) => ({ done: state.done + 1 }))
 
-    // A prompt only completes through the 'advancing' phase — skip advances
-    // from any other phase and stays out of stats and weighting (§6.2 step 4).
-    // Learn-mode prompts complete but feed nothing either (§5): not the
-    // per-combo records, not the session tallies or the report log. Returns
-    // whether a recorded prompt was logged (a ✔ that counts a done slot on its
-    // own — the caller only bumps done for the skip/Learn cases).
+    // A prompt only completes through the 'advancing' phase. Learn-mode
+    // prompts complete but feed nothing (§5): not the per-combo records, not
+    // the session tallies or the report log. Returns whether a recorded prompt
+    // was logged (a ✔ that counts a done slot on its own — the caller only
+    // bumps done for the Learn case).
     const recordOutcome = (): boolean => {
       if (currentCombo === null || machine.state.phase !== 'advancing') {
         return false
@@ -683,9 +680,8 @@ export function createPracticeStore({
     // wait for the auto-advance, which left the ✔ flash of a missed prompt
     // claiming a streak the miss had already ended — and made a *surviving*
     // streak undercount by one, so "🔥 10 combo" appeared on the 11th), and a
-    // first-try ✔ counts itself. A miss followed by a Skip now breaks it too,
-    // exactly as §7.3 says. Learn is stats-neutral (§5) and Song bars have no
-    // self-paced streak.
+    // first-try ✔ counts itself. Learn is stats-neutral (§5) and Song bars
+    // have no self-paced streak.
     const applyStreak = (next: LifecycleState) => {
       const state = get()
       if (state.mode === 'learn') return
@@ -794,7 +790,7 @@ export function createPracticeStore({
         set(state)
       },
       onAdvance: () => {
-        // A skip or a Learn prompt records nothing but still consumes a slot.
+        // A Learn prompt records nothing but still consumes a slot.
         if (!recordOutcome()) bumpDone()
         const length = get().sessionLength
         if (length !== null && get().done >= length) {
@@ -1107,11 +1103,6 @@ export function createPracticeStore({
           return
         }
         machine.heldChange(held)
-      },
-
-      skip() {
-        if (get().mode === 'song') return // clock-paced: no skipping (§6.5)
-        machine.skip()
       },
 
       setPreset(id: string) {

@@ -37,8 +37,8 @@ export interface LifecycleHost {
   settings(): PracticeSettings
   now(): number
   onState(state: LifecycleState): void
-  // The machine wants the next prompt (auto-advance elapsed, or skip); the
-  // host responds by calling promptShown().
+  // The machine wants the next prompt (the auto-advance elapsed); the host
+  // responds by calling promptShown().
   onAdvance(): void
   // Whether miss escalation may reach the §6.4 reveal stage. Learn mode
   // answers false — the example is overlaid from the start, so misses stay
@@ -115,14 +115,6 @@ export class AttemptLifecycle {
     this.missCount = 0
     this.hint = null
     this.emit()
-  }
-
-  // §6.2 step 4: advance without judging. Nothing is recorded, so skips stay
-  // out of accuracy stats and miss weighting when Phase 6 adds them.
-  skip(): void {
-    if (this.phase === 'idle' || this.phase === 'advancing') return
-    this.clearStall()
-    this.host.onAdvance()
   }
 
   private judge(held: ReadonlySet<number>): void {

@@ -88,7 +88,7 @@ export default function App() {
     const unprime = primeOnFirstGesture()
 
     // Correct-chime: the transition into 'advancing' is exactly the ✔
-    // moment (§6.2) — skips never pass through it. Fire-and-forget, so the
+    // moment (§6.2). Fire-and-forget, so the
     // flash never waits on audio. Song mode (§6.5) never enters 'advancing';
     // its beats drive the metronome click and a bar's first match plays the
     // same ✔ chime, both keyed off the engine's monotonic counters.

@@ -15,6 +15,22 @@ artifact and are not recoverable.
 
 ---
 
+## 9.8.0 — 2026-07-27
+
+**No way past a chord, and one line for grade news.** The Skip button is gone
+(§6.2, §7.3): a prompt is now left only by answering it or by ending the
+session. A costless way out gets taken on exactly the chords the drill exists
+for, and the §5 weighting can only work from reps that happened — a skipped
+chord looked untouched rather than hard, so it came back no more often than any
+other. Nothing else changes: accuracy and the unlock gate already ignored skips,
+so their definitions simply lost a clause.
+
+The **`★ learned`** callout (§5.1) moved off the feedback pill and onto the
+grade-up line under it (§7.3). Both are the same news at two scales — this combo
+climbed a letter, this chord is no longer failing — and they land on the same
+rep almost every time, so the pill is now purely the speed report and the line
+beneath it carries the grades.
+
 ## 9.7.0 — 2026-07-27
 
 **Ten seconds is a miss, and a climb is news once.** A rep that reaches the §6.2

@@ -1,7 +1,7 @@
 // Per-combo stat records (DESIGN.md §8) and the recent-outcome view feeding
 // the §5 miss weighting. Pure record types + update logic live here; the
 // in-memory source serves tests, the persisted one (Phase 6) lives in
-// storage/ behind the same interface. Skips are never recorded (§6.2 step 4).
+// storage/ behind the same interface.
 
 import { comboKey, parseComboKey, type Combo } from './combos'
 import type { VoicingLibrary } from '../theory'
@@ -48,7 +48,7 @@ export const RECENT_TIME_WINDOW = TIME_TO_CORRECT_SAMPLE_CAP / 2
 export const MAX_TIME_TO_CORRECT_MS = 10_000
 
 // One stat record per combo (§8), keyed by comboKey. `attempts` counts
-// completed prompts (skips excluded); time-to-correct is prompt shown →
+// completed prompts; time-to-correct is prompt shown →
 // correct match, retries included (§7).
 export interface ComboStatRecord {
   attempts: number
