@@ -420,6 +420,17 @@ already flagged slow — the clamp only decides *how far* past it counts. The §
 ready gate handles the other end of the same problem — the walk-up before the
 *first* prompt.
 
+A rep that *reaches* the ceiling enters the **grade** window as a miss, even
+though the right keys eventually went down. Ten seconds of hunting is not recall,
+and letting it through as a first-try success left the accuracy axis reading
+flawless while only the speed axis — already at zero there — disagreed, so a
+stalled combo could still grade well above what it had shown. The demotion is
+for grading alone (the per-combo recent window behind §5 weighting and the §7.5
+letter): everywhere the player is simply told what they played — lifetime
+accuracy, the session tallies and their grade, the Report log, the daily figures
+(§7.6), the §7.3 combo streak — the prompt still counts as the first-try success
+it was.
+
 ### 6.3 Matching rules
 
 Given the active `VoicingRule`:
@@ -645,13 +656,20 @@ counts a new progression in).
   always-visible unlock chip is gone — Home's In play row carries the per-chord
   breakdown — but the transient unlock **toast** ("🔓 New chords unlocked:
   A, E") still fires at the mid-session unlock moment.
-- **Grade-up toast**: a combo's grade rides a *recent* window (§5), so it can
-  climb mid-session; when it does, a toast says so ("📈 C maj grade up: D → C")
-  in the same slot and window as the unlock toast, rather than leaving the news
-  for the player's next visit to the chord stats page (§7.5). Both grades must
-  rest on at least the most-improved evidence floor (§7.5's 5 attempts) — below
-  that a letter swings on one rep and the notice would be noise. Practice only:
-  Learn records nothing (§5) and Song's bar chips already report themselves.
+- **Grade-up notice**: a combo's grade rides a *recent* window (§5), so it can
+  climb mid-session; when it does, a line under the feedback pill says so
+  ("📈 C maj grade up: D → C"), rather than leaving the news for the player's
+  next visit to the chord stats page (§7.5). It belongs to the rep that earned
+  it, so it is decided on the same judgment edge as the `learned` callout and
+  lasts exactly as long as that rep's ✔ flash — a toast on a window of its own
+  arrived after the prompt it was about had already gone. Both grades must rest
+  on at least the most-improved evidence floor (§7.5's 5 attempts) — below that
+  a letter swings on one rep and the notice would be noise. Each letter is news
+  **once per session per combo**: a moving window means a combo hovering on a
+  cut point re-crosses it every few reps, and B → A → B → A would announce the
+  same A over and over. The repeat is silent; the next *new* letter (the S after
+  it) still fires. Practice only: Learn records nothing (§5) and Song's bar
+  chips already report themselves.
 - **Session modes**:
   - **Learn**: the prompt's `example` voicing is shown from the start — highlighted on
     the on-screen keyboard, and drawn on the grand staff when the staff setting is on
@@ -750,6 +768,12 @@ count as prompts, a hit being a first-try success (§6.5).
   literal: an S session is a flawless one averaging under a second. Song sessions have no time samples → full speed credit, exactly
   as §5 scores such combos. Learn sessions are stats-neutral (§5): no grade, no
   accuracy/speed cards — just prompts played, active time, and the goal line.
+- **Headline**: the line beside the badge follows that letter rather than a
+  threshold of its own, so the words and the grade can't disagree — praise at the
+  top of the scale ("Flawless session!" for an S), encouragement at the bottom
+  ("Tough one — come back at it"). A hollow "Nice session!" over a D is worse than
+  nothing, and the weak session is the one that most needs a reason to start
+  another. Ungraded sessions (Learn, or nothing recorded) keep their plain line.
 - **Stat cards**: session *First-try accuracy* and *Avg time-to-correct*, each
   with a **delta vs the trailing baseline** — the mean over the last **30
   practiced days** (days with ≥ 1 counted prompt, from the daily records,

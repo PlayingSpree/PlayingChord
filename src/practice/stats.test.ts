@@ -16,6 +16,7 @@ import {
   isPassingGrade,
   MAX_TIME_TO_CORRECT_MS,
   NO_HISTORY,
+  gradingOutcome,
   PASS_MIN_GRADE,
   rankMostImproved,
   rankWorstCombos,
@@ -35,6 +36,31 @@ const cleanRecord = (n: number, timeMs: number): ComboStatRecord => {
   for (let i = 0; i < n; i++) record = applyOutcome(record, 'first-try', timeMs)
   return record!
 }
+
+describe('gradingOutcome (§6.2 ceiling, §7.5)', () => {
+  it('passes an ordinary outcome through', () => {
+    expect(gradingOutcome('first-try', 1200)).toBe('first-try')
+    expect(gradingOutcome('first-try', MAX_TIME_TO_CORRECT_MS - 1)).toBe(
+      'first-try',
+    )
+    expect(gradingOutcome('missed', 1200)).toBe('missed')
+  })
+
+  it('grades a rep that reached the recording ceiling as a miss', () => {
+    expect(gradingOutcome('first-try', MAX_TIME_TO_CORRECT_MS)).toBe('missed')
+  })
+
+  it('leaves a timeless bar to its own hit/miss (§6.5)', () => {
+    expect(gradingOutcome('first-try', null)).toBe('first-try')
+    expect(gradingOutcome('missed', null)).toBe('missed')
+  })
+
+  it('demotes only the grade window, not the lifetime counters', () => {
+    const record = applyOutcome(null, 'first-try', MAX_TIME_TO_CORRECT_MS)
+    expect(record.firstTrySuccesses).toBe(1) // they did play it first try
+    expect(record.recentOutcomes).toEqual(['missed']) // …but it doesn't grade
+  })
+})
 
 describe('worstChordGrade (§7.1 In play)', () => {
   it('is null with no history', () => {

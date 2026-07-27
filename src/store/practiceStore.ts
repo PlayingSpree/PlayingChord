@@ -176,15 +176,14 @@ export interface ChordPassDisplayEntry {
 }
 
 // A combo whose grade just improved mid-session (§7.3): the label it's known
-// by in the chord stats, and the two letters, for the toast.
+// by in the chord stats, and the two letters, for the line under the ✔ pill.
 export interface GradeUpFlash {
   label: string
   from: ComboGrade
   to: ComboGrade
 }
 
-// How long the top-bar chip celebrates a fresh unlock before settling — also
-// the grade-up toast's window, so the two read as one kind of notice.
+// How long the top-bar chip celebrates a fresh unlock before settling.
 export const JUST_UNLOCKED_FLASH_MS = 2_500
 
 // Buffered active time is persisted once this much accrues — every held-note
@@ -261,9 +260,10 @@ export interface PracticeStoreState {
   progress: UnlockProgress
   justUnlocked: boolean
   justUnlockedLabels: readonly string[]
-  // A combo that just climbed a grade (§7.3), for the same window as the
-  // unlock flash. Practice-only, and gated on enough attempts to mean
-  // something (§5 chord score over the recent window).
+  // A combo that just climbed a grade (§7.3), shown under the ✔ pill for as
+  // long as that flash lasts — like justLearned, it is news about the rep on
+  // screen. Practice-only, and gated on enough attempts to mean something
+  // (§5 chord score over the recent window).
   gradeUp: GradeUpFlash | null
   start(): void
   // Answer the §7.3 ready gate: deal the prompt start() withheld. A no-op
@@ -401,7 +401,10 @@ export function createPracticeStore({
     let progressRecord: PresetProgressRecord = initialProgress(1)
     let unlocked: ReadonlySet<string> = new Set()
     let justUnlockedTimer: ReturnType<typeof setTimeout> | null = null
-    let gradeUpTimer: ReturnType<typeof setTimeout> | null = null
+    // `${comboKey}:${grade}` for every climb already announced this session
+    // (§7.3) — see judgeGradeUp. Cleared with the rest of the session
+    // tallies, so a fresh session hears each climb again.
+    let announcedGradeUps = new Set<string>()
 
     const reloadProgress = () => {
       // Circle-of-fifths unlock order (§5.1) applies only to root-ordered
@@ -451,23 +454,10 @@ export function createPracticeStore({
       }, JUST_UNLOCKED_FLASH_MS)
     }
 
+    // The grade-up notice has no timer of its own — it rides the ✔ flash
+    // (§7.3, judgeGradeUp), so it only needs clearing when practice stops.
     const clearGradeFlash = () => {
-      if (gradeUpTimer !== null) {
-        clearTimeout(gradeUpTimer)
-        gradeUpTimer = null
-      }
       if (get().gradeUp !== null) set({ gradeUp: null })
-    }
-
-    // Announce a combo climbing a grade (§7.3). The latest one wins its own
-    // full window, like the unlock flash.
-    const flashGradeUp = (gradeUp: GradeUpFlash) => {
-      clearGradeFlash()
-      set({ gradeUp })
-      gradeUpTimer = setTimeout(() => {
-        gradeUpTimer = null
-        set({ gradeUp: null })
-      }, JUST_UNLOCKED_FLASH_MS)
     }
 
     // Compact "Am"-style label for a chord-order key, for the unlock toast:
@@ -640,26 +630,6 @@ export function createPracticeStore({
     // advances counts a slot — correct, skip, or Learn.
     const bumpDone = () => set((state) => ({ done: state.done + 1 }))
 
-    // A combo's §5 chord score is graded off a *recent* window, so the letter
-    // can climb mid-session — worth saying so while the player is still on it,
-    // rather than leaving it for the next visit to the chord stats page (§7.5).
-    // `before` is the record as it stood before this prompt was recorded; both
-    // sides need IMPROVED_MIN_ATTEMPTS of history for the comparison to mean
-    // anything (the same low-evidence floor the most-improved ranking uses),
-    // which also keeps a brand-new combo's first few attempts quiet.
-    const announceGradeUp = (
-      key: string,
-      label: string,
-      before: ComboStatRecord | null,
-    ) => {
-      if (before === null || before.attempts < IMPROVED_MIN_ATTEMPTS) return
-      const after = stats.get(key)
-      if (after === null) return
-      const from = comboMetrics(before).grade
-      const to = comboMetrics(after).grade
-      if (gradeRank(to) > gradeRank(from)) flashGradeUp({ label, from, to })
-    }
-
     // A prompt only completes through the 'advancing' phase — skip advances
     // from any other phase and stays out of stats and weighting (§6.2 step 4).
     // Learn-mode prompts complete but feed nothing either (§5): not the
@@ -675,7 +645,8 @@ export function createPracticeStore({
         machine.state.missCount > 0 ? 'missed' : 'first-try'
       // One clamp point for the whole recording path (§6.2): combo stats and
       // weighting, unlock progress, the session tallies, the Report log and —
-      // through stats.record — the day's summed time.
+      // through stats.record — the day's summed time. A rep that reaches the
+      // ceiling is demoted for grading only, inside applyOutcome.
       const timeToCorrectMs = Math.min(
         machine.state.reactionMs ?? 0,
         MAX_TIME_TO_CORRECT_MS,
@@ -686,9 +657,7 @@ export function createPracticeStore({
         expansion.rootSpellings.get(currentCombo.root),
         voicings(),
       )
-      const before = stats.get(key)
       stats.record(key, outcome, timeToCorrectMs)
-      announceGradeUp(key, label, before)
       applyProgress(currentCombo)
       sessionEvents.push({ key, label, outcome, timeToCorrectMs })
       // Defensive: a ✔ is recorded exactly once — clear the combo so a stray
@@ -735,30 +704,81 @@ export function createPracticeStore({
       }
     }
 
-    // The §7.3 `learned` callout, decided on the same judgment edge as the
-    // streak: outcomes are recorded on advance, so by the time applyProgress
-    // passes the chord the flash announcing it is already gone. This replays
-    // that call one window early — the same chord grade, over the same records,
-    // with this rep's record projected in — so the pill can say it and
-    // applyProgress can't disagree. Learn records nothing (§5) and Song bars
+    // Everything the ✔ flash says about the rep it belongs to has to be worked
+    // out on the judgment edge: outcomes are recorded on *advance*, by which
+    // time the flash is already gone. This projects the record recordOutcome
+    // will write — same inputs, one window early — so the pill and the stats
+    // can't disagree. Practice only: Learn records nothing (§5) and Song bars
     // never reach the machine.
-    const judgeLearned = (next: LifecycleState): boolean => {
-      if (currentCombo === null || get().mode !== 'practice') return false
-      const chordKey = poolChordKey(currentCombo)
-      if (!isChordInLearning(chordOrder, progressRecord, chordKey)) return false
+    interface ProjectedRep {
+      key: string
+      combo: Combo
+      before: ComboStatRecord | null
+      record: ComboStatRecord
+    }
+
+    const projectRep = (next: LifecycleState): ProjectedRep | null => {
+      if (currentCombo === null || get().mode !== 'practice') return null
       const key = comboKey(currentCombo)
-      const record = applyOutcome(
-        stats.get(key),
-        next.missCount > 0 ? 'missed' : 'first-try',
-        Math.min(next.reactionMs ?? 0, MAX_TIME_TO_CORRECT_MS),
-      )
+      const before = stats.get(key)
+      return {
+        key,
+        combo: currentCombo,
+        before,
+        record: applyOutcome(
+          before,
+          next.missCount > 0 ? 'missed' : 'first-try',
+          Math.min(next.reactionMs ?? 0, MAX_TIME_TO_CORRECT_MS),
+        ),
+      }
+    }
+
+    // The §7.3 `learned` callout: the same chord grade applyProgress will read,
+    // over the same records, with this rep projected in.
+    const judgeLearned = ({ key, combo, record }: ProjectedRep): boolean => {
+      const chordKey = poolChordKey(combo)
+      if (!isChordInLearning(chordOrder, progressRecord, chordKey)) return false
       return isPassingGrade(chordGrade(chordKey, { key, record }))
     }
 
-    const applyLearned = (next: LifecycleState) => {
+    // The §7.3 grade-up chip. Both grades must rest on at least the
+    // most-improved evidence floor — below that a letter swings on one rep and
+    // the notice is noise — and each letter is news once per session per combo
+    // (announcedGradeUps): a grade rides a moving window, so a combo hovering
+    // on a cut point re-crosses it every few reps, and B → A → B → A would
+    // otherwise announce the same A over and over.
+    const judgeGradeUp = ({
+      key,
+      combo,
+      before,
+      record,
+    }: ProjectedRep): GradeUpFlash | null => {
+      if (before === null || before.attempts < IMPROVED_MIN_ATTEMPTS)
+        return null
+      const from = comboMetrics(before).grade
+      const to = comboMetrics(record).grade
+      if (gradeRank(to) <= gradeRank(from)) return null
+      const announced = `${key}:${to}`
+      if (announcedGradeUps.has(announced)) return null
+      announcedGradeUps.add(announced)
+      const label = comboLabel(
+        combo,
+        expansion.rootSpellings.get(combo.root),
+        voicings(),
+      )
+      return { label, from, to }
+    }
+
+    // Both callouts ride the ✔ flash itself (§7.3), so they are decided on the
+    // edge into 'advancing' and last exactly as long as it does — the pill
+    // renders neither in any other phase.
+    const applyFlashes = (next: LifecycleState) => {
       if (next.phase !== 'advancing' || get().phase === 'advancing') return
-      const justLearned = judgeLearned(next)
+      const rep = projectRep(next)
+      const justLearned = rep !== null && judgeLearned(rep)
       if (justLearned !== get().justLearned) set({ justLearned })
+      const gradeUp = rep === null ? null : judgeGradeUp(rep)
+      if (gradeUp !== null || get().gradeUp !== null) set({ gradeUp })
     }
 
     const machine = new AttemptLifecycle({
@@ -770,7 +790,7 @@ export function createPracticeStore({
       onState: (state) => {
         // Both read the pre-transition state, so they run before the set()
         applyStreak(state)
-        applyLearned(state)
+        applyFlashes(state)
         set(state)
       },
       onAdvance: () => {
@@ -909,6 +929,7 @@ export function createPracticeStore({
 
     const resetSession = () => {
       sessionEvents = []
+      announcedGradeUps = new Set()
       sessionPassedLabels = []
       sessionUnlockedLabels = []
       sessionActiveMs = 0
@@ -962,6 +983,7 @@ export function createPracticeStore({
       machine.stop()
       flushActivity()
       sessionLive = false
+      clearGradeFlash() // the ✔ it rode is gone with the prompt
       set({ prompt: null, justLearned: false, awaitingReady: false })
     }
 

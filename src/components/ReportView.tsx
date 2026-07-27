@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { usePractice } from '../store/practiceStore'
 import { useSettings } from '../store/settingsStore'
-import type { SessionReport } from '../practice'
+import type { ComboGrade, SessionReport } from '../practice'
 import { Card, RaisedButton, SectionLabel } from './ui'
 import { cx } from './cx'
 import { gradeRing } from './grades'
@@ -216,11 +216,24 @@ interface Delta {
   good: boolean
 }
 
+// The headline answers the badge beside it (§7.4). It reads off the session
+// grade rather than a threshold of its own, so the words and the letter can
+// never disagree: the top three letters are praise, and the bottom three turn
+// into encouragement — a "Nice session!" over a D is hollow, and it is the D
+// session that most needs a reason to start another one.
+const HEADLINE: Record<ComboGrade, string> = {
+  S: 'Flawless session!',
+  A: 'Great session!',
+  B: 'Nice session!',
+  C: 'Good work — keep going',
+  D: 'Every rep counts',
+  F: 'Tough one — come back at it',
+}
+
 function headline(report: SessionReport): string {
   if (report.mode === 'learn') return 'Learning done'
-  if (report.accuracy !== null && report.accuracy >= 0.78)
-    return 'Nice session!'
-  return 'Session done'
+  // No grade means nothing was graded (a Learn-shaped or empty session).
+  return report.grade === null ? 'Session done' : HEADLINE[report.grade]
 }
 
 // First-try delta vs the baseline, in percentage points; omitted when there's

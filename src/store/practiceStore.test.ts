@@ -458,7 +458,7 @@ describe('practiceStore — outcome recording (§5/§7)', () => {
     )
   })
 
-  it('leaves a time under the ceiling alone', () => {
+  it('leaves a time under the ceiling alone, and it is still first-try', () => {
     const stats = new InMemoryComboStats()
     const s = setup({ presets: onePreset, stats })
     const prompt = s.store.getState().prompt!
@@ -469,6 +469,31 @@ describe('practiceStore — outcome recording (§5/§7)', () => {
     expect(stats.get(promptComboKey(prompt))?.timeToCorrectMs).toEqual([
       MAX_TIME_TO_CORRECT_MS - 1,
     ])
+    expect(stats.recentHistory(promptComboKey(prompt))?.misses).toBe(0)
+    expect(s.store.getState().firstTryStreak).toBe(1)
+  })
+
+  it('grades a rep that reaches the ceiling as a miss, and only grades it', () => {
+    const stats = new InMemoryComboStats()
+    const s = setup({ presets: onePreset, stats })
+
+    playCorrectAndAdvance(s, s.store.getState().prompt!) // a clean rep first
+    const prompt = s.store.getState().prompt!
+    vi.advanceTimersByTime(MAX_TIME_TO_CORRECT_MS) // …then one that stalls out
+    playCorrectAndAdvance(s, prompt)
+
+    // The grade window sees a miss (§6.2)…
+    expect(stats.recentHistory(promptComboKey(prompt))).toEqual({
+      misses: 1,
+      total: 2,
+      avgTimeToCorrectMs: MAX_TIME_TO_CORRECT_MS / 2,
+    })
+    // …while everything that reports what was played still counts both reps
+    // as answered first try: lifetime accuracy, the session tallies, the
+    // Report log and the §7.3 streak.
+    expect(stats.get(promptComboKey(prompt))?.firstTrySuccesses).toBe(2)
+    expect(s.store.getState().session.firstTrySuccesses).toBe(2)
+    expect(s.store.getState().firstTryStreak).toBe(2)
   })
 
   it('records nothing for a skip, even after a miss (§6.2 step 4)', () => {
@@ -1334,19 +1359,25 @@ describe('practiceStore — grade-up notice (§7.3)', () => {
     return stats
   }
 
-  it('announces a combo whose grade climbs, then clears itself', () => {
+  // The notice rides the ✔ flash of the rep that earned it (§7.3): it lands
+  // with the flash, not on a window of its own, and the next ✔ replaces it.
+  it('announces a combo whose grade climbs, on the ✔ that earned it', () => {
     const stats = seeded()
     expect(comboGrade(comboMetrics(stats.get(KEY)!).score)).toBe('B')
     const s = setup({ presets: onePreset, stats })
 
-    playCorrectAndAdvance(s, s.store.getState().prompt!) // 8/10 → A
-
+    const prompt = s.store.getState().prompt!
+    s.press(...correctNotes(prompt)) // 8/10 → A, announced with the ✔
+    expect(s.store.getState().phase).toBe('advancing')
     expect(s.store.getState().gradeUp).toEqual({
       label: 'C maj',
       from: 'B',
       to: 'A',
     })
-    vi.advanceTimersByTime(JUST_UNLOCKED_FLASH_MS)
+
+    s.releaseAll()
+    vi.advanceTimersByTime(ADVANCE)
+    playCorrectAndAdvance(s, s.store.getState().prompt!) // 9/10, still an A
     expect(s.store.getState().gradeUp).toBeNull()
   })
 
@@ -1356,6 +1387,41 @@ describe('practiceStore — grade-up notice (§7.3)', () => {
     const s = setup({ presets: onePreset })
     playCorrectAndAdvance(s, s.store.getState().prompt!)
     expect(s.store.getState().gradeUp).toBeNull()
+  })
+
+  // A letter sitting on a cut point is crossed again every few reps, so the
+  // same climb would announce itself over and over (§7.3).
+  it('announces a letter once per session, however the grade fluctuates', () => {
+    const stats = seeded()
+    const s = setup({ presets: onePreset, stats })
+    const gradeNow = () => comboGrade(comboMetrics(stats.get(KEY)!).score)
+    const missThenCorrect = () => {
+      const prompt = s.store.getState().prompt!
+      s.press(61, 62, 63)
+      s.releaseAll()
+      playCorrectAndAdvance(s, prompt)
+    }
+    const clean = () => playCorrectAndAdvance(s, s.store.getState().prompt!)
+
+    clean() // 8/10 → A, announced
+    expect(gradeNow()).toBe('A')
+    expect(s.store.getState().gradeUp).not.toBeNull()
+    vi.advanceTimersByTime(JUST_UNLOCKED_FLASH_MS)
+
+    for (let i = 0; i < 3; i++) missThenCorrect() // back down to B
+    expect(gradeNow()).toBe('B')
+
+    for (let i = 0; i < 8; i++) clean() // and back up to the same A
+    expect(gradeNow()).toBe('A')
+    expect(s.store.getState().gradeUp).toBeNull()
+
+    for (let i = 0; i < 2; i++) clean() // 10/10 at S speed — a new letter
+    expect(gradeNow()).toBe('S')
+    expect(s.store.getState().gradeUp).toEqual({
+      label: 'C maj',
+      from: 'A',
+      to: 'S',
+    })
   })
 
   it('stays quiet when the grade holds or drops', () => {

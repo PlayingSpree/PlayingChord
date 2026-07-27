@@ -86,6 +86,28 @@ export interface ComboStatsSource extends RecentStatsSource {
 
 export const NO_HISTORY: RecentStatsSource = { recentHistory: () => null }
 
+// How a completed prompt enters the *grade* window (§7.5), as opposed to how
+// it is otherwise recorded. A rep that ran all the way into the §6.2 recording
+// ceiling grades as a miss even when the right keys eventually went down: ten
+// seconds of hunting is not recall, and letting it through as a first-try
+// success meant the accuracy axis read flawless while only the speed axis —
+// already at zero there — disagreed. It is the grade alone that demotes it;
+// the prompt still counts as a first-try success everywhere the player is
+// simply told what happened (lifetime accuracy, the session tallies and their
+// grade, the Report log, the daily figures, the §7.3 streak), because they did
+// play it correctly on the first attempt. Clamped times arrive exactly at the
+// ceiling, so the comparison is `>=`; a null time is a clock-paced Song bar
+// (§6.5), which has no span to judge.
+export function gradingOutcome(
+  outcome: PromptOutcome,
+  timeToCorrectMs: number | null,
+): PromptOutcome {
+  if (outcome === 'missed') return 'missed'
+  return timeToCorrectMs !== null && timeToCorrectMs >= MAX_TIME_TO_CORRECT_MS
+    ? 'missed'
+    : 'first-try'
+}
+
 export function applyOutcome(
   record: ComboStatRecord | null,
   outcome: PromptOutcome,
@@ -101,9 +123,12 @@ export function applyOutcome(
     attempts: base.attempts + 1,
     firstTrySuccesses:
       base.firstTrySuccesses + (outcome === 'first-try' ? 1 : 0),
-    recentOutcomes: [...base.recentOutcomes, outcome].slice(
-      -RECENT_OUTCOME_WINDOW,
-    ),
+    // The window the grade reads is the one place a ceiling rep is demoted
+    // (gradingOutcome); the lifetime counters above keep what was played.
+    recentOutcomes: [
+      ...base.recentOutcomes,
+      gradingOutcome(outcome, timeToCorrectMs),
+    ].slice(-RECENT_OUTCOME_WINDOW),
     timeToCorrectMs:
       timeToCorrectMs === null
         ? base.timeToCorrectMs

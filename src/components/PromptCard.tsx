@@ -149,7 +149,8 @@ export function PromptCard() {
 // rides the ✔ flash once it reaches 10; a Practice answer past the §7.5 D/F
 // speed boundary turns the flash amber with a `· slow` chip, and one at or
 // under A's second earns `· fast` — plus a `learned` callout when that rep
-// lifted a chord still in learning to a passing grade (§5.1).
+// lifted a chord still in learning to a passing grade (§5.1), and a grade-up
+// line beneath when it climbed the combo a letter (§7.3).
 function FeedbackPill() {
   const phase = usePractice((s) => s.phase)
   const reactionMs = usePractice((s) => s.reactionMs)
@@ -158,6 +159,7 @@ function FeedbackPill() {
   const song = usePractice((s) => s.song)
   const mode = usePractice((s) => s.mode)
   const justLearned = usePractice((s) => s.justLearned)
+  const gradeUp = usePractice((s) => s.gradeUp)
 
   const base =
     'inline-flex items-center gap-2 rounded-full px-[18px] py-1.5 font-extrabold'
@@ -240,9 +242,26 @@ function FeedbackPill() {
     )
   }
 
+  // The grade-up notice (§7.3) sits directly under the pill and lives exactly
+  // as long as it does — it is news about the rep the ✔ is flashing for, so it
+  // arrives with it rather than in a toast of its own, minutes-old by the time
+  // it appears.
+  const showGradeUp = gradeUp !== null && phase === 'advancing'
+
   return (
-    <div className="flex min-h-11 items-center justify-center" role="status">
+    <div
+      className="relative flex min-h-11 items-center justify-center"
+      role="status"
+    >
       {content}
+      {/* Out of flow: the line keeps the feedback area a fixed height, so the
+          Skip button below it doesn't hop every time a grade climbs. */}
+      {showGradeUp && (
+        <span className="absolute top-full mt-1 inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-primary-tint px-3.5 py-0.5 text-sm font-semibold text-primary-light">
+          📈 <span className="font-extrabold">{gradeUp.label}</span> grade up:{' '}
+          {gradeUp.from} → <span className="font-extrabold">{gradeUp.to}</span>
+        </span>
+      )}
     </div>
   )
 }

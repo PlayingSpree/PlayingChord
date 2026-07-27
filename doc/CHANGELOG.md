@@ -15,6 +15,27 @@ artifact and are not recoverable.
 
 ---
 
+## 9.7.0 — 2026-07-27
+
+**Ten seconds is a miss, and a climb is news once.** A rep that reaches the §6.2
+recording ceiling now enters the *grade* window as a miss: the speed axis was
+already zero there, but accuracy read the prompt as flawless, so a combo that
+was hunted down over ten seconds could still grade well above what it had shown.
+Only the grade demotes it — lifetime accuracy, the session tallies, the Report
+log, the daily figures and the combo streak still count the first-try success
+the player actually played.
+
+The §7.3 grade-up notice moved from a toast on its own timer to a line under the
+feedback pill, decided on the same judgment edge as the `learned` callout, so it
+appears with the ✔ of the rep that earned it instead of after that prompt is
+gone. It also fires once per letter per session, per combo: a grade rides a
+moving window, so a combo sitting on a cut point re-crosses it every few reps
+and the same B → A announced itself repeatedly.
+
+The Report headline (§7.4) reads off the session grade instead of an accuracy
+threshold of its own: praise at the top of the scale, encouragement at the
+bottom, so the line and the badge beside it always agree.
+
 ## 9.6.0 — 2026-07-27
 
 **A build says which build it is.** Home's top bar carries the spec version
