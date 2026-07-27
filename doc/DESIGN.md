@@ -4,53 +4,10 @@ A web app for practicing piano chords with a MIDI keyboard. The app shows a rand
 from a chosen preset, the user plays it on their connected MIDI keyboard, and the app
 validates the input and moves on to the next chord.
 
-Status: **Draft v9** — **session-based UI** (2026-07-24): the app opens on a **Home**
-screen and practice runs as explicit sessions — a session sheet picks preset, mode,
-and a **length in prompts** (10/20/40/∞, replacing the Draft-v5 minute timer), the
-**Stage** runs the session, and every session ends in a full-screen **Report** with a
-session grade (the §5 chord-score formula applied to the session) and deltas against
-a trailing-30-practiced-day baseline (§7). History becomes **Progress**, the upcoming
-preview shrinks to the next 2 shown inline, and the visual language is redone
-(reference mock: `doc/Prototype.dc.html`). A 2026-07-26 revision reworked the
-**grade** and the speed feedback around it: the grade is now stated in round
-seconds with an **S** tier on top (§7.5) — S ≤ 1 s, A 2 s, B 3 s, C 4 s, D 5 s at
-flawless accuracy, a miss costing a letter exactly as a second does. The old A–D
-bands keep their seconds and are simply relabeled one letter down, so a returning
-player's chords read a letter higher without having changed; the one substantive
-move is 4–5 s (and 1-of-5 accuracy), which used to be F and now grades D. The same
-revision added the §7.3 **`· slow` chip** on answers past D's second and the §6.2
-**time-to-correct ceiling** (10 s) on everything recorded. A same-day follow-up
-put the grade in charge of unlocking too: a chord is **passed once its grade is D
-or better** (§5.1), replacing the one-fast-first-try bar, and the pill gained a
-**`· fast` chip** (A's second, the mirror of `· slow`) plus a **`learned`**
-callout on the rep that lifts a chord past the pass bar (§7.3). Red moved with
-it: **F alone is red** now and D reads neutral like C (§7.5), while the slow
-flash keeps its amber at the unchanged F boundary.
-Draft v8 added flashcard-style
-**chord unlocking** (2026-07-19): each preset
-starts with only its first 3 chords in play, and passing every unlocked chord opens
-2 more, until the whole pool is available (§5). Learn/Practice
-generate only from unlocked chords; Song mode stays full-pool. A same-day revision
-added an optional **circle-of-fifths unlock order** for root-ordered pools and an
-unlock **toast** naming the newly opened chords (§5.1, §7). A 2026-07-20 revision
-added a Learn-mode **"Not passed only"** setting, mirroring Practice's worst-chords
-toggle, that narrows generation to unlocked-but-not-yet-passed chords (§5.1, §7). A
-same-day follow-up renamed the unlock concept from "mastered" to **passed** throughout
-(a bar well short of real mastery — see §5.1 for the current one) and added a per-chord
-breakdown to the unlock chip, expandable by clicking it (§5.1, §7).
-Draft v7 made Song mode
-draw its progression from the **active preset's
-chord pool** instead of a separate key selection (2026-07-18), so all three modes share
-one preset picker; a diatonic preset keeps the starts-on-I / no-vii° / Roman-numeral
-behavior (§6.5). Draft v6 (2026-07-17) added **Song mode**: a third session
-mode that plays a short progression to a metronome, where the clock advances
-instead of waiting for a correct answer (§6.5). Draft v5 (2026-07-16) reworked session
-modes into **Learn** (example voicing visible, untimed) and **Practice** (voicing
-hidden), with the former timed/review modes folded into Practice-mode settings. Draft v4 (2026-07-15)
-refined prompt emphasis, judging model, hint policy, goals/streaks, sound policy,
-extended-chord stance, and no-device behavior. Both previously open questions are
-resolved (see [§9](#9-resolved-questions)). Build sequencing (what gets implemented
-first) is intentionally left outside this document.
+Spec version: **9.2.0** (2026-07-26) — session-based UI. Revision history lives in
+[CHANGELOG.md](CHANGELOG.md); this document describes only what the app *is* today.
+Both previously open questions are resolved (see [§9](#9-resolved-questions)). Build
+sequencing (what gets implemented first) is intentionally left outside this document.
 
 **Key decisions:**
 - Stack: React + TypeScript + Vite + Zustand, client-side only (no accounts/server).
@@ -76,8 +33,8 @@ first) is intentionally left outside this document.
   **worst chords only** toggle (replacing the old review mode) — plus subtle
   miss-weighting always.
 - **Chord unlocking**: flashcard-style progression per preset — start with 3 chords,
-  pass them all (first-try, under 2 s) to unlock 2 more, repeating until the pool is
-  open (§5). Gates Learn/Practice generation only; Song mode uses the full pool.
+  pass them all (grade D or better, §5.1) to unlock 2 more, repeating until the pool
+  is open (§5). Gates Learn/Practice generation only; Song mode uses the full pool.
 - **Goals & streaks**: a daily practice-*time* goal with streak tracking, persisted
   locally alongside the existing stats history.
 - Sound: a **correct chime**, plus an optional **key-press piano tone**
@@ -406,7 +363,7 @@ flashcard-style batches instead of the whole pool at once:
   better** (§7.5) — every letter but F. The pass bar is therefore the grade the
   player already reads everywhere else rather than a private threshold: "learned"
   means the recent window of reps is no longer failing, not real mastery, hence
-  the wording. (Draft v9 replaced the original bar — one first-try success under
+  the wording. (9.2.0 replaced the original bar — one first-try success under
   2000 ms — because a single lucky rep passed a chord the stats still graded F,
   and because a steady-but-unhurried player could never unlock anything at all.)
   A chord spanning several voicing combos takes the **worst** combo's grade, the

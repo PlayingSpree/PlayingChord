@@ -8,7 +8,7 @@ PlayingChord: a client-side-only web app for practicing piano chords with a MIDI
 keyboard. React + TypeScript + Vite + Zustand + Tailwind; no backend, everything
 persists to `localStorage`. Requires Web MIDI (Chrome/Edge/Opera; no Safari) and a
 physical MIDI keyboard — there is deliberately no mouse/QWERTY fallback. The UI is
-**session-based** (DESIGN.md Draft v9, §7): Home → session sheet → gated Stage →
+**session-based** (DESIGN.md §7): Home → session sheet → gated Stage →
 full-screen Report, in the self-hosted Bricolage-Grotesque dark-navy visual
 language.
 
@@ -18,6 +18,13 @@ All requirements live in [DESIGN.md](doc/DESIGN.md), cited by section (e.g. §6.
 §3.3 voicing rules). Read the sections a change touches before coding; don't
 re-decide things it already resolves (§9 lists resolved questions). When a change
 intentionally alters product behavior, update [DESIGN.md](doc/DESIGN.md) in the same commit.
+
+The spec is versioned: [CHANGELOG.md](doc/CHANGELOG.md) holds the revision history and
+`package.json` mirrors the current spec version (**9.2.0**). A behavior change adds a
+MINOR entry to the changelog and bumps both, in the same commit as the DESIGN.md edit;
+wording-only changes are a PATCH. Don't date code comments by hand — `git blame` does
+that better; only comment a version where current behavior must be read against a
+previous one (migrations, schema notes).
 
 The app is feature-complete against the spec. The build-era docs (PLAN.md,
 PROGRESS.md) are retired — the phase-by-phase build log lives in git history.
