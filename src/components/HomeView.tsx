@@ -126,6 +126,7 @@ export function HomeView({
           <span className="text-xl font-extrabold tracking-tight">
             PlayingChord
           </span>
+          <BuildTag />
           <span className="flex-1" />
           <DevicePicker />
           <span className="flex h-10 items-center gap-2 rounded-[14px] border-2 border-card-border bg-card px-4 text-[15px] font-extrabold">
@@ -305,6 +306,24 @@ function InPlayChip({
         <b className={cx('font-extrabold', gradeText(grade))}>{grade}</b>
       )}
     </Chip>
+  )
+}
+
+// The spec version this build implements, next to the wordmark (§7.1). A
+// build off any branch but master also names the branch — that is the whole
+// point on a deployed preview, where the URL is the same as production's.
+function BuildTag() {
+  const preview = __APP_BRANCH__ !== '' && __APP_BRANCH__ !== 'master'
+  return (
+    <span className="self-end pb-0.5 text-[11px] font-semibold text-ink-muted">
+      v{__APP_VERSION__}
+      {preview && (
+        <>
+          {' · '}
+          <b className="text-info">{__APP_BRANCH__}</b>
+        </>
+      )}
+    </span>
   )
 }
 

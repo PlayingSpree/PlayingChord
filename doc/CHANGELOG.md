@@ -15,6 +15,22 @@ artifact and are not recoverable.
 
 ---
 
+## 9.6.0 — 2026-07-27
+
+**A build says which build it is.** Home's top bar carries the spec version
+next to the wordmark, and names the branch when the build didn't come from
+`master`.
+
+Previews now deploy to the production URL (README, *Deployment*) — the repo has
+one Pages site, so testing a branch replaces the live build until it's re-run
+from `master`. Without a marker on screen there is nothing to distinguish the
+two, and a screenshot can't be traced to the rules that produced it, which is
+the reason `package.json` tracks the spec version at all. The branch is hidden
+on production builds, where it would be noise. Both values are substituted at
+build time.
+
+---
+
 ## 9.5.1 — 2026-07-27
 
 **The document stops restating the code.** No behavior change: DESIGN.md's job is

@@ -552,7 +552,13 @@ never relies on color alone (§6.4).
 The entry screen — the app boots here, not into practice. The no-device gate
 (§6.1) doesn't block Home/Progress/Settings; it appears when a session starts.
 
-- **Top bar**: app name · device picker · streak chip (🔥 N) · Settings.
+- **Top bar**: app name · build tag · device picker · streak chip (🔥 N) ·
+  Settings. The **build tag** is the spec version this build implements, and —
+  only when the build didn't come from `master` — the branch it came from.
+  Previews deploy to the same URL as production (README, *Deployment*), so a
+  screenshot has to be able to say which build it is; on production the branch
+  is noise and stays hidden. Both values are fixed at build time, not read at
+  runtime.
 - **Continue card** (primary): the active preset's name with a **Change**
   control (the preset picker, incl. the diatonic key picker); unlock progress —
   `N/total chords unlocked`, a bar, and how many unlock on the next pass (§5.1);
