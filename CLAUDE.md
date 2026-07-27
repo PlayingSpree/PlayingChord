@@ -19,6 +19,11 @@ All requirements live in [DESIGN.md](doc/DESIGN.md), cited by section (e.g. §6.
 re-decide things it already resolves (§9 lists resolved questions). When a change
 intentionally alters product behavior, update [DESIGN.md](doc/DESIGN.md) in the same commit.
 
+It records **decisions and their rationale**, not type declarations: for shapes it
+describes what they mean and points at the source file. Keep it that way — don't
+paste `interface` blocks, directory trees or dependency lists back in. Those drift
+unnoticed; the prose is what can't be recovered by opening the code.
+
 The spec is versioned: [CHANGELOG.md](doc/CHANGELOG.md) holds the revision history and
 `package.json` mirrors the current spec version. A behavior change adds a
 MINOR entry to the changelog and bumps both, in the same commit as the DESIGN.md edit;

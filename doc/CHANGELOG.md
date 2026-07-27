@@ -15,6 +15,23 @@ artifact and are not recoverable.
 
 ---
 
+## 9.5.1 — 2026-07-27
+
+**The document stops restating the code.** No behavior change: DESIGN.md's job is
+now the decisions and their rationale, not the type declarations.
+
+The inline `interface` blocks in §3.2/§3.3/§3.4/§4, §2's stack table and §8's
+directory tree are replaced by prose plus a pointer to the source file. They were
+the parts that had already drifted — §3.2 still declared `intervals: number[]` after
+each interval gained its spelling degree, and §3.3 declared one `VoicingRule`
+interface after the type became a constraint/pattern union — while the surrounding
+rationale stayed accurate, because a stale explanation gets noticed and a stale
+field list doesn't. What a reader can recover by opening the file is the cheapest
+thing to maintain and the least valuable to duplicate; what §5's evidence floor is
+half of, and why, is neither.
+
+---
+
 ## 9.5.0 — 2026-07-27
 
 **A grade now has to be earned.** Two changes to the §5 chord score, and one to

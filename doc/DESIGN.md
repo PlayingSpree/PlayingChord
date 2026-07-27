@@ -4,7 +4,7 @@ A web app for practicing piano chords with a MIDI keyboard. The app shows a rand
 from a chosen preset, the user plays it on their connected MIDI keyboard, and the app
 validates the input and moves on to the next chord.
 
-Spec version: **9.5.0** (2026-07-27) — session-based UI. Revision history lives in
+Spec version: **9.5.1** (2026-07-27) — session-based UI. Revision history lives in
 [CHANGELOG.md](CHANGELOG.md); this document describes only what the app *is* today.
 Both previously open questions are resolved (see [§9](#9-resolved-questions)). Build
 sequencing (what gets implemented first) is intentionally left outside this document.
@@ -89,15 +89,12 @@ sequencing (what gets implemented first) is intentionally left outside this docu
 
 ## 2. Tech Stack
 
-| Concern | Choice | Rationale |
-|---|---|---|
-| Framework | React + TypeScript + Vite | Fast dev loop, typed chord/MIDI models, no backend needed |
-| MIDI | Web MIDI API (native) | No library required; wrapper module isolates it for testing |
-| State | **Zustand** | Small app; simpler selector/update ergonomics than context for frequently-changing MIDI state (held notes) |
-| Styling | Tailwind CSS | Quick iteration on practice UI |
-| Notation | VexFlow | Render an example voicing on a grand staff — optional reference, not the prompt itself (§3.4) |
-| Audio | Web Audio API (small wrapper) | Correct-chime + key-press piano synth; misses are silent (§9) |
-| Testing | Vitest | Chord theory + voicing matching are pure functions, easy to unit test |
+React + TypeScript + Vite, Zustand for state, Tailwind, VexFlow for notation, Web
+Audio for sound, Vitest for tests — `package.json` is the authority on what's
+actually installed. Two choices worth recording: **Zustand** over context, because
+held notes change on every MIDI event and context re-renders too broadly; and
+**native Web MIDI** with no library, behind a wrapper module, so the whole app is
+testable and developable without hardware.
 
 **Browser support:** Web MIDI works in Chrome, Edge, and Opera; Firefox 108+ with
 permission; **not Safari**. Unsupported browsers get a blocking message ("Web MIDI not
@@ -118,18 +115,10 @@ No backend. The app is a static site (deployable to GitHub Pages / Netlify).
 
 ### 3.2 Chord
 
-```ts
-interface ChordType {
-  id: string;            // "maj", "min7", "dom9", ...
-  name: string;          // "Major", "Minor 7th", "Dominant 9th"
-  intervals: number[];   // semitones from root, e.g. maj7 = [0, 4, 7, 11]
-}
-
-interface Chord {
-  root: PitchClass;      // 0-11
-  type: ChordType;
-}
-```
+A **chord type** is an id, a display name, and its intervals from the root; a
+**chord** is a root pitch class plus a type (`theory/chordTypes.ts`). Each interval
+carries its scale **degree** alongside the semitone count — that's what lets a ♯5
+spell as ♯5 rather than ♭6 (§3.5); semitones alone can't decide it.
 
 Built-in chord types: `maj`, `min`, `dim`, `aug`, `sus2`, `sus4`, `maj6`, `min6`, `add9`,
 `maj7`, `min7`, `dom7`, `dim7`, `m7b5`, `maj9`, `min9`, `dom9`, `dom11`, `dom13`.
@@ -152,23 +141,14 @@ harmless; presets mixing sus2 and sus4 just drill the same shapes under two name
 
 Voicing rules are **composable and reusable**, stored the same way chord types are — as
 named, id'd data — so new voicings (for you as developer, or for a user via the builder
-UI in §7) don't require touching matcher code:
+UI in §7) don't require touching matcher code. A rule is one of two kinds
+(`theory/voicingRules.ts`).
 
-```ts
-type BassConstraint =
-  | { kind: "any" }                          // no constraint on the lowest held note
-  | { kind: "chordTone"; degree: number };    // lowest note must be the chord tone at this
-                                               // index into ChordType.intervals (0 = root,
-                                               // 1 = 1st inversion, 2 = 2nd inversion, ...)
-
-interface VoicingRule {
-  id: string;                 // "any", "root-position", "first-inversion", "closed", ...
-  name: string;                // display name, e.g. "1st Inversion"
-  bass: BassConstraint;
-  span?: { min?: number; max?: number };  // semitone range between lowest and highest held note
-  doubling: "allowed" | "exact";           // whether repeated pitch classes (octave doubles) are permitted
-}
-```
+A **constraint rule** describes properties any satisfying voicing must have:
+a **bass** constraint (unconstrained, or "the lowest note is chord tone *n*" —
+index 0 = root position, 1 = 1st inversion, …), an optional **span** in semitones
+between lowest and highest held note, and a **doubling** policy (`allowed` or
+`exact` — whether octave doubles of a chord tone are permitted).
 
 Built-in library:
 
@@ -188,21 +168,9 @@ Users can define additional rules (any combination of bass/span/doubling) throug
 voicing builder (§7); custom rules join the same library and can be referenced by any
 preset.
 
-**Pattern rules** are a second `VoicingRule` kind for shapes a bass/span/doubling
-constraint can't express — an arbitrary two-hand voicing, spelled out as chord degrees
-from the bottom of each hand:
-
-```ts
-interface PatternVoicingRule {
-  kind: "pattern";
-  id: string;
-  name: string;
-  leftHand: number[];   // degrees from the bottom, e.g. [1, 5]
-  rightHand: number[];  // e.g. [1, 2, 5]
-}
-```
-
-A degree resolves against the specific chord being drilled (`theory/pattern.ts`):
+**Pattern rules** are the second kind, for shapes a bass/span/doubling constraint
+can't express — an arbitrary two-hand voicing, spelled out as chord degrees from the
+bottom of each hand (LH `1-5`, RH `1-2-5`). A degree resolves against the specific chord being drilled (`theory/pattern.ts`):
 1/3/5/7 (root/third/fifth/seventh) come only from the chord's own quality — a triad has
 no 7th, so a pattern degree 7 is unsatisfiable on it, the same "incompatible pairing"
 the preset editor already warns about for constraint rules. 2/4/6 (the "color" degrees,
@@ -216,25 +184,18 @@ Omitted-tone primitives (`omittedDegrees` etc.) are **out of scope** — resolve
 
 ### 3.4 Prompt (what the user is asked to play)
 
-```ts
-interface Prompt {
-  chord: Chord;
-  voicing: VoicingRule;
-  displayName: string;   // "C maj7" — root/type only. The voicing being drilled is
-                          // shown separately (e.g. "2nd inversion"), never folded into
-                          // a misleading slash-chord name.
-  example: number[];      // one concrete voicing satisfying the rule (MIDI notes),
-                          // deterministic per prompt — overlaid on the keyboard from
-                          // the start in Learn mode, drawn on the staff whenever its
-                          // setting is on (§3.4/§7), and used for the Practice-mode
-                          // hint reveal (§6.4). Illustrative only: matching is against
-                          // the rule, never against these notes.
-}
-```
+A prompt (`practice/prompts.ts`) is the chord being drilled, the voicing rule it's
+matched against, a **display name** and an **example** voicing.
 
-`realizeVoicing(chord, rule) → number[]` (in `theory/`) picks a playable example near
-middle C. The **name is the prompt**; `example` is the answer display (Learn keyboard
-overlay + staff) and the Practice-mode hint reveal — never the match target.
+The display name is root/type only — "C maj7". The voicing being drilled is shown
+separately ("2nd inversion"), never folded into a misleading slash-chord name.
+
+The example is one concrete set of MIDI notes satisfying the rule, deterministic per
+prompt — `realizeVoicing(chord, rule)` in `theory/` picks a playable one near middle
+C. It is overlaid on the keyboard from the start in Learn mode, drawn on the staff
+whenever that setting is on (§7), and revealed as the Practice-mode miss-3 hint
+(§6.4). It is illustrative only: the **name is the prompt** and matching is always
+against the rule, never against these notes.
 
 ### 3.5 Spelling (for notation)
 
@@ -260,19 +221,13 @@ A preset defines the pool the random generator draws from. Because some pools (e
 diatonic triads) are *pairs* of root+quality — not a full cross product — the pool has
 variants:
 
-```ts
-type ChordPool =
-  | { kind: "product"; roots: PitchClass[]; chordTypes: ChordTypeId[] }   // cross product
-  | { kind: "explicit"; chords: { root: PitchClass; type: ChordTypeId }[] } // exact list
-  | { kind: "diatonic"; key: PitchClass };  // major key → I ii iii IV V vi vii° as triads
+- **product** — a cross product of roots × chord types.
+- **explicit** — an exact list of root/type pairs.
+- **diatonic** — a major key, expanded to I ii iii IV V vi vii° as triads.
 
-interface Preset {
-  id: string;
-  name: string;
-  pool: ChordPool;
-  voicingIds: string[];         // references into the shared VoicingRule library (§3.3)
-}
-```
+A preset is an id, a name, one such pool, and references into the shared
+`VoicingRule` library (§3.3) — never inlined rules, so a rule edit reaches every
+preset using it (`practice/presets.ts`).
 
 **Built-in presets** (all use the `any` voicing rule unless noted):
 
@@ -892,31 +847,13 @@ all sessions:
 
 ## 8. Project Structure
 
-```
-src/
-  midi/           # Web MIDI wrapper, device management, held-note state, no-device detection
-  theory/         # chord types, interval math, naming, spelling (§3.5), voicing rules,
-                  #   matcher, realizeVoicing (pure, unit-tested)
-  practice/       # session engine: attempt lifecycle (§6.2), prompt generation, weighted
-                  #   selection, session modes (Learn/Practice + length/worst-chords,
-                  #   Song progression + bar clock §6.5), hint staging, report
-                  #   derivations (grade + baselines §7.4), unlock
-                  #   progress (§5.1, progress.ts)
-  storage/        # localStorage persistence: presets, custom voicing rules, per-combo
-                  #   stats history, daily practice totals + goal/streak state,
-                  #   per-preset unlock progress (§5.1)
-                  #   (versioned schema, import/export)
-  audio/          # Web Audio: correct-chime, key-press piano synth, metronome click
-                  #   (shared context)
-  components/     # HomeView, SessionSheet, PromptCard, KeyboardView, ReportView,
-                  #   ProgressView, ChordStatsView, DevicePicker, PresetEditor,
-                  #   VoicingBuilder
-  store/          # app state (settings, session) — Zustand
-```
+The one architectural rule: **`theory/`, `practice/`, and `storage/` are pure
+TypeScript with no DOM or MIDI dependencies.** All matching, weighting, goal/streak
+and persistence logic lives there and is unit-tested directly; only `midi/`,
+`audio/`, `components/` and `store/` touch the platform, and MIDI input is simulated
+for development without hardware. `ls src/` is the authority on what modules exist.
 
-`theory/`, `practice/`, and `storage/` are pure TypeScript with no DOM/MIDI dependencies —
-all matching, weighting, goal/streak, and persistence logic gets unit tests; MIDI input
-is simulated for development without hardware.
+The persisted shapes, which the sections above depend on:
 
 Per-combo stat record (keyed `(root, typeId, voicingId)`, §5): attempts, first-try
 successes, recent-miss window (the last **10** outcomes), time-to-correct samples
