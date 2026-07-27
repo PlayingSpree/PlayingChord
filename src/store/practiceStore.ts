@@ -1120,6 +1120,11 @@ export function createPracticeStore({
         // Learn reveal can't be answered for Practice credit.
         recordOutcome()
         queue = [] // the pool can change (worstOnly/notPassedOnly are per-mode)
+        // Leaving the mode ends the run (§7.3). Only Practice can break a
+        // streak — Learn records no outcome at all and Song is clock-paced —
+        // so without this a detour parks the count and hands it back intact,
+        // which is a free pass on a counter nothing else forgives.
+        if (get().firstTryStreak > 0) set({ firstTryStreak: 0 })
         if (!sessionLive) {
           set({ mode })
           return

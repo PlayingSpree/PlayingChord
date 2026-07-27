@@ -855,15 +855,30 @@ describe('practiceStore — session stats & worst chords (§7)', () => {
     expect(s.store.getState().firstTryStreak).toBe(0)
   })
 
-  it('Learn prompts leave the streak alone (§5)', () => {
+  it('a mode switch ends the streak (§7.3)', () => {
     const s = setup({ presets: onePreset })
     playCorrectAndAdvance(s, s.store.getState().prompt!)
+    playCorrectAndAdvance(s, s.store.getState().prompt!)
+    expect(s.store.getState().firstTryStreak).toBe(2)
+
+    // Only Practice can break a streak, so a detour through Learn or Song
+    // would otherwise park the count and hand it back intact.
+    s.store.getState().setMode('learn')
+    expect(s.store.getState().firstTryStreak).toBe(0)
+
+    s.store.getState().setMode('practice')
+    playCorrectAndAdvance(s, s.store.getState().prompt!)
+    expect(s.store.getState().firstTryStreak).toBe(1) // starts over, not at 3
+  })
+
+  it('Learn prompts leave the streak alone (§5)', () => {
+    const s = setup({ presets: onePreset })
     s.store.getState().setMode('learn')
 
     playCorrectAndAdvance(s, s.store.getState().prompt!)
-    expect(s.store.getState().firstTryStreak).toBe(1) // neither up nor down
+    expect(s.store.getState().firstTryStreak).toBe(0) // a Learn ✔ never counts
     s.press(61, 62, 63) // a Learn miss records nothing either
-    expect(s.store.getState().firstTryStreak).toBe(1)
+    expect(s.store.getState().firstTryStreak).toBe(0)
   })
 
   it('skips leave the session tallies untouched', () => {

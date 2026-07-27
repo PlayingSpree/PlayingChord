@@ -15,6 +15,13 @@ artifact and are not recoverable.
 
 ---
 
+## 9.4.0 — 2026-07-27
+
+**Switching mode ends the combo streak** (§7.3). Only Practice can break a
+streak — Learn records no outcome and Song is clock-paced — so a mid-session
+detour used to park the count and hand it back intact, a free pass on a
+counter that nothing else forgives.
+
 ## 9.3.0 — 2026-07-27
 
 The Report drops its **secondary chord lines** — best chord average, slowest

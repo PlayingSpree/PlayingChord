@@ -4,7 +4,7 @@ A web app for practicing piano chords with a MIDI keyboard. The app shows a rand
 from a chosen preset, the user plays it on their connected MIDI keyboard, and the app
 validates the input and moves on to the next chord.
 
-Spec version: **9.3.0** (2026-07-27) — session-based UI. Revision history lives in
+Spec version: **9.4.0** (2026-07-27) — session-based UI. Revision history lives in
 [CHANGELOG.md](CHANGELOG.md); this document describes only what the app *is* today.
 Both previously open questions are resolved (see [§9](#9-resolved-questions)). Build
 sequencing (what gets implemented first) is intentionally left outside this document.
@@ -750,7 +750,10 @@ counts a new progression in).
   land on the judgment itself: the ✔ counts itself (so the 10th first-try
   correct is the one that says 10), and a miss drops the streak the instant the
   ✘ lands — silently, with no lost-combo callout, and whether or not the prompt
-  is later completed or skipped. Session-only —
+  is later completed or skipped. **Switching mode** ends the run too: only
+  Practice can break a streak — Learn records no outcome and Song is
+  clock-paced — so a detour would otherwise park the count and hand it back
+  intact. Session-only —
   not shown elsewhere — but the longest streak ever reached is tracked lifetime
   (§7.5 Progress). There is no separate live stats panel — session stats surface in
   the Report.
