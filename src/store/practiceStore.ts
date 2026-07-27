@@ -5,8 +5,10 @@ import {
   applyOutcome,
   AttemptLifecycle,
   builtInPresets,
+  canSetAside,
   chordOrderOf,
   chordPassList,
+  chordsOpenedBefore,
   comboKey,
   comboLabel,
   comboMetrics,
@@ -29,6 +31,9 @@ import {
   recordChordAttempt,
   romanNumeral,
   worstChordGrade,
+  worstChordDisplayGrade,
+  openChord,
+  setAsideChord,
   sanitizeSessionLength,
   DEFAULT_SESSION_LENGTH,
   songChordLabel,
@@ -38,9 +43,12 @@ import {
   buildSessionReport,
   wrongHeldKeys,
   type AttemptPhase,
+  type ChordPassEntry,
   type Combo,
   type ComboGrade,
   type ComboStatRecord,
+  type DisplayGrade,
+  type ReportChord,
   type LifecycleState,
   type ComboStatsSource,
   type Hint,
@@ -164,14 +172,15 @@ export interface UnlockProgress {
   unlocked: number
   passed: number
   total: number
+  // Unlocked chords the player has set aside (§5.2). Part of the snapshot so
+  // a set-aside — which moves neither of the counts above — still changes
+  // this object, and Home's In play row re-derives from it.
+  setAside: number
 }
 
 // One chord's status in the unlock chip's per-chord drill-down (§7), with a
 // display label resolved through the active expansion (diatonic spelling).
-export interface ChordPassDisplayEntry {
-  key: string
-  unlocked: boolean
-  passed: boolean
+export interface ChordPassDisplayEntry extends ChordPassEntry {
   label: string
 }
 
@@ -300,6 +309,17 @@ export interface PracticeStoreState {
   // Every pool chord in unlock order with its locked/unlocked/passed status
   // and display label — the unlock chip's per-chord drill-down (§7).
   chordPassStatus(): readonly ChordPassDisplayEntry[]
+  // §5.2 by-hand pool control, from Home and the Report. Both no-op when the
+  // move isn't available (the MIN_ACTIVE_CHORDS floor, an already-open chord),
+  // so the caller can offer them without re-deriving the rules.
+  setChordAside(chordKey: string): void
+  openChordForPlay(chordKey: string): void
+  // May this chord be set aside right now (§5.2)? False once doing so would
+  // leave too little in play.
+  canSetChordAside(chordKey: string): boolean
+  // How many chords ahead of a locked one openChordForPlay would open with it
+  // — the unlock frontier is a prefix (§5.1), so the control says so.
+  chordsOpenedWith(chordKey: string): number
 }
 
 export interface PracticeStoreDeps {
@@ -434,6 +454,7 @@ export function createPracticeStore({
       unlocked: progressRecord.unlockedCount,
       passed: progressRecord.masteredIndices.length,
       total: chordOrder.length,
+      setAside: progressRecord.setAsideIndices.length,
     })
 
     const clearUnlockFlash = () => {
@@ -492,6 +513,71 @@ export function createPracticeStore({
         if (record !== null) records.push(record)
       }
       return worstChordGrade(records)
+    }
+
+    // The same fold as chordGrade, but through the display rule (§7.5) — an
+    // unproven combo reads `new`, not F. What the §5.2 suggestion judges on:
+    // a chord that has barely been played needs reps, not a bench.
+    const chordDisplayGrade = (chordKey: string): DisplayGrade | null => {
+      const records: ComboStatRecord[] = []
+      for (const combo of expansion.combos) {
+        if (poolChordKey(combo) !== chordKey) continue
+        const record = stats.get(comboKey(combo))
+        if (record !== null) records.push(record)
+      }
+      return worstChordDisplayGrade(records)
+    }
+
+    // The preset's benched chords in unlock order (§5.2), for the Report's
+    // bring-back offer.
+    const setAsideChords = (): { chordKey: string; label: string }[] =>
+      chordPassList(chordOrder, progressRecord)
+        .filter((entry) => entry.setAside)
+        .map((entry) => ({
+          chordKey: entry.key,
+          label: chordKeyLabel(entry.key),
+        }))
+
+    // The chords this session actually played, folded from its per-combo
+    // events, with what the §5.2 suggestion rule needs to judge them.
+    const reportChords = (): ReportChord[] => {
+      const chordOf = new Map<string, string>()
+      for (const combo of expansion.combos) {
+        chordOf.set(comboKey(combo), poolChordKey(combo))
+      }
+      const misses = new Map<string, number>()
+      const played: string[] = []
+      for (const event of sessionEvents) {
+        const chordKey = chordOf.get(event.key)
+        if (chordKey === undefined) continue
+        if (!played.includes(chordKey)) played.push(chordKey)
+        if (event.outcome === 'missed') {
+          misses.set(chordKey, (misses.get(chordKey) ?? 0) + 1)
+        }
+      }
+      return played.map((chordKey) => ({
+        chordKey,
+        label: chordKeyLabel(chordKey),
+        grade: chordDisplayGrade(chordKey),
+        misses: misses.get(chordKey) ?? 0,
+        canSetAside: canSetAside(chordOrder, progressRecord, chordKey),
+      }))
+    }
+
+    // Writes a by-hand progress change (§5.2) through: persist, re-derive the
+    // in-play set, drop the preview queue (the pool changed, like any other
+    // pool change) and redeal a live prompt so a chord just set aside isn't
+    // left on screen. These are Home/Report controls, so a live prompt is the
+    // paused-with-settings-open case rather than the usual one.
+    const applyManualProgress = (next: PresetProgressRecord) => {
+      if (next === progressRecord) return
+      progressRecord = next
+      unlocked = unlockedChordKeys(chordOrder, progressRecord)
+      progressStore.set(activePreset.id, progressRecord)
+      queue = []
+      recentKeys = []
+      set({ progress: progressSnapshot() })
+      if (get().mode !== 'song' && get().prompt !== null) nextPrompt()
     }
 
     // Feeds a completed Practice prompt into the §5 unlock progress — as the
@@ -964,8 +1050,15 @@ export function createPracticeStore({
         passedLabels: sessionPassedLabels,
         unlocked:
           sessionUnlockedLabels.length > 0
-            ? { labels: [...sessionUnlockedLabels], ...progressSnapshot() }
+            ? {
+                labels: [...sessionUnlockedLabels],
+                unlocked: progressRecord.unlockedCount,
+                passed: progressRecord.masteredIndices.length,
+                total: chordOrder.length,
+              }
             : null,
+        chords: reportChords(),
+        setAside: setAsideChords(),
         goal: currentGoal(),
       })
     }
@@ -1301,6 +1394,26 @@ export function createPracticeStore({
           ...entry,
           label: chordKeyLabel(entry.key),
         }))
+      },
+
+      setChordAside(chordKey: string) {
+        // A pending ✔ counts (and may pass its chord) under the outgoing
+        // pool, like every other pool change.
+        recordOutcome()
+        applyManualProgress(setAsideChord(chordOrder, progressRecord, chordKey))
+      },
+
+      openChordForPlay(chordKey: string) {
+        recordOutcome()
+        applyManualProgress(openChord(chordOrder, progressRecord, chordKey))
+      },
+
+      canSetChordAside(chordKey: string) {
+        return canSetAside(chordOrder, progressRecord, chordKey)
+      },
+
+      chordsOpenedWith(chordKey: string) {
+        return chordsOpenedBefore(chordOrder, progressRecord, chordKey)
       },
     }
   })

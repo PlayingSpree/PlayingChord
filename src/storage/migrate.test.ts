@@ -20,7 +20,11 @@ describe('migrateState', () => {
         },
       },
       presetProgress: {
-        'major-triads': { unlockedCount: 5, masteredIndices: [0, 2] },
+        'major-triads': {
+          unlockedCount: 5,
+          masteredIndices: [0, 2],
+          setAsideIndices: [1],
+        },
       },
       bestComboStreak: 7,
     }

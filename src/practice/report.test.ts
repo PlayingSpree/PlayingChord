@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildSessionReport,
+  pickSuggestion,
   trailingBaseline,
+  type ReportChord,
   type DailyStatsForBaseline,
   type SessionReportInput,
 } from './report'
@@ -118,6 +120,8 @@ function input(
     increment: { prompts: 0, activeMinutes: 0 },
     passedLabels: [],
     unlocked: null,
+    chords: [],
+    setAside: [],
     goal: { todayMinutes: 0, streak: 0 },
     ...overrides,
   }
@@ -196,5 +200,96 @@ describe('buildSessionReport (§7.4)', () => {
     expect(report.increment).toEqual({ prompts: 1, activeMinutes: 2.5 })
     expect(report.passedLabels).toEqual(['C maj7'])
     expect(report.unlocked?.labels).toEqual(['B♭ maj7'])
+  })
+})
+
+describe('pickSuggestion (§5.2 set-aside offer)', () => {
+  const chord = (
+    label: string,
+    grade: ReportChord['grade'],
+    misses: number,
+    canSetAside = true,
+  ): ReportChord => ({
+    chordKey: `k:${label}`,
+    label,
+    grade,
+    misses,
+    canSetAside,
+  })
+
+  it('offers the most-missed failing chord after an F session', () => {
+    const suggestion = pickSuggestion(
+      'practice',
+      'F',
+      [chord('C', 'F', 1), chord('D', 'F', 4), chord('E', 'C', 6)],
+      [],
+    )
+    expect(suggestion).toEqual({
+      kind: 'set-aside',
+      chordKey: 'k:D',
+      label: 'D',
+    })
+  })
+
+  it('breaks a tie on label, so an identical report offers the same chord', () => {
+    const chords = [chord('D', 'F', 2), chord('B', 'F', 2)]
+    expect(pickSuggestion('practice', 'F', chords, [])?.label).toBe('B')
+  })
+
+  it('says nothing when the session graded F but no chord did', () => {
+    // A slow-but-accurate session: the letter is the pace, not one chord.
+    expect(
+      pickSuggestion(
+        'practice',
+        'F',
+        [chord('C', 'C', 0), chord('D', 'D', 1)],
+        [],
+      ),
+    ).toBeNull()
+  })
+
+  it('never offers an unproven chord — `new` needs reps, not a bench', () => {
+    expect(
+      pickSuggestion('practice', 'F', [chord('C', 'new', 3)], []),
+    ).toBeNull()
+  })
+
+  it('says nothing when the floor already blocks the move', () => {
+    expect(
+      pickSuggestion('practice', 'F', [chord('C', 'F', 3, false)], []),
+    ).toBeNull()
+  })
+
+  it('only offers in Practice — Learn is stats-neutral and Song is ungated', () => {
+    const chords = [chord('C', 'F', 3)]
+    expect(pickSuggestion('learn', 'F', chords, [])).toBeNull()
+    expect(pickSuggestion('song', 'F', chords, [])).toBeNull()
+    expect(pickSuggestion('practice', null, chords, [])).toBeNull()
+  })
+
+  it('offers a benched chord back after a strong session', () => {
+    const waiting = [{ chordKey: 'k:F♯', label: 'F♯' }]
+    expect(pickSuggestion('practice', 'A', [], waiting)).toEqual({
+      kind: 'bring-back',
+      chordKey: 'k:F♯',
+      label: 'F♯',
+    })
+    expect(pickSuggestion('practice', 'S', [], waiting)?.kind).toBe(
+      'bring-back',
+    )
+    // Mid-scale sessions leave it alone, either way.
+    expect(pickSuggestion('practice', 'B', [], waiting)).toBeNull()
+    expect(pickSuggestion('practice', 'A', [], [])).toBeNull()
+  })
+
+  it('rides along on the built report', () => {
+    const report = buildSessionReport(
+      input({
+        events: [timed('a', 'missed', 8000)],
+        chords: [chord('C', 'F', 1)],
+      }),
+    )
+    expect(report.grade).toBe('F')
+    expect(report.suggestion?.label).toBe('C')
   })
 })

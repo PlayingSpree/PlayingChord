@@ -540,7 +540,23 @@ export function sanitizePresetProgress(
         ),
       ),
     ].sort((a, b) => a - b)
-    progress[presetId] = { unlockedCount, masteredIndices }
+    // Set-aside chords (§5.2) arrived after the first v2 states, so an absent
+    // or garbled list is an empty one rather than a dropped record — the
+    // preset just comes back with everything in play.
+    const setAsideIndices = Array.isArray(record.setAsideIndices)
+      ? [
+          ...new Set(
+            record.setAsideIndices.filter(
+              (i): i is number =>
+                typeof i === 'number' &&
+                Number.isInteger(i) &&
+                i >= 0 &&
+                i < unlockedCount,
+            ),
+          ),
+        ].sort((a, b) => a - b)
+      : []
+    progress[presetId] = { unlockedCount, masteredIndices, setAsideIndices }
   }
   return progress
 }

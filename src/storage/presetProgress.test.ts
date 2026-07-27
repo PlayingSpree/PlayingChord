@@ -26,30 +26,56 @@ describe('PersistedPresetProgress (§5/§8)', () => {
   it('set persists a record readable through a fresh AppStorage', () => {
     const kv = fakeKV()
     const progress = new PersistedPresetProgress(new AppStorage(kv))
-    progress.set('major-triads', { unlockedCount: 5, masteredIndices: [0, 1] })
+    progress.set('major-triads', {
+      unlockedCount: 5,
+      masteredIndices: [0, 1],
+      setAsideIndices: [],
+    })
     const reloaded = new PersistedPresetProgress(new AppStorage(kv))
     expect(reloaded.get('major-triads')).toEqual({
       unlockedCount: 5,
       masteredIndices: [0, 1],
+      setAsideIndices: [],
     })
   })
 
   it('records are independent per preset id', () => {
     const progress = new PersistedPresetProgress(new AppStorage(fakeKV()))
-    progress.set('a', { unlockedCount: 3, masteredIndices: [] })
-    progress.set('b', { unlockedCount: 7, masteredIndices: [2] })
-    expect(progress.get('a')).toEqual({ unlockedCount: 3, masteredIndices: [] })
+    progress.set('a', {
+      unlockedCount: 3,
+      masteredIndices: [],
+      setAsideIndices: [],
+    })
+    progress.set('b', {
+      unlockedCount: 7,
+      masteredIndices: [2],
+      setAsideIndices: [],
+    })
+    expect(progress.get('a')).toEqual({
+      unlockedCount: 3,
+      masteredIndices: [],
+      setAsideIndices: [],
+    })
     expect(progress.get('b')).toEqual({
       unlockedCount: 7,
       masteredIndices: [2],
+      setAsideIndices: [],
     })
   })
 
   it('reset deletes only the given preset and persists the removal', () => {
     const kv = fakeKV()
     const progress = new PersistedPresetProgress(new AppStorage(kv))
-    progress.set('a', { unlockedCount: 5, masteredIndices: [0] })
-    progress.set('b', { unlockedCount: 3, masteredIndices: [] })
+    progress.set('a', {
+      unlockedCount: 5,
+      masteredIndices: [0],
+      setAsideIndices: [],
+    })
+    progress.set('b', {
+      unlockedCount: 3,
+      masteredIndices: [],
+      setAsideIndices: [],
+    })
     progress.reset('a')
     expect(progress.get('a')).toBeNull()
     expect(progress.get('b')).not.toBeNull()

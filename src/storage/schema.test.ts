@@ -461,7 +461,11 @@ describe('sanitizePresetProgress (v2, §5)', () => {
         'not-a-record': 42,
       }),
     ).toEqual({
-      'major-triads': { unlockedCount: 5, masteredIndices: [0, 2] },
+      'major-triads': {
+        unlockedCount: 5,
+        masteredIndices: [0, 2],
+        setAsideIndices: [],
+      },
     })
   })
 
@@ -470,7 +474,35 @@ describe('sanitizePresetProgress (v2, §5)', () => {
       sanitizePresetProgress({
         p: { unlockedCount: 4, masteredIndices: [3, 1, 3, -1, 4, 2.5, 'x'] },
       }),
-    ).toEqual({ p: { unlockedCount: 4, masteredIndices: [1, 3] } })
+    ).toEqual({
+      p: { unlockedCount: 4, masteredIndices: [1, 3], setAsideIndices: [] },
+    })
+  })
+
+  // Set-aside chords (§5.2) arrived after the first v2 states, so an absent
+  // list is empty rather than fatal — the same treatment bestComboStreak got.
+  it('sanitizes set-aside indices like passed ones', () => {
+    expect(
+      sanitizePresetProgress({
+        p: {
+          unlockedCount: 4,
+          masteredIndices: [],
+          setAsideIndices: [2, 0, 2, 9, -1, 'x'],
+        },
+        garbled: {
+          unlockedCount: 4,
+          masteredIndices: [],
+          setAsideIndices: 'nope',
+        },
+      }),
+    ).toEqual({
+      p: { unlockedCount: 4, masteredIndices: [], setAsideIndices: [0, 2] },
+      garbled: {
+        unlockedCount: 4,
+        masteredIndices: [],
+        setAsideIndices: [],
+      },
+    })
   })
 
   it('returns empty for non-objects', () => {

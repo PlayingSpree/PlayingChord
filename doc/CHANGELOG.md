@@ -15,6 +15,30 @@ artifact and are not recoverable.
 
 ---
 
+## 9.9.0 — 2026-07-27
+
+**A chord you can put down.** Unlocking is no longer the only thing that decides
+what you practice: any unlocked chord can be **set aside** by hand (§5.2) and
+any locked one opened early, from an *Edit pool* toggle on Home's In play row
+(§7.1). A set-aside chord stops being dealt in Learn and Practice, keeps its
+stats and its grade, and — the decision the rest of it hangs on — is held out of
+the §5.1 unlock gate as well as the pool. A chord that is never dealt can never
+be passed, so counting it as outstanding would stall the queue for good, which
+is the opposite of what benching a chord you can't play is for. The debt is
+carried in the open instead: it sits dimmed on the In play row with its grade
+still on it, and setting one aside must leave at least three chords in play, the
+width a fresh preset starts at. There is no other cap — setting aside is triage,
+and curating which chords you practice for good is what a custom preset is for.
+Opening a locked chord drags the unlock frontier over everything before it, as a
+prefix must, and says so on the control; nothing about it grants a pass.
+
+The Report (§7.4) makes the offer at the moment there's evidence for it: a
+session that graded F *and* played a chord currently graded F gets a card naming
+that chord, and a session graded A or better with something benched gets the
+mirror. A card in the flow rather than a modal over it — an F session already
+gets an encouraging headline by design, and a dialog demanding a decision on top
+of that reads as the app telling you to give up.
+
 ## 9.8.0 — 2026-07-27
 
 **No way past a chord, and one line for grade news.** The Skip button is gone

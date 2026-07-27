@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { usePractice } from '../store/practiceStore'
 import { useSettings } from '../store/settingsStore'
 import type { ComboGrade, SessionReport } from '../practice'
@@ -101,6 +101,10 @@ export function ReportView({
 
         {report.unlocked !== null && (
           <UnlockBanner unlocked={report.unlocked} />
+        )}
+
+        {report.suggestion !== null && (
+          <SuggestionCard suggestion={report.suggestion} />
         )}
 
         {!learn && (
@@ -207,6 +211,76 @@ function UnlockBanner({
         {unlocked.unlocked} / {unlocked.total} — bring every unlocked chord to a
         good grade to open more
       </div>
+    </Card>
+  )
+}
+
+// The §5.2 offer to narrow or widen the pool, on the one screen where the
+// player has just seen the evidence for it (§7.4). A card in the flow rather
+// than a modal over it: an F session already gets an encouraging headline by
+// design, and a dialog demanding a decision on top of that reads as the app
+// telling you to give up. Acting on it is one click; ignoring it is none.
+function SuggestionCard({
+  suggestion,
+}: {
+  suggestion: NonNullable<SessionReport['suggestion']>
+}) {
+  const setChordAside = usePractice((s) => s.setChordAside)
+  const openChordForPlay = usePractice((s) => s.openChordForPlay)
+  const [done, setDone] = useState(false)
+  const [dismissed, setDismissed] = useState(false)
+  if (dismissed) return null
+
+  const aside = suggestion.kind === 'set-aside'
+  return (
+    <Card className="flex flex-wrap items-center gap-3 px-[18px] py-3.5">
+      <span className="flex-1 text-[15px] font-semibold text-ink-soft">
+        {done ? (
+          aside ? (
+            <>
+              <b className="text-ink">{suggestion.label}</b> set aside — it
+              won&rsquo;t be dealt, and it won&rsquo;t hold up the next unlock.
+            </>
+          ) : (
+            <>
+              <b className="text-ink">{suggestion.label}</b> is back in play.
+            </>
+          )
+        ) : aside ? (
+          <>
+            <b className="text-ink">{suggestion.label}</b> is what&rsquo;s
+            dragging this preset down. Set it aside for now?
+          </>
+        ) : (
+          <>
+            Strong session — ready for{' '}
+            <b className="text-ink">{suggestion.label}</b> again?
+          </>
+        )}
+      </span>
+      {!done && (
+        <div className="flex gap-2">
+          <RaisedButton
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              if (aside) setChordAside(suggestion.chordKey)
+              else openChordForPlay(suggestion.chordKey)
+              setDone(true)
+            }}
+          >
+            {aside ? 'Set aside' : 'Bring back'}
+          </RaisedButton>
+          <RaisedButton
+            variant="outline"
+            size="sm"
+            className="border-card-border"
+            onClick={() => setDismissed(true)}
+          >
+            {aside ? 'Keep it' : 'Not yet'}
+          </RaisedButton>
+        </div>
+      )}
     </Card>
   )
 }

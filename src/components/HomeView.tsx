@@ -55,9 +55,18 @@ export function HomeView({
   const progress = usePractice((s) => s.progress)
   const goal = usePractice((s) => s.goal)
   const chordPassStatus = usePractice((s) => s.chordPassStatus)
+  const canSetChordAside = usePractice((s) => s.canSetChordAside)
+  const chordsOpenedWith = usePractice((s) => s.chordsOpenedWith)
+  const setChordAside = usePractice((s) => s.setChordAside)
+  const openChordForPlay = usePractice((s) => s.openChordForPlay)
   const goalMinutes = useSettings((s) => s.settings.dailyGoalMinutes)
   const customRules = useLibrary((s) => s.customRules)
   const [showLocked, setShowLocked] = useState(false)
+  // The §5.2 by-hand pool controls. Behind a toggle rather than always on:
+  // the row is read far more often than it is edited, and a chip that sets a
+  // chord aside on a stray click would be a trap in a row you scan every
+  // session.
+  const [editing, setEditing] = useState(false)
 
   const presetName = presets.find((p) => p.id === presetId)?.name ?? 'Practice'
 
@@ -69,25 +78,37 @@ export function HomeView({
   const inPlay = useMemo(() => {
     const comboStats = appStorage.state.comboStats
     const entries = chordPassStatus()
+    const withGrade = (chord: (typeof entries)[number]) => {
+      const records = Object.entries(comboStats)
+        .filter(([key]) => key.startsWith(`${chord.key}:`))
+        .map(([, record]) => record)
+      return {
+        key: chord.key,
+        label: chord.label,
+        passed: chord.passed,
+        grade: worstChordDisplayGrade(records),
+        canSetAside: canSetChordAside(chord.key),
+      }
+    }
     const chips = entries
-      .filter((chord) => chord.unlocked)
-      .map((chord) => {
-        const records = Object.entries(comboStats)
-          .filter(([key]) => key.startsWith(`${chord.key}:`))
-          .map(([, record]) => record)
-        return {
-          key: chord.key,
-          label: chord.label,
-          passed: chord.passed,
-          grade: worstChordDisplayGrade(records),
-        }
-      })
+      .filter((chord) => chord.unlocked && !chord.setAside)
+      .map(withGrade)
+    // Set aside by hand (§5.2): unlocked, but held out of play. Shown beside
+    // the row rather than folded into the 🔒 chip — these are chords the
+    // player benched and owes themselves, not ones they haven't reached.
+    const aside = entries
+      .filter((chord) => chord.unlocked && chord.setAside)
+      .map(withGrade)
     // Locked chords keep their unlock order (§5.1) — the list reads as
     // "what's coming next", so the head of it is the next batch.
     const locked = entries
       .filter((chord) => !chord.unlocked)
-      .map((chord) => ({ key: chord.key, label: chord.label }))
-    return { chips, locked }
+      .map((chord) => ({
+        key: chord.key,
+        label: chord.label,
+        opensWith: chordsOpenedWith(chord.key),
+      }))
+    return { chips, aside, locked }
     // chordPassStatus is a stable store method; re-run on preset/progress/lib.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [presetId, progress, customRules])
@@ -168,7 +189,20 @@ export function HomeView({
             </div>
 
             <div className="mt-1 flex flex-col gap-2">
-              <SectionLabel>In play</SectionLabel>
+              <div className="flex items-center gap-3">
+                <SectionLabel>In play</SectionLabel>
+                <button
+                  type="button"
+                  className={cx(
+                    'text-[13px] font-bold',
+                    editing ? 'text-info-light' : 'text-ink-muted',
+                  )}
+                  aria-pressed={editing}
+                  onClick={() => setEditing((open) => !open)}
+                >
+                  {editing ? 'Done' : '✎ Edit pool'}
+                </button>
+              </div>
               <div className="flex flex-wrap gap-2">
                 {inPlay.chips.map((chip) => (
                   <InPlayChip
@@ -176,7 +210,32 @@ export function HomeView({
                     label={chip.label}
                     passed={chip.passed}
                     grade={chip.grade}
+                    action={
+                      editing && chip.canSetAside
+                        ? { glyph: '✕', run: () => setChordAside(chip.key) }
+                        : null
+                    }
                   />
+                ))}
+                {inPlay.aside.map((chip) => (
+                  <Chip
+                    key={chip.key}
+                    tone="locked"
+                    className="px-3 py-1.5 text-sm"
+                    onClick={
+                      editing ? () => openChordForPlay(chip.key) : undefined
+                    }
+                  >
+                    💤 {chip.label}
+                    {chip.grade !== null && (
+                      <b
+                        className={cx('font-extrabold', gradeText(chip.grade))}
+                      >
+                        {chip.grade}
+                      </b>
+                    )}
+                    {editing && <span aria-hidden>↩</span>}
+                  </Chip>
                 ))}
                 {inPlay.locked.length > 0 && (
                   <Chip
@@ -189,17 +248,43 @@ export function HomeView({
                   </Chip>
                 )}
               </div>
+              {editing && (
+                <p className="text-[13px] text-ink-muted">
+                  Set a chord aside to stop it being dealt — it also stops
+                  holding up the next unlock. Bring it back any time.
+                </p>
+              )}
               {/* What's still to come, in unlock order (§5.1) — the chip is a
-                  disclosure rather than a popover so it needs no focus trap. */}
-              {showLocked && inPlay.locked.length > 0 && (
+                  disclosure rather than a popover so it needs no focus trap.
+                  Editing opens it too: unlocking early (§5.2) is the other
+                  half of the controls and it acts on this list. */}
+              {(showLocked || editing) && inPlay.locked.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {inPlay.locked.map((chord) => (
                     <Chip
                       key={chord.key}
                       tone="locked"
                       className="px-3 py-1.5 text-sm"
+                      onClick={
+                        editing ? () => openChordForPlay(chord.key) : undefined
+                      }
+                      // The frontier is a prefix (§5.1), so opening one chord
+                      // opens everything ahead of it — said on the control
+                      // rather than done silently.
+                      title={
+                        editing
+                          ? chord.opensWith > 0
+                            ? `Unlock now — also opens the ${chord.opensWith} chord${chord.opensWith === 1 ? '' : 's'} before it`
+                            : 'Unlock now'
+                          : undefined
+                      }
                     >
                       {chord.label}
+                      {editing && (
+                        <span aria-hidden>
+                          🔓{chord.opensWith > 0 && ` +${chord.opensWith}`}
+                        </span>
+                      )}
                     </Chip>
                   ))}
                 </div>
@@ -283,28 +368,36 @@ export function HomeView({
   )
 }
 
+// `action`, when given, makes the whole chip the button for it (§5.2) — a
+// nested button inside a chip would be invalid markup, and the row is only
+// clickable while editing anyway.
 function InPlayChip({
   label,
   passed,
   grade,
+  action,
 }: {
   label: string
   passed: boolean
   grade: DisplayGrade | null
+  action?: { glyph: string; run: () => void } | null
 }) {
+  const onClick = action ? action.run : undefined
   if (!passed) {
     return (
-      <Chip tone="info" className="px-3 py-1.5 text-sm">
+      <Chip tone="info" className="px-3 py-1.5 text-sm" onClick={onClick}>
         {label} · learning
+        {action && <span aria-hidden>{action.glyph}</span>}
       </Chip>
     )
   }
   return (
-    <Chip className="px-3 py-1.5 text-sm">
+    <Chip className="px-3 py-1.5 text-sm" onClick={onClick}>
       {label}
       {grade !== null && (
         <b className={cx('font-extrabold', gradeText(grade))}>{grade}</b>
       )}
+      {action && <span aria-hidden>{action.glyph}</span>}
     </Chip>
   )
 }

@@ -60,7 +60,11 @@ function fullyUnlocked(
   chordCount: number,
 ): InMemoryPresetProgress {
   const progress = new InMemoryPresetProgress()
-  progress.set(presetId, { unlockedCount: chordCount, masteredIndices: [] })
+  progress.set(presetId, {
+    unlockedCount: chordCount,
+    masteredIndices: [],
+    setAsideIndices: [],
+  })
   return progress
 }
 
@@ -370,7 +374,11 @@ describe('practiceStore — upcoming queue (§5/§7)', () => {
     // Roots 1 and 2 passed, so the worst-only pool really is the one combo —
     // not-yet-passed chords would otherwise join it (§7.3).
     const progress = new InMemoryPresetProgress()
-    progress.set('test', { unlockedCount: 3, masteredIndices: [1, 2] })
+    progress.set('test', {
+      unlockedCount: 3,
+      masteredIndices: [1, 2],
+      setAsideIndices: [],
+    })
     const s = setup({ presets: explicit, stats, progress })
 
     s.store.getState().setWorstOnly(true)
@@ -498,6 +506,7 @@ describe('practiceStore — unlock progress (§5)', () => {
       unlocked: INITIAL_UNLOCK_COUNT,
       passed: 0,
       total: 6,
+      setAside: 0,
     })
     expect(s.store.getState().justUnlocked).toBe(false)
   })
@@ -534,6 +543,7 @@ describe('practiceStore — unlock progress (§5)', () => {
       unlocked: INITIAL_UNLOCK_COUNT + UNLOCK_BATCH_SIZE,
       passed: INITIAL_UNLOCK_COUNT,
       total: 6,
+      setAside: 0,
     })
     expect(s.store.getState().justUnlocked).toBe(true)
     expect(progress.get('test')?.unlockedCount).toBe(
@@ -697,27 +707,38 @@ describe('practiceStore — unlock progress (§5)', () => {
 
   it('progress persists across store instances via the progress source', () => {
     const progress = new InMemoryPresetProgress()
-    progress.set('test', { unlockedCount: 5, masteredIndices: [0] })
+    progress.set('test', {
+      unlockedCount: 5,
+      masteredIndices: [0],
+      setAsideIndices: [],
+    })
     const s = setup({ presets: sixRoots, progress })
     expect(s.store.getState().progress).toEqual({
       unlocked: 5,
       passed: 1,
       total: 6,
+      setAside: 0,
     })
   })
 
   it('a stored record larger than the pool reconciles down', () => {
     const progress = new InMemoryPresetProgress()
-    progress.set('test', { unlockedCount: 40, masteredIndices: [0, 20] })
+    progress.set('test', {
+      unlockedCount: 40,
+      masteredIndices: [0, 20],
+      setAsideIndices: [],
+    })
     const s = setup({ presets: sixRoots, progress })
     expect(s.store.getState().progress).toEqual({
       unlocked: 6,
       passed: 1,
       total: 6,
+      setAside: 0,
     })
     expect(progress.get('test')).toEqual({
       unlockedCount: 6,
       masteredIndices: [0],
+      setAsideIndices: [],
     })
   })
 
@@ -731,6 +752,7 @@ describe('practiceStore — unlock progress (§5)', () => {
       unlocked: INITIAL_UNLOCK_COUNT,
       passed: 0,
       total: 6,
+      setAside: 0,
     })
     // The live prompt was redealt from the narrowed pool.
     expect([0, 1, 2]).toContain(s.store.getState().prompt!.chord.root)
@@ -739,7 +761,11 @@ describe('practiceStore — unlock progress (§5)', () => {
 
   it('resetPresetProgress on an inactive preset leaves the session alone', () => {
     const progress = new InMemoryPresetProgress()
-    progress.set('other', { unlockedCount: 9, masteredIndices: [] })
+    progress.set('other', {
+      unlockedCount: 9,
+      masteredIndices: [],
+      setAsideIndices: [],
+    })
     const s = setup({ presets: sixRoots, progress })
     const prompt = s.store.getState().prompt
 
@@ -758,12 +784,17 @@ describe('practiceStore — unlock progress (§5)', () => {
       },
     ]
     const progress = new InMemoryPresetProgress()
-    progress.set('test-diatonic', { unlockedCount: 5, masteredIndices: [1] })
+    progress.set('test-diatonic', {
+      unlockedCount: 5,
+      masteredIndices: [1],
+      setAsideIndices: [],
+    })
     const { store } = setup({ presets: diatonic, progress })
     expect(store.getState().progress).toEqual({
       unlocked: 5,
       passed: 1,
       total: 7,
+      setAside: 0,
     })
 
     store.getState().setDiatonicKey(7) // G major
@@ -771,8 +802,79 @@ describe('practiceStore — unlock progress (§5)', () => {
       unlocked: 5,
       passed: 1,
       total: 7,
+      setAside: 0,
     })
     expect(progress.get('test-diatonic')?.masteredIndices).toEqual([1])
+  })
+
+  it('setChordAside holds a chord out of the pool and persists it (§5.2)', () => {
+    const progress = fullyUnlocked('test', 6)
+    const s = setup({ presets: sixRoots, progress })
+
+    s.store.getState().setChordAside('1:maj')
+    expect(s.store.getState().progress.setAside).toBe(1)
+    expect(progress.get('test')?.setAsideIndices).toEqual([1])
+    expect(s.store.getState().chordPassStatus()[1]).toMatchObject({
+      key: '1:maj',
+      unlocked: true,
+      setAside: true,
+    })
+
+    // Neither the live prompt nor the preview can name it any more.
+    for (let i = 0; i < 20; i++) {
+      expect(s.store.getState().prompt!.chord.root).not.toBe(1)
+      s.store.getState().upcoming.forEach((u) => {
+        expect(u.key.startsWith('1:')).toBe(false)
+      })
+      playSlowAndAdvance(s, s.store.getState().prompt!)
+    }
+  })
+
+  it('setChordAside stops short of emptying the pool', () => {
+    const progress = fullyUnlocked('test', 6)
+    const s = setup({ presets: sixRoots, progress })
+    for (const key of ['0:maj', '1:maj', '2:maj', '3:maj']) {
+      s.store.getState().setChordAside(key)
+    }
+    // Three chords must stay in play, so the fourth call was a no-op.
+    expect(s.store.getState().progress.setAside).toBe(3)
+    expect(s.store.getState().canSetChordAside('3:maj')).toBe(false)
+  })
+
+  it('a set-aside chord does not hold up the next unlock (§5.2)', () => {
+    const progress = new InMemoryPresetProgress()
+    progress.set('test', {
+      unlockedCount: 4,
+      masteredIndices: [],
+      setAsideIndices: [],
+    })
+    const s = setup({ presets: sixRoots, progress })
+    s.store.getState().setChordAside('3:maj')
+
+    let advances = 0
+    while (s.store.getState().progress.unlocked === 4 && advances < 20) {
+      playCorrectAndAdvance(s, s.store.getState().prompt!)
+      advances++
+    }
+    // The three chords left in play passed; the benched one never blocked.
+    expect(s.store.getState().progress.unlocked).toBe(4 + UNLOCK_BATCH_SIZE)
+    expect(s.store.getState().progress.setAside).toBe(1)
+  })
+
+  it('openChordForPlay brings one back, and unlocks a locked one early', () => {
+    const s = setup({ presets: sixRoots })
+    expect(s.store.getState().chordsOpenedWith('4:maj')).toBe(1)
+
+    s.store.getState().openChordForPlay('4:maj')
+    // The frontier is a prefix, so chord 3 opened with it (§5.1).
+    expect(s.store.getState().progress.unlocked).toBe(5)
+    expect(s.store.getState().progress.passed).toBe(0)
+
+    s.store.getState().setChordAside('0:maj')
+    expect(s.store.getState().progress.setAside).toBe(1)
+    s.store.getState().openChordForPlay('0:maj')
+    expect(s.store.getState().progress.setAside).toBe(0)
+    expect(s.store.getState().progress.unlocked).toBe(5)
   })
 
   it('Song mode draws from the full pool, not the unlocked subset', () => {
@@ -1080,7 +1182,11 @@ describe('practiceStore — worst chords only (§5/§7)', () => {
     // Everything unlocked, all passed except roots 3 and 4 — the chords still
     // being learned, which the toggle drills alongside the missed one.
     const progress = new InMemoryPresetProgress()
-    progress.set('test', { unlockedCount: 6, masteredIndices: [0, 1, 2, 5] })
+    progress.set('test', {
+      unlockedCount: 6,
+      masteredIndices: [0, 1, 2, 5],
+      setAsideIndices: [],
+    })
 
     const s = setup({ presets: sixRoots, stats, progress })
     s.store.getState().setWorstOnly(true)
@@ -1129,7 +1235,11 @@ describe('practiceStore — not passed only (§5.1/§7)', () => {
   // (chordOrder indices match root order 1:1 for a single-type pool).
   const partlyPassed = (): InMemoryPresetProgress => {
     const progress = new InMemoryPresetProgress()
-    progress.set('test', { unlockedCount: 6, masteredIndices: [0, 3] })
+    progress.set('test', {
+      unlockedCount: 6,
+      masteredIndices: [0, 3],
+      setAsideIndices: [],
+    })
     return progress
   }
 
@@ -1148,6 +1258,7 @@ describe('practiceStore — not passed only (§5.1/§7)', () => {
     progress.set('test', {
       unlockedCount: 6,
       masteredIndices: [0, 1, 2, 3, 4, 5],
+      setAsideIndices: [],
     })
     const s = setup({ presets: sixRoots, progress })
     s.store.getState().setMode('learn')
@@ -1188,6 +1299,29 @@ describe('practiceStore — session length & report (§7.2/§7.4)', () => {
     expect(state.report!.accuracy).toBe(1)
     expect(state.prompt).toBeNull()
     expect(state.phase).toBe('idle')
+  })
+
+  it('an F session offers its worst chord for setting aside (§5.2)', () => {
+    const sixRoots = presetsOf({
+      kind: 'product',
+      roots: [0, 1, 2, 3, 4, 5],
+      chordTypes: ['maj'],
+    })
+    const s = setup({ presets: sixRoots, progress: fullyUnlocked('test', 6) })
+    // Clean but far past D's second: every chord grades F on speed alone,
+    // and enough reps to clear the evidence floor so none of them read `new`.
+    for (let i = 0; i < 40; i++) {
+      playSlowAndAdvance(s, s.store.getState().prompt!)
+    }
+    s.store.getState().endSession()
+
+    const suggestion = s.store.getState().report!.suggestion
+    expect(s.store.getState().report!.grade).toBe('F')
+    expect(suggestion?.kind).toBe('set-aside')
+
+    // Acting on it takes the named chord out of play.
+    s.store.getState().setChordAside(suggestion!.chordKey)
+    expect(s.store.getState().progress.setAside).toBe(1)
   })
 
   it('a Learn prompt consumes a length slot without being recorded', () => {

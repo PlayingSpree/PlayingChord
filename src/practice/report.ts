@@ -7,7 +7,12 @@
 // Kept free of storage/ types (the architecture rule, §8): the daily records
 // are consumed structurally, so nothing here imports the persistence schema.
 
-import { comboGrade, sessionScore, type ComboGrade } from './stats'
+import {
+  comboGrade,
+  sessionScore,
+  type ComboGrade,
+  type DisplayGrade,
+} from './stats'
 import {
   summarizeSession,
   type SessionEvent,
@@ -54,6 +59,70 @@ export interface ShakyChord {
   misses: number
 }
 
+// One chord played this session, as the §5.2 suggestion reads it: the chord's
+// *current* grade (not the session's), how often it was missed here, and
+// whether setting it aside is even allowed right now (the MIN_ACTIVE_CHORDS
+// floor). The store supplies these; the rule below stays pure.
+export interface ReportChord {
+  chordKey: string
+  label: string
+  grade: DisplayGrade | null
+  misses: number
+  canSetAside: boolean
+}
+
+// The Report's one-line offer to narrow or widen the pool by hand (§7.4/§5.2).
+export interface ReportSuggestion {
+  kind: 'set-aside' | 'bring-back'
+  chordKey: string
+  label: string
+}
+
+// Sessions at or above this grade are the ones that offer a set-aside chord
+// back: the player has room again, and a benched chord gets no reps of its
+// own to prove it with (nothing deals it), so the only way back is an offer.
+const BRING_BACK_MIN_GRADE: readonly ComboGrade[] = ['S', 'A']
+
+// When the Report offers to set a chord aside (§7.4). Deliberately narrow, so
+// it needs no "don't show this again" memory of its own:
+//
+//  - Practice only. Learn is stats-neutral (§5) and Song isn't gated by
+//    unlocks at all (§6.5), so setting a chord aside wouldn't change what
+//    either of them deals.
+//  - The *session* graded F, and
+//  - some chord in it is *currently* graded F too. A session can grade F on
+//    pace alone with every chord sitting at C; naming a scapegoat there would
+//    be a lie. `new` is not F (§7.5) — an unproven chord needs reps, not a
+//    bench.
+//
+// Worst first is the chord missed most this session, ties broken by label so
+// the offer is stable across identical reports.
+export function pickSuggestion(
+  mode: SessionMode,
+  grade: ComboGrade | null,
+  chords: readonly ReportChord[],
+  setAside: readonly { chordKey: string; label: string }[],
+): ReportSuggestion | null {
+  if (mode !== 'practice' || grade === null) return null
+  if (grade === 'F') {
+    const candidate = chords
+      .filter((chord) => chord.grade === 'F' && chord.canSetAside)
+      .sort((a, b) => b.misses - a.misses || a.label.localeCompare(b.label))[0]
+    return candidate === undefined
+      ? null
+      : {
+          kind: 'set-aside',
+          chordKey: candidate.chordKey,
+          label: candidate.label,
+        }
+  }
+  if (!BRING_BACK_MIN_GRADE.includes(grade)) return null
+  const waiting = setAside[0]
+  return waiting === undefined
+    ? null
+    : { kind: 'bring-back', chordKey: waiting.chordKey, label: waiting.label }
+}
+
 export interface SessionReport {
   mode: SessionMode
   // Prompts advanced past this session — correct + Learn (§7.2 length
@@ -72,6 +141,7 @@ export interface SessionReport {
   passedLabels: string[]
   shaky: ShakyChord[]
   unlocked: ReportUnlock | null
+  suggestion: ReportSuggestion | null
   goal: ReportGoal
 }
 
@@ -85,6 +155,9 @@ export interface SessionReportInput {
   increment: { prompts: number; activeMinutes: number }
   passedLabels: readonly string[]
   unlocked: ReportUnlock | null
+  // The session's chords and the preset's benched ones, for the §5.2 offer.
+  chords: readonly ReportChord[]
+  setAside: readonly { chordKey: string; label: string }[]
   goal: ReportGoal
 }
 
@@ -158,6 +231,7 @@ export function buildSessionReport(input: SessionReportInput): SessionReport {
     passedLabels: [...input.passedLabels],
     shaky,
     unlocked: input.unlocked,
+    suggestion: pickSuggestion(input.mode, grade, input.chords, input.setAside),
     goal: input.goal,
   }
 }

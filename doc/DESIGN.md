@@ -363,6 +363,47 @@ flashcard-style batches instead of the whole pool at once:
   `masteredIndices` in the JSON schema — a wording-only rename isn't worth a schema
   migration, §8.)
 
+### 5.2 Setting chords aside (by-hand pool control)
+
+The queue above decides *when* chords arrive. This decides *which* of them the
+player is willing to carry right now — the two controls on Home's In play row
+(§7.1) and the offer the Report makes (§7.4).
+
+- **Set aside** takes an unlocked chord out of play: nothing deals it in Learn
+  or Practice, and both narrows inherit that (they draw from the already
+  filtered pool, so "worst chords only" can't resurrect it). Its stats and its
+  grade are untouched — it stops being asked, not forgotten. Song is
+  ungated (§6.5) and so is unaffected either way.
+- **A set-aside chord is held out of the unlock gate too**, not just the pool.
+  This is the whole point of the feature: a chord that is never dealt can never
+  be passed, so counting it as outstanding would stall the queue permanently —
+  the opposite of what benching a chord you can't play is for. The debt is
+  carried in the open instead, on the In play row, where a set-aside chord sits
+  in its own dimmed state with its grade still on it.
+- **The floor:** setting one aside must leave at least **3** chords in play —
+  the same number a fresh preset opens with, so a preset can never be whittled
+  below its own starting width, and a drill always has something to alternate
+  between. There is otherwise **no cap**: the floor is the only limit, and a
+  pool at or under three chords simply has nothing to spare. Setting aside is
+  *triage*; permanently curating which chords you practice is what a custom
+  preset is for (§7.6).
+- **Opening a chord** is the one inverse action, whichever way the chord is
+  closed. A set-aside chord comes straight back. A not-yet-reached chord drags
+  the unlock frontier forward to cover it — and with it every chord before it,
+  because the frontier is a prefix (§5.1) — which the control says on itself
+  rather than doing silently. Newly opened chords are unlocked and *not* passed,
+  so the next automatic batch now waits on them; passing is never granted by
+  hand.
+- **Where:** Home and the Report only, both outside a live session. Mid-drill
+  re-locking would take the pool out from under the prompt on screen, and the
+  Stage has no mouse affordances by design (§7.3). A change made while a session
+  is paused redeals the live prompt, like every other pool change.
+- **Persistence:** `setAsideIndices` on the same per-preset record, indices into
+  the unlock order like the passed ones, so a diatonic key change carries it.
+  Absent in records written before this existed, where it reads as empty (§8);
+  reconciliation clamps it to the pool and restores whatever the floor requires.
+  Reset progress clears it with everything else.
+
 ---
 
 ## 6. Input Handling & Matching
@@ -573,11 +614,17 @@ The entry screen — the app boots here, not into practice. The no-device gate
   `N/total chords unlocked`, a bar, and how many unlock on the next pass (§5.1);
   an **In play** chip row — every unlocked chord with its letter grade (chord
   score §5 → S–F, or `new` where the evidence floor hasn't been reached, §7.5),
-  not-yet-passed chords tagged *learning* instead of lettered at all, plus one
+  not-yet-passed chords tagged *learning* instead of lettered at all, chords
+  set aside by hand dimmed beside them (§5.2), plus one
   `🔒 N locked` chip — this row is the per-chord breakdown that used to live
   behind the top-bar unlock chip. The 🔒 chip is a **disclosure**: clicking it
   names the locked chords, in unlock order (§5.1), so "what's coming next" is
-  answerable without guessing. Then the **mode selector** (Learn / Practice /
+  answerable without guessing. An **Edit pool** toggle beside the row turns the
+  chips into the §5.2 controls — a chip sets its chord aside, a dimmed one
+  brings it back, a locked one unlocks early (saying how many open with it).
+  Behind a toggle because the row is read every session and edited rarely: a
+  chip that benched a chord on a stray click would be a trap in a row you scan.
+  Then the **mode selector** (Learn / Practice /
   Song) — configuration only, like everything else outside a session (§7.2);
   and the **Start** button, labeled per mode.
 - **Daily goal ring**: today's active minutes vs the goal (§7.6) and what's
@@ -794,6 +841,19 @@ count as prompts, a hit being a first-try success (§6.5).
   pool progress toward the next batch (§5.1).
 - **Chords passed** this session (§5.1 passes) and **Still shaky** — chords
   missed this session, with miss counts.
+- **Set-aside offer** (§5.2): a card in the flow — not a modal over it — when
+  the session graded **F** *and* some chord it played is **currently** graded F
+  too, naming the one missed most and offering to set it aside. Both halves
+  matter: a session can grade F on pace alone with every chord at C, and naming
+  a scapegoat there would be a lie; an unproven chord reads `new`, not F (§7.5),
+  and needs reps rather than a bench. Practice only — Learn is stats-neutral and
+  Song isn't gated by unlocks at all. The mirror runs on a session graded **A or
+  better** while something is set aside: a benched chord gets no reps to prove
+  itself with, so the only way back is an offer. Deliberately narrow enough to
+  need no "don't show this again" memory — acting is one click, ignoring is
+  none. A modal was rejected: an F session already gets an encouraging headline
+  by design, and a dialog demanding a decision on top of it reads as the app
+  telling you to give up.
 - **Goal line**: today's state after the session ("🔥 Streak safe — 10/10 min
   done today", or the minutes remaining).
 - **Go again** (a fresh session with the same sheet config) / **Home**.
