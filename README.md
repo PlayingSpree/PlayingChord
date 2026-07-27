@@ -41,6 +41,13 @@ no server configuration, no environment variables.
 `master` builds, tests, and publishes. One-time setup for a fork/new remote: repo
 **Settings → Pages → Build and deployment → Source: "GitHub Actions"**.
 
+To try an unreleased change on the real site, push it to `dev` (or `dev/<name>`)
+and run the Deploy workflow manually — **Actions → Deploy → Run workflow**, with
+that branch selected. There is only one Pages site per repo, so this *replaces*
+the live build; re-run the workflow from `master` to put production back. The
+`github-pages` environment allows exactly `master`, `dev`, and `dev/**`, so any
+other branch has to be merged into `dev` first.
+
 Any other static host (Netlify, Cloudflare Pages, `python -m http.server` on a
 LAN) just serves `dist/` as-is. Remember the site still needs a Web-MIDI-capable
 browser (Chrome/Edge/Opera) and a MIDI keyboard on the *visiting* machine.
