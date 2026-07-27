@@ -4,7 +4,7 @@ A web app for practicing piano chords with a MIDI keyboard. The app shows a rand
 from a chosen preset, the user plays it on their connected MIDI keyboard, and the app
 validates the input and moves on to the next chord.
 
-Spec version: **9.2.0** (2026-07-26) — session-based UI. Revision history lives in
+Spec version: **9.3.0** (2026-07-27) — session-based UI. Revision history lives in
 [CHANGELOG.md](CHANGELOG.md); this document describes only what the app *is* today.
 Both previously open questions are resolved (see [§9](#9-resolved-questions)). Build
 sequencing (what gets implemented first) is intentionally left outside this document.
@@ -782,9 +782,6 @@ count as prompts, a hit being a first-try success (§6.5).
   than by all of them, so clock-paced bars — which contribute no time — can't
   drag it toward zero; a day of nothing but Song bars counts toward the accuracy
   baseline and sits out the time one.
-- **Best chord average** (fastest per-chord average time this session, so one
-  lucky rep can't set it) and the session's **slowest/worst chords** carry over
-  from the old summary as secondary lines.
 - **Unlock banner**: when the session unlocked chords — names them and shows
   pool progress toward the next batch (§5.1).
 - **Chords passed** this session (§5.1 passes) and **Still shaky** — chords

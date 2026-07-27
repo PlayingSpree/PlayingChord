@@ -12,7 +12,6 @@ import {
   summarizeSession,
   type SessionEvent,
   type SessionMode,
-  type SummaryChordEntry,
 } from './session'
 
 // The Report's stat deltas compare against the mean over the last N practiced
@@ -65,9 +64,6 @@ export interface SessionReport {
   // null for Learn or a session with no recorded prompts (e.g. all skips).
   accuracy: number | null
   avgTimeMs: number | null
-  bestAvgTimeMs: number | null
-  slowest: SummaryChordEntry[]
-  worst: SummaryChordEntry[]
   // null for Learn (stats-neutral, §5) — the view renders the reduced variant.
   grade: ComboGrade | null
   baseline: ReportBaseline
@@ -155,9 +151,6 @@ export function buildSessionReport(input: SessionReportInput): SessionReport {
     recordedPrompts,
     accuracy,
     avgTimeMs,
-    bestAvgTimeMs: summary.bestAvgTimeToCorrectMs,
-    slowest: summary.slowest,
-    worst: summary.worst,
     grade,
     baseline: trailingBaseline(input.records, input.todayKey),
     lifetime: input.lifetime,

@@ -15,6 +15,15 @@ artifact and are not recoverable.
 
 ---
 
+## 9.3.0 — 2026-07-27
+
+The Report drops its **secondary chord lines** — best chord average, slowest
+chords, worst chords (§7.4). They were specified for the v5 summary modal and
+never rebuilt into the v9 Report, so the spec has been describing three lines
+the screen doesn't have. Rather than build them: **Still shaky** already names
+the session's missed chords with counts, and the chord stats page ranks slowest
+across every session instead of one noisy sample.
+
 ## 9.2.0 — 2026-07-26
 
 The grade takes charge of unlocking. A chord is **passed once its grade is D or

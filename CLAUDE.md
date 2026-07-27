@@ -20,7 +20,7 @@ re-decide things it already resolves (§9 lists resolved questions). When a chan
 intentionally alters product behavior, update [DESIGN.md](doc/DESIGN.md) in the same commit.
 
 The spec is versioned: [CHANGELOG.md](doc/CHANGELOG.md) holds the revision history and
-`package.json` mirrors the current spec version (**9.2.0**). A behavior change adds a
+`package.json` mirrors the current spec version. A behavior change adds a
 MINOR entry to the changelog and bumps both, in the same commit as the DESIGN.md edit;
 wording-only changes are a PATCH. Don't date code comments by hand — `git blame` does
 that better; only comment a version where current behavior must be read against a
