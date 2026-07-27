@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { practiceStore, usePractice } from '../store/practiceStore'
 import { settingsStore, useSettings } from '../store/settingsStore'
 import {
@@ -181,6 +181,8 @@ export function SessionSheet({
           )}
           {draft.mode === 'practice' && (
             <WorstOnlyRow
+              presetId={draft.presetId}
+              diatonicKey={draft.diatonicKey}
               value={draft.worstOnly}
               onChange={(worstOnly) => patch({ worstOnly })}
             />
@@ -241,15 +243,27 @@ function NotPassedOnlyRow({
   )
 }
 
+// Off and unavailable when the drafted preset has no weak spots to drill
+// (§5): everything unlocked is passed and nothing was ever missed, so the
+// toggle would only fall back to the full pool. Asked of the *draft* preset,
+// not the store's active one, and recomputed from the persisted records each
+// time the picks change — the sheet is opened before a session deals anything.
 function WorstOnlyRow({
+  presetId,
+  diatonicKey,
   value,
   onChange,
 }: {
+  presetId: string
+  diatonicKey: PitchClass
   value: boolean
   onChange: (next: boolean) => void
 }) {
-  const worstChords = usePractice((s) => s.worstChords)
-  const disabled = worstChords.length === 0 && !value
+  const canDrill = useMemo(
+    () => practiceStore.getState().canDrillWorstOnly(presetId, diatonicKey),
+    [presetId, diatonicKey],
+  )
+  const disabled = !canDrill && !value
   return (
     <SettingRow label="Worst chords only" disabled={disabled}>
       <Toggle

@@ -4,7 +4,7 @@ A web app for practicing piano chords with a MIDI keyboard. The app shows a rand
 from a chosen preset, the user plays it on their connected MIDI keyboard, and the app
 validates the input and moves on to the next chord.
 
-Spec version: **9.5.1** (2026-07-27) — session-based UI. Revision history lives in
+Spec version: **9.10.0** (2026-07-27) — session-based UI. Revision history lives in
 [CHANGELOG.md](CHANGELOG.md); this document describes only what the app *is* today.
 Both previously open questions are resolved (see [§9](#9-resolved-questions)). Build
 sequencing (what gets implemented first) is intentionally left outside this document.
@@ -732,7 +732,11 @@ counts a new progression in).
     is visible from the first prompt, independent of misses. Runs to the session
     length (§7.2). Practice-mode setting (in the session sheet):
     - **Worst chords only**: drills the selected preset's worst combos and its
-      not-yet-passed chords (§5).
+      not-yet-passed chords (§5). Off and unavailable when that pool comes out
+      empty — everything unlocked is passed with nothing ever missed, so the
+      toggle would only fall back to the whole pool. Availability is read from
+      the persisted records for the preset *currently drafted in the sheet*, so
+      it holds on a fresh load, before a session has generated anything.
   - **Song**: a looped progression from the active preset against a metronome —
     clock-paced judging per §6.5. The preset picker (and, for the diatonic preset,
     its key picker) works exactly as in the other modes; switching mid-song rebuilds

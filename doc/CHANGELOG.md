@@ -15,6 +15,19 @@ artifact and are not recoverable.
 
 ---
 
+## 9.10.0 — 2026-07-27
+
+**Worst chords only, actually reachable.** The Practice toggle (§7.2) was gated
+on a cached top-three worst list that only existed once a session had dealt a
+prompt, so on a fresh load — which is exactly when the session sheet is opened —
+it was always disabled, however many misses were on the record. It now asks the
+question directly: would the worst-only pool (§5: missed combos plus not-yet-
+passed chords) come out non-empty? Computed on demand from the persisted
+records, so there is no cached copy to go stale, and asked of the preset
+*drafted in the sheet* rather than the one the store is still on — the sheet's
+picks don't reach the store until Start, and the old list answered for the
+previous preset until then.
+
 ## 9.9.0 — 2026-07-27
 
 **A chord you can put down.** Unlocking is no longer the only thing that decides

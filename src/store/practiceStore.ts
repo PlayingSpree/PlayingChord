@@ -129,14 +129,6 @@ const FRESH_SESSION: SessionStats = {
   totalTimeToCorrectMs: 0,
 }
 
-// A §7 "worst chords" row, ready for display.
-export interface WorstChordEntry {
-  key: string
-  label: string
-  // Lifetime first-try accuracy (§7: first-try successes ÷ prompts).
-  accuracy: number
-}
-
 // A §5/§7 upcoming-preview entry: the next combos to be dealt, in order.
 export interface UpcomingChord {
   key: string
@@ -255,9 +247,6 @@ export interface PracticeStoreState {
   // sense — unrelated to a Combo, the (root, typeId, voicingId) triple stats
   // are keyed by.
   firstTryStreak: number
-  // Worst combos of the current preset from the *persisted* records, so the
-  // list survives reloads (Milestone B) unlike the session tallies.
-  worstChords: readonly WorstChordEntry[]
   // Next combos to be dealt, in order (§5/§7 preview); rebuilt whenever the
   // pool changes.
   upcoming: readonly UpcomingChord[]
@@ -320,6 +309,12 @@ export interface PracticeStoreState {
   // How many chords ahead of a locked one openChordForPlay would open with it
   // — the unlock frontier is a prefix (§5.1), so the control says so.
   chordsOpenedWith(chordKey: string): number
+  // Would "worst chords only" (§5) have anything to drill in this preset —
+  // i.e. does its narrowed pool come out non-empty? Takes the preset rather
+  // than reading the active one because the session sheet asks about its
+  // *draft* (§7.2), before any of it reaches the store. Computed on demand
+  // from the persisted records, so it never goes stale between sessions.
+  canDrillWorstOnly(presetId: string, diatonicKey: PitchClass): boolean
 }
 
 export interface PracticeStoreDeps {
@@ -424,20 +419,33 @@ export function createPracticeStore({
     // tallies, so a fresh session hears each climb again.
     let announcedGradeUps = new Set<string>()
 
-    const reloadProgress = () => {
+    // A preset's chord order and its reconciled unlock record (§5.1), read
+    // without touching the store's own. Split out of reloadProgress so
+    // canDrillWorstOnly can ask about a preset the store hasn't switched to.
+    const derivedProgress = (preset: Preset, combos: readonly Combo[]) => {
       // Circle-of-fifths unlock order (§5.1) applies only to root-ordered
       // (product) pools — diatonic/explicit orders are deliberate as-is.
-      chordOrder = chordOrderOf(
-        expansion.combos,
-        settings().unlockByFifths && activePreset.pool.kind === 'product'
+      const order = chordOrderOf(
+        combos,
+        settings().unlockByFifths && preset.pool.kind === 'product'
           ? 'fifths'
           : 'pool',
       )
-      const stored = progressStore.get(activePreset.id)
-      progressRecord = reconcileProgress(
-        stored ?? initialProgress(chordOrder.length),
-        chordOrder.length,
+      const stored = progressStore.get(preset.id)
+      const record = reconcileProgress(
+        stored ?? initialProgress(order.length),
+        order.length,
       )
+      return { order, stored, record }
+    }
+
+    const reloadProgress = () => {
+      const { order, stored, record } = derivedProgress(
+        activePreset,
+        expansion.combos,
+      )
+      chordOrder = order
+      progressRecord = record
       // Persist a reconciliation that changed a stored record, so the
       // self-heal happens once instead of on every load.
       if (
@@ -616,17 +624,29 @@ export function createPracticeStore({
       }
     }
 
-    // The §7 worst-chords list for the current pool, from persisted records.
-    const worstChords = (): WorstChordEntry[] =>
-      rankWorstCombos(expansion.combos, stats).map(({ combo, record }) => ({
-        key: comboKey(combo),
-        label: comboLabel(
-          combo,
-          expansion.rootSpellings.get(combo.root),
-          voicings(),
-        ),
-        accuracy: record.firstTrySuccesses / record.attempts,
-      }))
+    // The §5/§7 "worst chords only" pool, drawn from the persisted records:
+    // "worst" is chords with a miss on the record — plus the chords still
+    // being learned (§5.1: unlocked, not yet passed). A chord you've never
+    // passed belongs in a weak-spots drill even with a clean sheet: most
+    // likely you've barely played it, and leaving it out means the toggle can
+    // only revisit old mistakes and never the gaps. Worst first, so the
+    // ranking still leads the weighted draw. Empty means the toggle has
+    // nothing to narrow to — which is both what makes generation fall back to
+    // the full pool and what disables the toggle in the sheet.
+    const worstOnlyPool = (
+      available: readonly Combo[],
+      order: readonly string[],
+      record: PresetProgressRecord,
+    ): Combo[] => {
+      const worst = rankWorstCombos(available, stats, available.length)
+      const worstKeys = new Set(worst.map(({ combo }) => comboKey(combo)))
+      const notPassed = notPassedChordKeys(order, record)
+      const learning = available.filter(
+        (combo) =>
+          notPassed.has(poolChordKey(combo)) && !worstKeys.has(comboKey(combo)),
+      )
+      return [...worst.map(({ combo }) => combo), ...learning]
+    }
 
     // Learn/Practice generate only from unlocked chords (§5); Song bypasses
     // this entirely (it draws from the preset's raw pool). "Worst chords
@@ -638,21 +658,7 @@ export function createPracticeStore({
       const state = get()
       const available = filterUnlockedCombos(expansion.combos, unlocked)
       if (state.mode === 'practice' && state.worstOnly) {
-        // "Worst" is chords with a miss on the record — plus the chords still
-        // being learned (§5.1: unlocked, not yet passed). A chord you've never
-        // passed belongs in a weak-spots drill even with a clean sheet: most
-        // likely you've barely played it, and leaving it out means the toggle
-        // can only revisit old mistakes and never the gaps.
-        const worst = rankWorstCombos(available, stats, available.length)
-        const worstKeys = new Set(worst.map(({ combo }) => comboKey(combo)))
-        const notPassed = notPassedChordKeys(chordOrder, progressRecord)
-        const learning = available.filter(
-          (combo) =>
-            notPassed.has(poolChordKey(combo)) &&
-            !worstKeys.has(comboKey(combo)),
-        )
-        // Worst first, so the ranking still leads the weighted draw.
-        const pool = [...worst.map(({ combo }) => combo), ...learning]
+        const pool = worstOnlyPool(available, chordOrder, progressRecord)
         if (pool.length > 0) return pool
       }
       if (state.mode === 'learn' && state.notPassedOnly) {
@@ -686,7 +692,6 @@ export function createPracticeStore({
       set({
         prompt,
         justLearned: false,
-        worstChords: worstChords(),
         upcoming: queue.map((c) => ({
           key: comboKey(c),
           label: comboLabel(c, expansion.rootSpellings.get(c.root), voicings()),
@@ -1139,7 +1144,6 @@ export function createPracticeStore({
       report: null,
       session: FRESH_SESSION,
       firstTryStreak: 0,
-      worstChords: [],
       upcoming: [],
       goal: currentGoal(),
       progress: progressSnapshot(),
@@ -1333,7 +1337,6 @@ export function createPracticeStore({
         set({
           presets: list,
           presetId: preset.id,
-          worstChords: worstChords(),
           progress: progressSnapshot(),
         })
         // Paused (settings/Progress open) or outside a session means no
@@ -1414,6 +1417,16 @@ export function createPracticeStore({
 
       chordsOpenedWith(chordKey: string) {
         return chordsOpenedBefore(chordOrder, progressRecord, chordKey)
+      },
+
+      canDrillWorstOnly(presetId: string, diatonicKey: PitchClass) {
+        const { preset, expansion: draft } = resolve(presetId, diatonicKey)
+        const { order, record } = derivedProgress(preset, draft.combos)
+        const available = filterUnlockedCombos(
+          draft.combos,
+          unlockedChordKeys(order, record),
+        )
+        return worstOnlyPool(available, order, record).length > 0
       },
     }
   })

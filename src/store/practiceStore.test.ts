@@ -68,6 +68,19 @@ function fullyUnlocked(
   return progress
 }
 
+// A one-chord preset already unlocked *and* passed (§5.1), so the not-yet-
+// passed half of the worst-only pool is empty and only a miss on the record
+// can fill it.
+function allPassed(presetId: string): InMemoryPresetProgress {
+  const progress = new InMemoryPresetProgress()
+  progress.set(presetId, {
+    unlockedCount: 1,
+    masteredIndices: [0],
+    setAsideIndices: [],
+  })
+  return progress
+}
+
 // `autoStart` mirrors the Stage mounting (§7.2). Pass false for the Home
 // state the app actually boots into — a store with no session running, where
 // the mode/preset pickers are pure config.
@@ -976,50 +989,68 @@ describe('practiceStore — session stats & worst chords (§7)', () => {
     expect(s.store.getState().firstTryStreak).toBe(0)
   })
 
-  it('lists missed combos under worst chords with lifetime accuracy', () => {
-    const s = setup({ presets: onePreset })
-    expect(s.store.getState().worstChords).toEqual([])
-
-    const prompt = s.store.getState().prompt!
-    s.press(61, 62, 63)
-    s.releaseAll()
-    playCorrectAndAdvance(s, prompt)
-
-    expect(s.store.getState().worstChords).toEqual([
-      { key: '0:maj:any', label: 'C maj', accuracy: 0 },
-    ])
-  })
-
-  it('surfaces pre-seeded (persisted) stats before anything is played', () => {
-    // Simulates a reload: the stats source already holds yesterday's misses
-    // (Milestone B — the persisted implementation is tested in storage/).
+  it('offers worst-only from persisted misses before anything is played', () => {
+    // The gate reads the records, not what this page load happened to deal:
+    // the sheet is opened from Home, before any prompt exists. Simulates a
+    // reload holding yesterday's misses (the persisted stats implementation
+    // is tested in storage/).
     const stats = new InMemoryComboStats()
     stats.record('0:maj:any', 'missed', 4000)
     stats.record('0:maj:any', 'first-try', 1000)
 
-    const s = setup({ presets: onePreset, stats })
-    expect(s.store.getState().worstChords).toEqual([
-      { key: '0:maj:any', label: 'C maj', accuracy: 0.5 },
-    ])
+    const s = setup(
+      { presets: onePreset, stats, progress: allPassed('test') },
+      false, // no session, no prompt — Home
+    )
+    expect(s.store.getState().canDrillWorstOnly('test', 0)).toBe(true)
   })
 
-  it('scopes worst chords to the active preset and includes voicing labels', () => {
+  it('withholds worst-only when everything unlocked is passed and clean', () => {
     const stats = new InMemoryComboStats()
-    stats.record('0:maj:first-inversion', 'missed', 4000)
-    stats.record('5:min7:any', 'missed', 4000) // not in this preset
+    stats.record('0:maj:any', 'first-try', 500)
 
-    const inversions = presetsOf(
-      { kind: 'explicit', chords: [{ root: 0, typeId: 'maj' }] },
-      ['first-inversion'],
+    const s = setup(
+      { presets: onePreset, stats, progress: allPassed('test') },
+      false,
     )
-    const s = setup({ presets: inversions, stats })
-    expect(s.store.getState().worstChords).toEqual([
+    expect(s.store.getState().canDrillWorstOnly('test', 0)).toBe(false)
+  })
+
+  it('counts a not-yet-passed chord as worth drilling (§5.1)', () => {
+    const s = setup({ presets: onePreset }, false)
+    expect(s.store.getState().canDrillWorstOnly('test', 0)).toBe(true)
+  })
+
+  it('answers for the preset asked about, not the active one (§7.2)', () => {
+    // The session sheet's picks are a draft — it asks about the preset the
+    // player just selected in it, which the store hasn't switched to.
+    const stats = new InMemoryComboStats()
+    stats.record('5:min:any', 'missed', 4000)
+    const both: readonly Preset[] = [
       {
-        key: '0:maj:first-inversion',
-        label: 'C maj — 1st Inversion',
-        accuracy: 0,
+        id: 'test',
+        name: 'Test',
+        pool: { kind: 'explicit', chords: [{ root: 0, typeId: 'maj' }] },
+        voicingIds: ['any'],
       },
-    ])
+      {
+        id: 'other',
+        name: 'Other',
+        pool: { kind: 'explicit', chords: [{ root: 5, typeId: 'min' }] },
+        voicingIds: ['any'],
+      },
+    ]
+    const progress = allPassed('test')
+    progress.set('other', {
+      unlockedCount: 1,
+      masteredIndices: [0],
+      setAsideIndices: [],
+    })
+
+    const s = setup({ presets: () => both, stats, progress }, false)
+    expect(s.store.getState().presetId).toBe('test')
+    expect(s.store.getState().canDrillWorstOnly('test', 0)).toBe(false)
+    expect(s.store.getState().canDrillWorstOnly('other', 0)).toBe(true)
   })
 })
 
@@ -1131,7 +1162,6 @@ describe('practiceStore — Learn mode (§7)', () => {
 
     expect(stats.get('0:maj:any')).toBeNull()
     expect(s.store.getState().session.prompts).toBe(0)
-    expect(s.store.getState().worstChords).toEqual([])
     expect(s.store.getState().prompt).not.toBe(prompt) // still advances
   })
 
