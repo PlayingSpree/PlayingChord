@@ -67,11 +67,11 @@ import {
   appStorage,
   computeStreak,
   localDateKey,
-  PersistedBestCombo,
+  PersistedBestStreak,
   PersistedComboStats,
   PersistedDailyActivity,
   PersistedPresetProgress,
-  type BestComboSource,
+  type BestStreakSource,
   type DailyActivitySource,
   type PresetProgressSource,
 } from '../storage'
@@ -242,10 +242,12 @@ export interface PracticeStoreState {
   // it's dismissed. Zero-prompt sessions end with no report (§7.2).
   report: SessionReport | null
   session: SessionStats
-  // Consecutive first-try correct prompts (§7 combo text); resets on any
-  // miss and whenever the session itself resets. Skips leave it untouched,
-  // same as the session tallies.
-  comboStreak: number
+  // Consecutive first-try correct prompts; resets on any miss and whenever
+  // the session itself resets. Skips leave it untouched, same as the session
+  // tallies. The UI calls this a *combo* (§7.3 "🔥 10 combo"), rhythm-game
+  // sense — unrelated to a Combo, the (root, typeId, voicingId) triple stats
+  // are keyed by.
+  firstTryStreak: number
   // Worst combos of the current preset from the *persisted* records, so the
   // list survives reloads (Milestone B) unlike the session tallies.
   worstChords: readonly WorstChordEntry[]
@@ -308,7 +310,7 @@ export interface PracticeStoreDeps {
   stats?: ComboStatsSource
   activity?: DailyActivitySource
   progress?: PresetProgressSource
-  bestCombo?: BestComboSource
+  bestStreak?: BestStreakSource
   memory?: PresetMemory
   rng?: Rng
   now?: () => number
@@ -321,7 +323,7 @@ export function createPracticeStore({
   stats = new PersistedComboStats(appStorage),
   activity = new PersistedDailyActivity(appStorage),
   progress: progressStore = new PersistedPresetProgress(appStorage),
-  bestCombo = new PersistedBestCombo(appStorage),
+  bestStreak = new PersistedBestStreak(appStorage),
   memory = persistedPresetMemory,
   rng = Math.random,
   now = Date.now,
@@ -719,7 +721,7 @@ export function createPracticeStore({
       const state = get()
       if (state.mode === 'learn') return
       if (next.missCount > state.missCount) {
-        if (state.comboStreak > 0) set({ comboStreak: 0 })
+        if (state.firstTryStreak > 0) set({ firstTryStreak: 0 })
         return
       }
       if (
@@ -727,9 +729,9 @@ export function createPracticeStore({
         state.phase !== 'advancing' &&
         next.missCount === 0
       ) {
-        const comboStreak = state.comboStreak + 1
-        set({ comboStreak })
-        bestCombo.record(comboStreak)
+        const firstTryStreak = state.firstTryStreak + 1
+        set({ firstTryStreak })
+        bestStreak.record(firstTryStreak)
       }
     }
 
@@ -912,7 +914,7 @@ export function createPracticeStore({
       sessionActiveMs = 0
       set({
         session: FRESH_SESSION,
-        comboStreak: 0,
+        firstTryStreak: 0,
         done: 0,
         awaitingReady: false,
       })
@@ -1025,7 +1027,7 @@ export function createPracticeStore({
       done: 0,
       report: null,
       session: FRESH_SESSION,
-      comboStreak: 0,
+      firstTryStreak: 0,
       worstChords: [],
       upcoming: [],
       goal: currentGoal(),

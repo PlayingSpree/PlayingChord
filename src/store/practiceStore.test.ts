@@ -20,7 +20,7 @@ import {
   type Prompt,
 } from '../practice'
 import {
-  InMemoryBestCombo,
+  InMemoryBestStreak,
   InMemoryDailyActivity,
   InMemoryPresetProgress,
 } from '../storage'
@@ -76,7 +76,7 @@ function setup(
     stats: new InMemoryComboStats(), // never the shared appStorage singleton
     activity: new InMemoryDailyActivity(),
     progress: new InMemoryPresetProgress(),
-    bestCombo: new InMemoryBestCombo(),
+    bestStreak: new InMemoryBestStreak(),
     ...deps,
   })
   let held = new Set<number>()
@@ -809,28 +809,28 @@ describe('practiceStore — session stats & worst chords (§7)', () => {
   })
 
   it('tracks consecutive first-try correct prompts, reset by a miss', () => {
-    const bestCombo = new InMemoryBestCombo()
-    const s = setup({ presets: onePreset, bestCombo })
+    const bestStreak = new InMemoryBestStreak()
+    const s = setup({ presets: onePreset, bestStreak })
 
     playCorrectAndAdvance(s, s.store.getState().prompt!) // first-try
-    expect(s.store.getState().comboStreak).toBe(1)
+    expect(s.store.getState().firstTryStreak).toBe(1)
 
     playCorrectAndAdvance(s, s.store.getState().prompt!) // first-try
-    expect(s.store.getState().comboStreak).toBe(2)
+    expect(s.store.getState().firstTryStreak).toBe(2)
 
     const prompt = s.store.getState().prompt!
     s.press(61, 62, 63) // miss…
     // …and the streak is gone at the ✘, not at the end of the prompt: the ✔
     // flash of a missed prompt must not claim a streak that already broke.
-    expect(s.store.getState().comboStreak).toBe(0)
+    expect(s.store.getState().firstTryStreak).toBe(0)
     s.releaseAll()
     playCorrectAndAdvance(s, prompt)
-    expect(s.store.getState().comboStreak).toBe(0)
-    expect(bestCombo.best()).toBe(2) // the lifetime high mark stays
+    expect(s.store.getState().firstTryStreak).toBe(0)
+    expect(bestStreak.best()).toBe(2) // the lifetime high mark stays
 
     playCorrectAndAdvance(s, s.store.getState().prompt!) // first-try again
-    expect(s.store.getState().comboStreak).toBe(1)
-    expect(bestCombo.best()).toBe(2)
+    expect(s.store.getState().firstTryStreak).toBe(1)
+    expect(bestStreak.best()).toBe(2)
   })
 
   it('a first-try ✔ counts itself, in time for its own flash', () => {
@@ -838,21 +838,21 @@ describe('practiceStore — session stats & worst chords (§7)', () => {
 
     s.press(...correctNotes(s.store.getState().prompt!))
     expect(s.store.getState().phase).toBe('advancing')
-    expect(s.store.getState().comboStreak).toBe(1) // shown, not off by one
+    expect(s.store.getState().firstTryStreak).toBe(1) // shown, not off by one
     s.releaseAll()
     vi.advanceTimersByTime(ADVANCE)
-    expect(s.store.getState().comboStreak).toBe(1)
+    expect(s.store.getState().firstTryStreak).toBe(1)
   })
 
   it('a miss followed by a skip still breaks the streak (§7.3)', () => {
     const s = setup({ presets: onePreset })
     playCorrectAndAdvance(s, s.store.getState().prompt!)
-    expect(s.store.getState().comboStreak).toBe(1)
+    expect(s.store.getState().firstTryStreak).toBe(1)
 
     s.press(61, 62, 63) // miss…
     s.releaseAll()
     s.store.getState().skip() // …then out of the prompt entirely
-    expect(s.store.getState().comboStreak).toBe(0)
+    expect(s.store.getState().firstTryStreak).toBe(0)
   })
 
   it('Learn prompts leave the streak alone (§5)', () => {
@@ -861,9 +861,9 @@ describe('practiceStore — session stats & worst chords (§7)', () => {
     s.store.getState().setMode('learn')
 
     playCorrectAndAdvance(s, s.store.getState().prompt!)
-    expect(s.store.getState().comboStreak).toBe(1) // neither up nor down
+    expect(s.store.getState().firstTryStreak).toBe(1) // neither up nor down
     s.press(61, 62, 63) // a Learn miss records nothing either
-    expect(s.store.getState().comboStreak).toBe(1)
+    expect(s.store.getState().firstTryStreak).toBe(1)
   })
 
   it('skips leave the session tallies untouched', () => {

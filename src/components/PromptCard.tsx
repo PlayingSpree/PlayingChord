@@ -2,7 +2,7 @@ import { lazy, Suspense } from 'react'
 import { usePractice } from '../store/practiceStore'
 import { useSettings } from '../store/settingsStore'
 import {
-  COMBO_STREAK_DISPLAY_MIN,
+  FIRST_TRY_STREAK_DISPLAY_MIN,
   FAST_TIME_MS,
   MAX_TIME_TO_CORRECT_MS,
   SLOW_TIME_MS,
@@ -153,7 +153,7 @@ export function PromptCard() {
 function FeedbackPill() {
   const phase = usePractice((s) => s.phase)
   const reactionMs = usePractice((s) => s.reactionMs)
-  const comboStreak = usePractice((s) => s.comboStreak)
+  const firstTryStreak = usePractice((s) => s.firstTryStreak)
   const hint = usePractice((s) => s.hint)
   const song = usePractice((s) => s.song)
   const mode = usePractice((s) => s.mode)
@@ -208,7 +208,7 @@ function FeedbackPill() {
             ★ learned
           </span>
         )}
-        {comboStreak >= COMBO_STREAK_DISPLAY_MIN && (
+        {firstTryStreak >= FIRST_TRY_STREAK_DISPLAY_MIN && (
           <span
             className={cx(
               'text-base',
@@ -219,7 +219,7 @@ function FeedbackPill() {
                   : 'text-primary-light',
             )}
           >
-            🔥 {comboStreak} combo
+            🔥 {firstTryStreak} combo
           </span>
         )}
       </span>

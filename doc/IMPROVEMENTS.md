@@ -7,16 +7,18 @@ unlock-chip breakdown). None are functional bugs; ordered by priority.
 ## 1. "Combo" naming collision
 
 `Combo` is the core domain type — a `(root, typeId, voicingId)` triple — while
-`comboStreak` / `bestComboStreak` / `PersistedBestCombo` mean a fighting-game
-hit streak. `PersistedBestCombo` sits next to `PersistedComboStats` in
+`comboStreak` / `bestComboStreak` / `PersistedBestCombo` mean a rhythm-game hit
+streak. `PersistedBestCombo` sits next to `PersistedComboStats` in
 `src/storage/persistedStats.ts` and reads like "the best (root, type, voicing)
 combo". The History UI has the same ambiguity: "Best streak" (days) and "Best
 combo" (prompts) side by side with no units.
 
-- [ ] Rename the streak concept in code (e.g. `firstTryStreak`,
+- [x] Rename the streak concept in code (`firstTryStreak`,
       `PersistedBestStreak`); keep only the persisted `bestComboStreak` JSON
-      key (same pragmatic call as `masteredIndices`).
-- [ ] Add a unit or tooltip to the History "Best combo" stat.
+      key (same pragmatic call as `masteredIndices`). The UI keeps the word
+      *combo* — it's the spec's product name (§7.3, §7.5).
+- [x] Add a unit or tooltip to the History "Best combo" stat. (Already done:
+      Progress reads "Best combo streak: N first-try in a row".)
 
 ## 2. "Best time" can be won by a single lucky rep
 
@@ -49,15 +51,13 @@ can never break it. DESIGN.md §7 only says it resets on "any miss".
 - [ ] `src/practice/stats.ts` — `comboMetrics` recomputes the recent time
       average that `recentHistoryOf` already returned as
       `recent.avgTimeToCorrectMs`; drop the duplicate slice/average.
-- [ ] `src/components/PromptCard.tsx` — the streak display threshold `10` is a
+- [x] `src/components/PromptCard.tsx` — the streak display threshold `10` is a
       magic number inline; DESIGN.md documents it, so export a named constant
-      like the other tuning knobs.
-- [ ] `src/components/ChordStatsView.tsx` — sortable headers don't set
+      like the other tuning knobs. (Already done: `FIRST_TRY_STREAK_DISPLAY_MIN`.)
+- [x] `src/components/ChordStatsView.tsx` — sortable headers don't set
       `aria-sort`.
-- [ ] `src/components/UnlockChip.tsx` — popover has no Escape-to-close and no
-      `aria-haspopup`/`aria-controls`; the backdrop button handles outside
-      clicks but not keyboard users.
-- [ ] `src/components/UnlockChip.tsx` — calls the store's `chordPassStatus()`
-      during render; it only re-renders because the `progress` snapshot happens
-      to change on every pass. Derive the list from subscribed state (or note
-      the dependency) so the coupling isn't implicit.
+- [~] `src/components/UnlockChip.tsx` — popover keyboard handling. Obsolete:
+      the v9 shell folded the chip into `HomeView`; the component is gone.
+- [~] `src/components/UnlockChip.tsx` — `chordPassStatus()` called during
+      render. Obsolete with the component; `HomeView` now calls it inside a
+      `useMemo` with the implicit dependency spelled out in a comment.

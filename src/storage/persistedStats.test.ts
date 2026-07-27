@@ -3,9 +3,9 @@ import { comboWeight, rankWorstCombos, type Combo } from '../practice'
 import { AppStorage, type KeyValueStore } from './appStorage'
 import {
   applyDailyPrompt,
-  InMemoryBestCombo,
+  InMemoryBestStreak,
   InMemoryDailyActivity,
-  PersistedBestCombo,
+  PersistedBestStreak,
   PersistedComboStats,
   PersistedDailyActivity,
 } from './persistedStats'
@@ -223,23 +223,23 @@ describe('PersistedDailyActivity (§7 active minutes)', () => {
   })
 })
 
-describe('PersistedBestCombo (§7 lifetime combo streak)', () => {
+describe('PersistedBestStreak (§7 lifetime combo streak)', () => {
   it('raises the persisted best when beaten, survives a reload', () => {
     const kv = fakeKV()
-    const bestCombo = new PersistedBestCombo(new AppStorage(kv))
-    bestCombo.record(3)
-    bestCombo.record(12)
+    const bestStreak = new PersistedBestStreak(new AppStorage(kv))
+    bestStreak.record(3)
+    bestStreak.record(12)
 
-    const reloaded = new PersistedBestCombo(new AppStorage(kv))
+    const reloaded = new PersistedBestStreak(new AppStorage(kv))
     reloaded.record(5) // below the persisted best: no-op
     expect(new AppStorage(kv).state.bestComboStreak).toBe(12)
   })
 
   it('the in-memory double keeps the running max', () => {
-    const bestCombo = new InMemoryBestCombo()
-    bestCombo.record(4)
-    bestCombo.record(2)
-    bestCombo.record(9)
-    expect(bestCombo.best()).toBe(9)
+    const bestStreak = new InMemoryBestStreak()
+    bestStreak.record(4)
+    bestStreak.record(2)
+    bestStreak.record(9)
+    expect(bestStreak.best()).toBe(9)
   })
 })

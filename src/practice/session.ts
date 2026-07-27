@@ -22,9 +22,9 @@ export function sanitizeSessionLength(value: unknown): number | null {
   return Math.round(value)
 }
 
-// How long a combo streak must run before the ✔ flash mentions it (§7.3) —
-// below this it's noise, above it it's an achievement worth calling out.
-export const COMBO_STREAK_DISPLAY_MIN = 10
+// How long a first-try streak must run before the ✔ flash mentions it (§7.3)
+// — below this it's noise, above it it's an achievement worth calling out.
+export const FIRST_TRY_STREAK_DISPLAY_MIN = 10
 
 // One recorded prompt in a session (§7.4): a self-paced Practice prompt, or a
 // Song bar. Skips and Learn prompts never appear. The label is captured at

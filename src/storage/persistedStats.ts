@@ -175,15 +175,17 @@ export class InMemoryDailyActivity implements DailyActivitySource {
   }
 }
 
-// The lifetime §7 combo-streak high score (History tab): a single persisted
+// The lifetime §7 combo-streak high score (Progress): a single persisted
 // number, raised whenever a session's live streak beats it. Unlike the
 // per-combo/daily records, it has no history of its own to derive a "best"
-// from — the running max has to be kept.
-export interface BestComboSource {
+// from — the running max has to be kept. "Streak" here is the first-try run
+// the UI calls a combo, not a (root, type, voicing) Combo — see
+// firstTryStreak in the practice store.
+export interface BestStreakSource {
   record(streak: number): void
 }
 
-export class PersistedBestCombo implements BestComboSource {
+export class PersistedBestStreak implements BestStreakSource {
   private readonly storage: AppStorage
 
   constructor(storage: AppStorage) {
@@ -197,7 +199,7 @@ export class PersistedBestCombo implements BestComboSource {
 }
 
 // Test double for stores that shouldn't touch the appStorage singleton.
-export class InMemoryBestCombo implements BestComboSource {
+export class InMemoryBestStreak implements BestStreakSource {
   private value = 0
 
   record(streak: number): void {

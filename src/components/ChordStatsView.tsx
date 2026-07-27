@@ -176,7 +176,17 @@ export function ChordStatsView({ onBack }: { onBack: () => void }) {
                       Chord
                     </th>
                     {COLUMNS.map((col) => (
-                      <th key={col.id} className="px-4 py-3">
+                      <th
+                        key={col.id}
+                        className="px-4 py-3"
+                        aria-sort={
+                          sort.column === col.id
+                            ? sort.dir === 'asc'
+                              ? 'ascending'
+                              : 'descending'
+                            : 'none'
+                        }
+                      >
                         <button
                           type="button"
                           onClick={() => onSortClick(col.id)}
