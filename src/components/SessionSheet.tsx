@@ -44,7 +44,6 @@ interface Draft {
   mode: SessionMode
   sessionLength: number | null
   worstOnly: boolean
-  notPassedOnly: boolean
 }
 
 export function SessionSheet({
@@ -63,7 +62,6 @@ export function SessionSheet({
       mode: state.mode,
       sessionLength: state.sessionLength,
       worstOnly: state.worstOnly,
-      notPassedOnly: state.notPassedOnly,
     }
   })
   const patch = (fields: Partial<Draft>) =>
@@ -88,7 +86,6 @@ export function SessionSheet({
     store.setMode(draft.mode)
     store.setSessionLength(draft.sessionLength)
     store.setWorstOnly(draft.worstOnly)
-    store.setNotPassedOnly(draft.notPassedOnly)
     onStart()
   }
 
@@ -173,12 +170,6 @@ export function SessionSheet({
               </button>
             ))}
           </div>
-          {draft.mode === 'learn' && (
-            <NotPassedOnlyRow
-              value={draft.notPassedOnly}
-              onChange={(notPassedOnly) => patch({ notPassedOnly })}
-            />
-          )}
           {draft.mode === 'practice' && (
             <WorstOnlyRow
               presetId={draft.presetId}
@@ -222,32 +213,6 @@ export function SessionSheet({
   )
 }
 
-function NotPassedOnlyRow({
-  value,
-  onChange,
-}: {
-  value: boolean
-  onChange: (next: boolean) => void
-}) {
-  const progress = usePractice((s) => s.progress)
-  const disabled = progress.unlocked === progress.passed && !value
-  return (
-    <SettingRow label="Not passed only" disabled={disabled}>
-      <Toggle
-        checked={value}
-        onChange={onChange}
-        disabled={disabled}
-        aria-label="Not passed only"
-      />
-    </SettingRow>
-  )
-}
-
-// Off and unavailable when the drafted preset has no weak spots to drill
-// (§5): everything unlocked is passed and nothing was ever missed, so the
-// toggle would only fall back to the full pool. Asked of the *draft* preset,
-// not the store's active one, and recomputed from the persisted records each
-// time the picks change — the sheet is opened before a session deals anything.
 function WorstOnlyRow({
   presetId,
   diatonicKey,

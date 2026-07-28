@@ -246,7 +246,6 @@ function StageView({
   const done = usePractice((s) => s.done)
   const sessionLength = usePractice((s) => s.sessionLength)
   const progress = usePractice((s) => s.progress)
-  const notPassedOnly = usePractice((s) => s.notPassedOnly)
   const song = usePractice((s) => s.song)
   const goal = usePractice((s) => s.goal)
   const tempo = useSettings((s) => s.settings.songTempoBpm)
@@ -302,19 +301,12 @@ function StageView({
           </span>
         )}
         {mode === 'learn' && (
-          <>
-            {notPassedOnly && (
-              <Chip selected className="px-3 py-1.5 text-[13px]">
-                not passed only ✓
-              </Chip>
-            )}
-            <span className="flex items-center gap-1.5 text-sm font-semibold text-ink-muted">
-              🔓{' '}
-              <b className="text-info-light">
-                {progress.unlocked}/{progress.total}
-              </b>
-            </span>
-          </>
+          <span className="flex items-center gap-1.5 text-sm font-semibold text-ink-muted">
+            🔓{' '}
+            <b className="text-info-light">
+              {progress.unlocked}/{progress.total}
+            </b>
+          </span>
         )}
         {mode === 'song' && (
           <>

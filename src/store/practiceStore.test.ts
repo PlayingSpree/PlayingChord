@@ -589,51 +589,6 @@ describe('practiceStore — unlock progress (§5)', () => {
     expect(s.store.getState().justUnlockedLabels).toEqual([])
   })
 
-  it('unlockByFifths reorders a product pool’s unlock order (§5.1)', () => {
-    const s = setup({
-      presets: sixRoots,
-      settings: () => ({ ...DEFAULT_PRACTICE_SETTINGS, unlockByFifths: true }),
-    })
-    // Fifths positions of roots 0–5 are C=0, D=2, E=4 ahead of C♯=7,
-    // E♭=9, F=11 — so the first unlocked three are 0, 2, 4.
-    for (let i = 0; i < 20; i++) {
-      expect([0, 2, 4]).toContain(s.store.getState().prompt!.chord.root)
-      playSlowAndAdvance(s, s.store.getState().prompt!)
-    }
-  })
-
-  it('unlockByFifths leaves a diatonic pool in scale-degree order', () => {
-    const s = setup({
-      presets: presetsOf({ kind: 'diatonic', key: 7 }), // G major
-      settings: () => ({ ...DEFAULT_PRACTICE_SETTINGS, unlockByFifths: true }),
-    })
-    // Still the first three scale degrees — G, Am, Bm — not a fifths sort
-    // of the diatonic roots (which would surface C first).
-    for (let i = 0; i < 20; i++) {
-      expect([7, 9, 11]).toContain(s.store.getState().prompt!.chord.root)
-      playSlowAndAdvance(s, s.store.getState().prompt!)
-    }
-  })
-
-  it('refreshUnlockOrder re-derives the order after the setting flips', () => {
-    let fifths = false
-    const s = setup({
-      presets: sixRoots,
-      settings: () => ({
-        ...DEFAULT_PRACTICE_SETTINGS,
-        unlockByFifths: fifths,
-      }),
-    })
-    expect([0, 1, 2]).toContain(s.store.getState().prompt!.chord.root)
-
-    fifths = true
-    s.store.getState().refreshUnlockOrder()
-    for (let i = 0; i < 20; i++) {
-      expect([0, 2, 4]).toContain(s.store.getState().prompt!.chord.root)
-      playSlowAndAdvance(s, s.store.getState().prompt!)
-    }
-  })
-
   it('clean but F-slow reps do not pass (§5.1)', () => {
     const s = setup({ presets: sixRoots })
     for (let i = 0; i < 6; i++) {
@@ -1260,62 +1215,6 @@ describe('practiceStore — worst chords only (§5/§7)', () => {
   })
 })
 
-describe('practiceStore — not passed only (§5.1/§7)', () => {
-  const sixRoots = presetsOf({
-    kind: 'product',
-    roots: [0, 1, 2, 3, 4, 5],
-    chordTypes: ['maj'],
-  })
-
-  // Fully unlocked six-root pool with roots 0 and 3 already passed
-  // (chordOrder indices match root order 1:1 for a single-type pool).
-  const partlyPassed = (): InMemoryPresetProgress => {
-    const progress = new InMemoryPresetProgress()
-    progress.set('test', {
-      unlockedCount: 6,
-      masteredIndices: [0, 3],
-      setAsideIndices: [],
-    })
-    return progress
-  }
-
-  it('draws only from unlocked chords not yet passed', () => {
-    const s = setup({ presets: sixRoots, progress: partlyPassed() })
-    s.store.getState().setMode('learn')
-    s.store.getState().setNotPassedOnly(true)
-    for (let i = 0; i < 20; i++) {
-      expect([1, 2, 4, 5]).toContain(s.store.getState().prompt!.chord.root)
-      playSlowAndAdvance(s, s.store.getState().prompt!)
-    }
-  })
-
-  it('falls back to the whole pool once every unlocked chord is passed', () => {
-    const progress = new InMemoryPresetProgress()
-    progress.set('test', {
-      unlockedCount: 6,
-      masteredIndices: [0, 1, 2, 3, 4, 5],
-      setAsideIndices: [],
-    })
-    const s = setup({ presets: sixRoots, progress })
-    s.store.getState().setMode('learn')
-    s.store.getState().setNotPassedOnly(true)
-    expect(s.store.getState().prompt).not.toBeNull()
-    expect(s.store.getState().notPassedOnly).toBe(true)
-  })
-
-  it('Practice mode ignores the toggle', () => {
-    const s = setup({ presets: sixRoots, progress: partlyPassed() })
-    s.store.getState().setNotPassedOnly(true) // still in Practice (default)
-
-    const seen = new Set<number>()
-    for (let i = 0; i < 30; i++) {
-      seen.add(s.store.getState().prompt!.chord.root)
-      playSlowAndAdvance(s, s.store.getState().prompt!)
-    }
-    expect(seen.size).toBeGreaterThan(4) // passed roots 0/3 still appear
-  })
-})
-
 describe('practiceStore — session length & report (§7.2/§7.4)', () => {
   const onePreset = presetsOf({
     kind: 'explicit',
@@ -1660,7 +1559,6 @@ describe('practiceStore — session lifecycle (§7.2)', () => {
     expect(s.store.getState().prompt).toBeNull()
 
     s.store.getState().setMode('learn')
-    s.store.getState().setNotPassedOnly(true)
     s.store.getState().setSessionLength(10)
 
     expect(s.store.getState().prompt).toBeNull()

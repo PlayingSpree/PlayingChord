@@ -258,20 +258,6 @@ function GoalSection() {
           onIncrement={() => setGoal(settings.dailyGoalMinutes + 5)}
         />
       </Row>
-      <Row label="Unlock in circle-of-fifths order">
-        <Toggle
-          checked={settings.unlockByFifths}
-          onChange={(v) => {
-            update({ unlockByFifths: v })
-            practiceStore.getState().refreshUnlockOrder()
-          }}
-          aria-label="Unlock in circle-of-fifths order"
-        />
-      </Row>
-      <p className="text-xs text-ink-muted">
-        C → G → D → A … for root-ordered pools; diatonic and custom lists keep
-        their own order
-      </p>
     </SettingsCard>
   )
 }

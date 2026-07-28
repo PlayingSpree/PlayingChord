@@ -301,9 +301,6 @@ export interface PracticeStoreState {
   // Practice-mode settings (§7): they live beside the mode picker, not in
   // the settings panel, and reset with the app load.
   worstOnly: boolean
-  // Learn-mode setting (§5.1/§7), same lifecycle as worstOnly: narrows
-  // generation to unlocked chords not yet passed.
-  notPassedOnly: boolean
   // Session length in prompts (§7.2): reaching it ends the session. null = ∞;
   // session-only (not persisted). Applies to Learn/Practice; Song ignores it.
   sessionLength: number | null
@@ -356,7 +353,6 @@ export interface PracticeStoreState {
   setDiatonicKey(key: PitchClass): void
   setMode(mode: SessionMode): void
   setWorstOnly(on: boolean): void
-  setNotPassedOnly(on: boolean): void
   setSessionLength(length: number | null): void
   // End the session now (§7.2 End button, or auto at the length): build the
   // Report and freeze practice. A zero-prompt session ends with report = null
@@ -377,9 +373,6 @@ export interface PracticeStoreState {
   refreshLibrary(): void
   // Wipe a preset's §5 unlock progress back to the initial unlock count.
   resetPresetProgress(presetId: string): void
-  // Re-derive the active preset's unlock order after the §5.1 order setting
-  // changes; the unlocked count carries over onto the new order.
-  refreshUnlockOrder(): void
   // Every pool chord in unlock order with its locked/unlocked/passed status
   // and display label — the unlock chip's per-chord drill-down (§7).
   chordPassStatus(): readonly ChordPassDisplayEntry[]
@@ -640,14 +633,7 @@ export function createPracticeStore({
     // without touching the store's own. Split out of reloadProgress so
     // canDrillWorstOnly can ask about a preset the store hasn't switched to.
     const derivedProgress = (preset: Preset, combos: readonly Combo[]) => {
-      // Circle-of-fifths unlock order (§5.1) applies only to root-ordered
-      // (product) pools — diatonic/explicit orders are deliberate as-is.
-      const order = chordOrderOf(
-        combos,
-        settings().unlockByFifths && preset.pool.kind === 'product'
-          ? 'fifths'
-          : 'pool',
-      )
+      const order = chordOrderOf(combos)
       const stored = progressStore.get(preset.id)
       const record = reconcileProgress(
         stored ?? initialProgress(order.length),
@@ -848,6 +834,11 @@ export function createPracticeStore({
     // Combos this session dealt as backfill rather than batch material (§3.1),
     // for the Report's "review mixed in" line.
     let sessionReviewKeys = new Set<string>()
+    // Combos this session passed, as keys. The banner reads these in *track*
+    // order rather than in the order they happened to pass: the deal is weighted
+    // and random, so pass order would print C · G · F one session and C · F · G
+    // the next, for a row that sits beside the batch chips.
+    let sessionPassedKeys = new Set<string>()
 
     // Feeds a completed rep into the path (§2.3), as the *combo's* own grade —
     // so it must run after stats.record(), like applyProgress. Per combo rather
@@ -869,6 +860,7 @@ export function createPracticeStore({
       if (!sessionPassedLabels.includes(passedLabel)) {
         sessionPassedLabels.push(passedLabel)
       }
+      sessionPassedKeys.add(key)
       if (update.chapterComplete && update.chapter !== null) {
         sessionChapterDone = update.chapter.id
       }
@@ -904,10 +896,9 @@ export function createPracticeStore({
     }
 
     // Learn/Practice generate only from unlocked chords (§5); Song bypasses
-    // this entirely (it draws from the preset's raw pool). "Worst chords
-    // only" (Practice, §5/§7) and "not passed only" (Learn, §5.1/§7) then
-    // each narrow generation within the unlocked set; an empty result (every
-    // unlocked chord already passed with nothing ever missed) falls back to
+    // this entirely (it draws from the preset's raw pool). "Worst chords only"
+    // (Practice, §5/§7) then narrows within the unlocked set; an empty result
+    // — every unlocked chord passed with nothing ever missed — falls back to
     // the whole unlocked pool.
     const pickPool = (): readonly Combo[] => {
       const state = get()
@@ -918,13 +909,6 @@ export function createPracticeStore({
       if (state.mode === 'practice' && state.worstOnly) {
         const pool = worstOnlyPool(available, chordOrder, progressRecord)
         if (pool.length > 0) return pool
-      }
-      if (state.mode === 'learn' && state.notPassedOnly) {
-        const notPassed = notPassedChordKeys(chordOrder, progressRecord)
-        const filtered = available.filter((combo) =>
-          notPassed.has(poolChordKey(combo)),
-        )
-        if (filtered.length > 0) return filtered
       }
       return available
     }
@@ -1429,6 +1413,7 @@ export function createPracticeStore({
       sessionChapterDone = null
       sessionChapterStamped = null
       sessionReviewKeys = new Set()
+      sessionPassedKeys = new Set()
       // Cleared with the session, so returning to an unfinished batch tomorrow
       // shows the shapes again (§3.1) — the reps in between are exactly what
       // makes the reminder worth having.
@@ -1509,7 +1494,11 @@ export function createPracticeStore({
         chapterTitle: (done ?? stamped ?? position.chapter)?.title ?? null,
         chapterComplete: done !== null,
         justStamped: stamped !== null,
-        learnedLabels: [...sessionPassedLabels],
+        learnedLabels: passedCombos(pathRecord)
+          .filter((pathCombo) =>
+            sessionPassedKeys.has(comboKey(pathCombo.combo)),
+          )
+          .map((pathCombo) => pathCombo.label),
         nextChapterTitle:
           done === null ? null : (position.chapter?.title ?? null),
         nextBatchLabels: position.batch.map((pathCombo) => pathCombo.label),
@@ -1599,7 +1588,6 @@ export function createPracticeStore({
       songChords: [],
       songSummary: null,
       worstOnly: false,
-      notPassedOnly: false,
       sessionLength: DEFAULT_SESSION_LENGTH,
       done: 0,
       report: null,
@@ -1694,7 +1682,7 @@ export function createPracticeStore({
         // still sees the old mode); the current prompt is replaced so a
         // Learn reveal can't be answered for Practice credit.
         recordOutcome()
-        queue = [] // the pool can change (worstOnly/notPassedOnly are per-mode)
+        queue = [] // the pool can change (worstOnly is per-mode)
         // Leaving the mode ends the run (§7.3). Only Practice can break a
         // streak — Learn records no outcome at all and Song is clock-paced —
         // so without this a detour parks the count and hands it back intact,
@@ -1721,15 +1709,6 @@ export function createPracticeStore({
         recordOutcome()
         queue = []
         set({ worstOnly: on })
-        if (sessionLive) dealOrGate()
-      },
-
-      setNotPassedOnly(on: boolean) {
-        if (on === get().notPassedOnly) return
-        if (get().mode === 'song') return // not rendered in Song; stay safe
-        recordOutcome()
-        queue = []
-        set({ notPassedOnly: on })
         if (sessionLive) dealOrGate()
       },
 
@@ -1836,25 +1815,6 @@ export function createPracticeStore({
         if (get().mode !== 'song' && get().prompt !== null) nextPrompt()
       },
 
-      refreshUnlockOrder() {
-        // A pending ✔ counts (and may master) under the outgoing order,
-        // like every other pool change.
-        recordOutcome()
-        reloadProgress()
-        clearUnlockFlash()
-        clearGradeFlash()
-        queue = []
-        recentKeys = []
-        set({
-          progress: progressSnapshot(),
-          justUnlocked: false,
-          justUnlockedLabels: [],
-        })
-        // Usually toggled from Settings while paused (no prompt); a live
-        // Learn/Practice prompt redeals from the reordered unlocked set.
-        if (get().mode !== 'song' && get().prompt !== null) nextPrompt()
-      },
-
       chordPassStatus() {
         return chordPassList(chordOrder, progressRecord).map((entry) => ({
           ...entry,
@@ -1908,7 +1868,6 @@ export function createPracticeStore({
         set({
           mode: 'path-learn',
           worstOnly: false,
-          notPassedOnly: false,
           upcoming: [],
         })
         return true
