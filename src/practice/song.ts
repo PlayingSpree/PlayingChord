@@ -208,6 +208,11 @@ export class SongEngine {
   private held: ReadonlySet<number> = new Set()
   private timer: ReturnType<typeof setTimeout> | null = null
   private nextBeatAt = 0
+  // Bumped by stop(). A tick reads it before scheduling the next beat, so a
+  // host that halts the clock from *inside* onState or onBarResult — which the
+  // chapter song does, ending the session on the phrase boundary (§3.3) —
+  // stays halted instead of having its timer set again on the way out.
+  private stopToken = 0
 
   constructor(host: SongEngineHost) {
     this.host = host
@@ -272,6 +277,7 @@ export class SongEngine {
   // tracked so a later start() judges legato correctly. No emission: the
   // caller owns whatever state replaces the song view.
   stop(): void {
+    this.stopToken += 1
     if (this.timer !== null) {
       clearTimeout(this.timer)
       this.timer = null
@@ -305,10 +311,12 @@ export class SongEngine {
 
   private tick(): void {
     this.timer = null
+    const token = this.stopToken
     this.beatInBar += 1
     if (this.beatInBar >= SONG_BEATS_PER_BAR) {
       this.beatInBar = 0
       this.advanceBar()
+      if (this.stopToken !== token) return // halted from a callback
       // A phrase rollover restarted the clock via restartPhrase(), which
       // already ticked beat 0 of the new count-in and rescheduled — a live
       // timer here means this tick's work is done.
@@ -316,6 +324,7 @@ export class SongEngine {
     }
     this.beat += 1
     this.emit()
+    if (this.stopToken !== token) return // halted from a callback
     this.scheduleNextBeat()
   }
 

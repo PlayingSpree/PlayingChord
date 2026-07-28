@@ -5,7 +5,23 @@ import type { PromptOutcome } from './stats'
 // records nor the session tallies (§5), though active minutes still count.
 // Practice (the default) hides the voicing and records everything. Song
 // (§6.5) is clock-paced: a looped diatonic progression judged per bar.
-export type SessionMode = 'learn' | 'practice' | 'song'
+//
+// `path-learn` is the guided path's learning loop (§3.1) and the reason the
+// mode decision disappears from the player's hands: it carries a chord from
+// *shown* to *recalled* inside one session, because Learn-vs-Practice is a tag
+// on each prompt (the combo's first rep of the session) rather than a property
+// of the session. It is a fourth mode rather than a flag on Practice so the
+// compiler finds every place the old three-way fork needs a fourth answer.
+// Free practice never offers it — the path starts it.
+export type SessionMode = 'learn' | 'practice' | 'song' | 'path-learn'
+
+// Does this mode record outcomes into the per-combo stats and session tallies?
+// Learn never does (§5); Song records its own bars through the engine, not
+// through the attempt lifecycle. An intro rep inside `path-learn` is also
+// stats-neutral, but that is per prompt — see the store's `introRep`.
+export function modeRecordsReps(mode: SessionMode): boolean {
+  return mode === 'practice' || mode === 'path-learn'
+}
 
 // Session length is a prompt count (§7.2): reaching it ends the session and
 // shows the Report. Session-only (resets on reload), applies to Learn and

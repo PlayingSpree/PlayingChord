@@ -13,7 +13,6 @@ import {
   chapterById,
   isPathTriad,
   PATH_COMBO_INDEX,
-  PATH_TRIAD_TOTAL,
   triadKey,
   type ChapterDefinition,
   type PathCombo,
@@ -238,6 +237,30 @@ export function isPathCombo(key: string): boolean {
   return PATH_COMBO_INDEX.has(key)
 }
 
+export function isComboPassed(
+  record: PathProgressRecord,
+  key: string,
+): boolean {
+  const located = locate(key)
+  if (located === null) return false
+  return chapterProgress(record, located.chapter.id).passed.includes(
+    located.index,
+  )
+}
+
+// Has every combo of a *pinned* set passed? The learning loop's end condition
+// (§3.1) asks this of the batch the session opened on, not of the current
+// position — the moment the batch passes the position moves to the next one, so
+// a check against "the current batch" would never come out true and the session
+// would roll on through the whole chapter.
+export function areCombosPassed(
+  record: PathProgressRecord,
+  keys: Iterable<string>,
+): boolean {
+  for (const key of keys) if (!isComboPassed(record, key)) return false
+  return true
+}
+
 // ─── The repertoire (§3.2) ─────────────────────────────────────────────────
 
 // Walks the track in declared order, keeping the combos a predicate accepts.
@@ -297,8 +320,6 @@ export function passedTriadCount(record: PathProgressRecord): number {
   }
   return triads.size
 }
-
-export { PATH_TRIAD_TOTAL }
 
 // ─── Set aside (§5.2) ──────────────────────────────────────────────────────
 

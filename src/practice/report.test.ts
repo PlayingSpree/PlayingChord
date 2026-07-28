@@ -120,6 +120,7 @@ function input(
     increment: { prompts: 0, activeMinutes: 0 },
     passedLabels: [],
     unlocked: null,
+    chapter: null,
     chords: [],
     setAside: [],
     goal: { todayMinutes: 0, streak: 0 },

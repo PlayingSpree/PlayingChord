@@ -4,12 +4,20 @@ import {
   ActiveTimeTracker,
   applyOutcome,
   AttemptLifecycle,
+  BATCH_WEIGHT_BOOST,
   builtInPresets,
+  calibratePath,
   canSetAside,
+  canSetAsideCombo,
+  chapterById,
+  chapterRows,
+  CHAPTERS,
+  chapterSong,
   chordOrderOf,
   chordPassList,
   chordsOpenedBefore,
   comboKey,
+  comboView,
   comboLabel,
   comboMetrics,
   createPrompt,
@@ -22,14 +30,36 @@ import {
   initialProgress,
   isChordInLearning,
   isPassingGrade,
+  areCombosPassed,
+  isComboPassed,
+  isPathCombo,
+  isPathComplete,
+  learningPool,
   MAX_TIME_TO_CORRECT_MS,
+  modeRecordsReps,
   notPassedChordKeys,
+  openCombo,
+  passedCombos,
+  passedTriadCount,
+  PATH_COMBO_INDEX,
+  PATH_RECENT_WINDOW,
+  PATH_TRIAD_TOTAL,
+  pathPosition,
   poolChordKey,
   rankWorstCombos,
   RECENT_WINDOW,
   reconcileProgress,
+  reconcilePathProgress,
   recordChordAttempt,
+  recordComboPass,
+  repertoireCombos,
+  repertoirePreset,
+  REPERTOIRE_PRESET_ID,
   romanNumeral,
+  setAsideCombo,
+  songOffer,
+  stampChapterSong,
+  todayCard,
   worstChordGrade,
   worstChordDisplayGrade,
   openChord,
@@ -43,7 +73,9 @@ import {
   buildSessionReport,
   wrongHeldKeys,
   type AttemptPhase,
+  type ChapterRow,
   type ChordPassEntry,
+  type ChordPool,
   type Combo,
   type ComboGrade,
   type ComboStatRecord,
@@ -52,6 +84,8 @@ import {
   type LifecycleState,
   type ComboStatsSource,
   type Hint,
+  type PathComboView,
+  type PathProgressRecord,
   type PracticeSettings,
   type Preset,
   type PresetProgressRecord,
@@ -63,9 +97,11 @@ import {
   type SessionReport,
   type SongChord,
   type SongState,
+  type TodayCard,
 } from '../practice'
 import {
   BUILT_IN_VOICING_LIBRARY,
+  spellMajorScaleDegree,
   spellRoot,
   voicingLibrary,
   type PitchClass,
@@ -78,9 +114,11 @@ import {
   PersistedBestStreak,
   PersistedComboStats,
   PersistedDailyActivity,
+  PersistedPathProgress,
   PersistedPresetProgress,
   type BestStreakSource,
   type DailyActivitySource,
+  type PathProgressSource,
   type PresetProgressSource,
 } from '../storage'
 import { settingsStore } from './settingsStore'
@@ -133,6 +171,10 @@ const FRESH_SESSION: SessionStats = {
 export interface UpcomingChord {
   key: string
   label: string
+  // Backfill in the learning loop (§3.1): already-passed material mixed in
+  // beside the batch. Labelled so a passed chord reappearing never reads as a
+  // mistake. Always false in the other modes.
+  review: boolean
 }
 
 // One chip of the §6.5 Song-mode progression display: compact chord label
@@ -182,6 +224,36 @@ export interface GradeUpFlash {
   label: string
   from: ComboGrade
   to: ComboGrade
+}
+
+// Everything the guided path's screens read, derived from the record in one
+// place (§4.1/§4.2). One object rather than a dozen fields because they always
+// change together — a pass moves the position, the counter, the batch chips and
+// the repertoire at once, and a component that got three of the four from
+// separate selectors could render a half-updated path.
+export interface PathSnapshot {
+  today: TodayCard
+  // 1-based for display; equal to chapterTotal + 1 when the path is complete.
+  chapterNumber: number
+  chapterTotal: number
+  chapterTitle: string | null
+  // 1-based batch position inside the current chapter.
+  batchNumber: number
+  batchTotal: number
+  // The current batch with live grades — the Stage's chip row and the Today
+  // card's progress display are the same data (§4.4).
+  batch: readonly PathComboView[]
+  // Distinct major/minor triads passed, out of 24 (§2.1). Deliberately not the
+  // repertoire's size: C in two inversions is two combos and one chord.
+  triadsPassed: number
+  triadsTotal: number
+  // Every passed combo with its grade, set-aside ones included and flagged —
+  // the repertoire row (§4.1).
+  repertoire: readonly PathComboView[]
+  // The chapter whose song Home should offer, or null when nothing is owed.
+  songChapterId: string | null
+  songChapterTitle: string | null
+  complete: boolean
 }
 
 // How long the top-bar chip celebrates a fresh unlock before settling.
@@ -259,9 +331,22 @@ export interface PracticeStoreState {
   justUnlockedLabels: readonly string[]
   // A combo that just climbed a grade (§7.3), shown under the ✔ pill for as
   // long as that flash lasts — like justLearned, it is news about the rep on
-  // screen. Practice-only, and gated on enough attempts to mean something
-  // (§5 chord score over the recent window).
+  // screen. Recorded modes only, and gated on enough attempts to mean
+  // something (§5 chord score over the recent window).
   gradeUp: GradeUpFlash | null
+  // Is the prompt on screen a *first look* (§3.1)? The learning loop shows each
+  // batch combo's shape on its opening rep and records nothing for it, so the
+  // Learn/Practice distinction is per prompt rather than per session. Always
+  // false outside the learning loop, and never true for backfill material.
+  introRep: boolean
+  // The guided path (§3, §4), recomputed whenever the record changes.
+  path: PathSnapshot
+  // The chapter whose song this Song session is playing (§3.3), or null for an
+  // ordinary free-practice Song session.
+  songChapterId: string | null
+  // Set when the chapter song's phrase completed and stamped it — read by the
+  // Report, cleared with the rest of the session state.
+  songJustStamped: boolean
   start(): void
   // Answer the §7.3 ready gate: deal the prompt start() withheld. A no-op
   // unless a gated session is actually waiting.
@@ -315,6 +400,31 @@ export interface PracticeStoreState {
   // *draft* (§7.2), before any of it reaches the store. Computed on demand
   // from the persisted records, so it never goes stale between sessions.
   canDrillWorstOnly(presetId: string, diatonicKey: PitchClass): boolean
+
+  // ─── The guided path (§3, §4) ───────────────────────────────────────────
+  // Start the learning loop on the current batch (§3.1). Returns false when
+  // there is no batch left to learn, so a stale Today card can't open an empty
+  // session; the caller routes elsewhere.
+  startPathLearn(): boolean
+  // Start daily practice (§3.2): the v9 Practice session at ∞ on the derived
+  // Repertoire preset. Returns false when nothing is passed yet.
+  startRepertoire(): boolean
+  // Start a key chapter's song checkpoint (§3.3): Song mode pinned to the
+  // chapter's key with its I–IV–V–I progression. Returns false for an unknown
+  // or songless chapter.
+  startChapterSong(chapterId: string): boolean
+  // Every chapter in order with its state and the current batch's grades — the
+  // path map (§4.2). A method, not state: the map is a screen, not something
+  // every Home render needs to recompute.
+  chapterRows(): readonly ChapterRow[]
+  // §5.2 by-hand pool control, now per combo and scoped to the repertoire
+  // (§4.1). Both no-op when the move isn't available.
+  setPathComboAside(comboKey: string): void
+  openPathCombo(comboKey: string): void
+  canSetPathComboAside(comboKey: string): boolean
+  // "Reset path" (§6): back to chapter 1, uncalibrated, so the next load
+  // re-derives the frontier from the surviving stat history (§5.2).
+  resetPath(): void
 }
 
 export interface PracticeStoreDeps {
@@ -323,6 +433,7 @@ export interface PracticeStoreDeps {
   stats?: ComboStatsSource
   activity?: DailyActivitySource
   progress?: PresetProgressSource
+  path?: PathProgressSource
   bestStreak?: BestStreakSource
   memory?: PresetMemory
   rng?: Rng
@@ -336,6 +447,7 @@ export function createPracticeStore({
   stats = new PersistedComboStats(appStorage),
   activity = new PersistedDailyActivity(appStorage),
   progress: progressStore = new PersistedPresetProgress(appStorage),
+  path: pathStore = new PersistedPathProgress(appStorage),
   bestStreak = new PersistedBestStreak(appStorage),
   memory = persistedPresetMemory,
   rng = Math.random,
@@ -384,9 +496,41 @@ export function createPracticeStore({
   })
 
   return createStore<PracticeStoreState>()((set, get) => {
+    // ─── The guided path (§3, §5.1) ─────────────────────────────────────────
+    // First, because the preset list is a projection of it: calibration runs
+    // once, here, before anything reads a position — so Home's very first paint
+    // already shows the calibrated frontier (§5.2). A v9 upgrade and a fresh
+    // install are the same code path: the migration leaves `calibrated: false`,
+    // and this fast-passes whatever the stats already prove (nothing, fresh).
+    let pathRecord = reconcilePathProgress(pathStore.get())
+    if (!pathRecord.calibrated) {
+      pathRecord = calibratePath(pathRecord, stats)
+      pathStore.set(pathRecord)
+    } else if (JSON.stringify(pathRecord) !== JSON.stringify(pathStore.get())) {
+      // Persist a reconciliation that changed a stored record, so the self-heal
+      // happens once rather than on every load — same as reloadProgress.
+      pathStore.set(pathRecord)
+    }
+
+    // The preset list free practice picks from, with the derived Repertoire
+    // preset (§3.2) at the front — a projection of path progress, so it is
+    // built here rather than injected, and omitted entirely while nothing is
+    // passed so the picker has no dead entry.
+    const presetList = (diatonicKey: PitchClass): readonly Preset[] => {
+      const authored = presets(diatonicKey)
+      const repertoire = repertoirePreset(pathRecord)
+      const combos =
+        repertoire.pool.kind === 'combos' ? repertoire.pool.combos : []
+      return combos.length > 0 ? [repertoire, ...authored] : authored
+    }
+
     const resolve = (presetId: string, diatonicKey: PitchClass) => {
-      const list = presets(diatonicKey)
-      const first = list[0]
+      const list = presetList(diatonicKey)
+      // The fallback is the first *authored* preset, not the first in the list:
+      // Repertoire sits at the front but is a projection of path progress, so it
+      // is somewhere to go on purpose rather than somewhere to land by default —
+      // and only a built-in is guaranteed to have satisfiable combos.
+      const first = presets(diatonicKey)[0]
       if (!first) throw new Error('No presets defined')
       let preset = list.find((p) => p.id === presetId) ?? first
       let expansion = expandPreset(preset, voicings())
@@ -403,7 +547,9 @@ export function createPracticeStore({
     // The resolved active preset and its expansion, kept in lockstep by
     // applySelection/refreshLibrary — Song draws its pool from the preset,
     // everything else generates from the expansion.
-    let { preset: activePreset, expansion } = resolve(initialId, initialKey)
+    const initial = resolve(initialId, initialKey)
+    let activePreset = initial.preset
+    let expansion = initial.expansion
 
     // The §5 unlock state for the active preset, kept in lockstep with the
     // expansion by reloadProgress(): the pool's chord order, the persisted
@@ -414,6 +560,77 @@ export function createPracticeStore({
     let progressRecord: PresetProgressRecord = initialProgress(1)
     let unlocked: ReadonlySet<string> = new Set()
     let justUnlockedTimer: ReturnType<typeof setTimeout> | null = null
+
+    // The learning loop's pool and the batch it belongs to, captured once when
+    // the session starts (§3.1) and never re-derived while it runs. That
+    // pinning is the whole session: the moment the batch passes, the *position*
+    // moves to the next batch, so a pool that followed the position would roll
+    // straight on through the chapter and never end. The weights still shift
+    // rep by rep — they come from the stats, not from here.
+    let learning = learningPool(pathRecord)
+
+    const pathSnapshot = (): PathSnapshot => {
+      const position = pathPosition(pathRecord)
+      const passed = new Set(
+        position.chapter === null
+          ? []
+          : (pathRecord.chapters[position.chapter.id]?.passed ?? []),
+      )
+      let batchStart = 0
+      if (position.chapter !== null) {
+        for (let b = 0; b < position.batchIndex; b++) {
+          batchStart += position.chapter.batches[b]?.length ?? 0
+        }
+      }
+      const song = songOffer(pathRecord)
+      return {
+        // Read from `activity` rather than from state.goal: this snapshot is
+        // built once during construction, before any state exists, and it is
+        // the same source currentGoal() publishes from anyway.
+        today: todayCard(pathRecord, {
+          goalMet: activity.todayMinutes() >= settings().dailyGoalMinutes,
+        }),
+        chapterNumber: position.chapterIndex + 1,
+        chapterTotal: CHAPTERS.length,
+        chapterTitle: position.chapter?.title ?? null,
+        batchNumber: position.batchIndex + 1,
+        batchTotal: position.batchTotal,
+        batch: position.batch.map((pathCombo, i) =>
+          comboView(pathRecord, pathCombo, passed.has(batchStart + i), stats),
+        ),
+        triadsPassed: passedTriadCount(pathRecord),
+        triadsTotal: PATH_TRIAD_TOTAL,
+        repertoire: repertoireViews(),
+        songChapterId: song?.id ?? null,
+        songChapterTitle: song?.title ?? null,
+        complete: isPathComplete(pathRecord),
+      }
+    }
+
+    // Passed combos with their live grades, set-aside ones included and
+    // flagged: the repertoire row shows a benched combo dimmed *with* its
+    // grade, because the debt is carried in the open (§5.2).
+    const repertoireViews = (): readonly PathComboView[] =>
+      passedCombos(pathRecord).map((pathCombo) =>
+        comboView(pathRecord, pathCombo, true, stats),
+      )
+
+    // The path snapshot *and* the preset list, which is a projection of the
+    // same record: the Repertoire preset appears the moment something passes
+    // (§3.2), so republishing one without the other would leave the picker a
+    // step behind.
+    const publishPath = () =>
+      set({ path: pathSnapshot(), presets: presetList(get().diatonicKey) })
+
+    // Writes a path-record change through: persist and republish. Deliberately
+    // does *not* touch `learning` — the pool is pinned for the life of a
+    // session (see above), and the entry points re-derive it themselves.
+    const commitPath = (next: PathProgressRecord) => {
+      if (next === pathRecord) return
+      pathRecord = next
+      pathStore.set(pathRecord)
+      publishPath()
+    }
     // `${comboKey}:${grade}` for every climb already announced this session
     // (§7.3) — see judgeGradeUp. Cleared with the rest of the session
     // tallies, so a fresh session hears each climb again.
@@ -624,6 +841,44 @@ export function createPracticeStore({
       }
     }
 
+    // What the session did to the path, for the §4.4 chapter banner: the
+    // chapter whose last combo passed, and the chapter whose song it stamped.
+    let sessionChapterDone: string | null = null
+    let sessionChapterStamped: string | null = null
+    // Combos this session dealt as backfill rather than batch material (§3.1),
+    // for the Report's "review mixed in" line.
+    let sessionReviewKeys = new Set<string>()
+
+    // Feeds a completed rep into the path (§2.3), as the *combo's* own grade —
+    // so it must run after stats.record(), like applyProgress. Per combo rather
+    // than per chord: the path's material varies by voicing, so there is
+    // nothing to fold. A pass earned anywhere counts (§3.2), which is why this
+    // runs for every recorded rep and not only inside the learning loop.
+    const applyPathPass = (key: string, label: string) => {
+      const record = stats.get(key)
+      const update = recordComboPass(
+        pathRecord,
+        key,
+        record === null ? null : comboMetrics(record).grade,
+      )
+      if (!update.changed) return
+      // The path's own chip label ("C", "C/E", "G7") rather than the prompt's
+      // fuller "F maj — Root Position": the chapter banner sits beside the
+      // Today card and the batch chips, so they have to use the same names.
+      const passedLabel = PATH_COMBO_INDEX.get(key)?.label ?? label
+      if (!sessionPassedLabels.includes(passedLabel)) {
+        sessionPassedLabels.push(passedLabel)
+      }
+      if (update.chapterComplete && update.chapter !== null) {
+        sessionChapterDone = update.chapter.id
+      }
+      commitPath(update.record)
+      // The pool's *membership* is pinned for the session, but the preview queue
+      // is dropped like on any other pool change: a combo that just passed
+      // should stop being weighted as outstanding from the next prompt on.
+      queue = []
+    }
+
     // The §5/§7 "worst chords only" pool, drawn from the persisted records:
     // "worst" is chords with a miss on the record — plus the chords still
     // being learned (§5.1: unlocked, not yet passed). A chord you've never
@@ -656,6 +911,9 @@ export function createPracticeStore({
     // the whole unlocked pool.
     const pickPool = (): readonly Combo[] => {
       const state = get()
+      // The learning loop deals its own pool (§3.1) — the batch backfilled to
+      // three wide, captured at session start rather than re-derived per prompt.
+      if (state.mode === 'path-learn') return learning.pool
       const available = filterUnlockedCombos(expansion.combos, unlocked)
       if (state.mode === 'practice' && state.worstOnly) {
         const pool = worstOnlyPool(available, chordOrder, progressRecord)
@@ -671,30 +929,83 @@ export function createPracticeStore({
       return available
     }
 
+    // The learning loop's generation parameters (§3.1). Elsewhere these are the
+    // §5 defaults: window RECENT_WINDOW, no boost.
+    const isLearningLoop = () => get().mode === 'path-learn'
+    const pickWindow = () =>
+      isLearningLoop() ? PATH_RECENT_WINDOW : RECENT_WINDOW
+    const pickBoost = () =>
+      isLearningLoop()
+        ? (combo: Combo) =>
+            learning.batchKeys.has(comboKey(combo)) ? BATCH_WEIGHT_BOOST : 1
+        : undefined
+
+    // A combo's root spelling. The *pool's* own spelling wins: a diatonic
+    // preset in B major knows its iii is D♯m, and the path happens to declare
+    // the same pitch class as E♭m in the key of D♭ — so consulting the path
+    // first would rename the chord under a preset that knew better. The path's
+    // spelling fills in only where the pool has no opinion, which is exactly
+    // the `combos` pool (§3.2): it has no key of its own to spell from, and
+    // that is how D♭ avoids reading C♯ on the Today card.
+    const spellingFor = (combo: Combo) =>
+      expansion.rootSpellings.get(combo.root) ??
+      PATH_COMBO_INDEX.get(comboKey(combo))?.spelling
+
+    // Which batch combos have already had their first look this session (§3.1).
+    // Reset with the session, so returning to an unfinished batch tomorrow
+    // shows the shapes again — the reps in between were the point of leaving.
+    let introduced = new Set<string>()
+
     const nextPrompt = () => {
       const pool = pickPool()
+      const window = pickWindow()
+      const boost = pickBoost()
       if (queue.length === 0) {
-        queue = fillQueue([], 1, pool, recentKeys, stats, rng)
+        queue = fillQueue([], 1, pool, recentKeys, stats, rng, window, boost)
       }
       const combo = queue.shift()
       // Unreachable: fillQueue(_, 1, ...) always returns exactly one combo
       // for a non-empty pool, and pickPool() never returns an empty pool.
       if (combo === undefined) throw new Error('Upcoming queue was empty')
       currentCombo = combo
-      recentKeys.push(comboKey(combo))
+      const key = comboKey(combo)
+      recentKeys.push(key)
       if (recentKeys.length > RECENT_WINDOW) recentKeys.shift()
-      queue = fillQueue(queue, UPCOMING_COUNT, pool, recentKeys, stats, rng)
-      const prompt = createPrompt(
-        combo,
-        expansion.rootSpellings.get(combo.root),
-        voicings(),
+      queue = fillQueue(
+        queue,
+        UPCOMING_COUNT,
+        pool,
+        recentKeys,
+        stats,
+        rng,
+        window,
+        boost,
       )
+      // The §3.1 intro rep: a batch combo's *first* prompt of the session shows
+      // its shape and records nothing, and every later rep of the same combo is
+      // an ordinary hidden Practice rep. That is the Learn-then-Practice
+      // choreography the player used to perform by hand, as a per-prompt tag.
+      // Backfill never qualifies — it is passed material by definition.
+      const introRep =
+        get().mode === 'path-learn' &&
+        learning.batchKeys.has(key) &&
+        !introduced.has(key)
+      if (introRep) introduced.add(key)
+      if (get().mode === 'path-learn' && !learning.batchKeys.has(key)) {
+        sessionReviewKeys.add(key)
+      }
+      const prompt = createPrompt(combo, spellingFor(combo), voicings())
       set({
         prompt,
+        introRep,
         justLearned: false,
         upcoming: queue.map((c) => ({
           key: comboKey(c),
-          label: comboLabel(c, expansion.rootSpellings.get(c.root), voicings()),
+          label: comboLabel(c, spellingFor(c), voicings()),
+          // Backfill in the learning loop is labelled *review* so a passed
+          // chord reappearing never reads as a mistake (§3.1).
+          review:
+            get().mode === 'path-learn' && !learning.batchKeys.has(comboKey(c)),
         })),
       })
       machine.promptShown(prompt)
@@ -707,7 +1018,10 @@ export function createPracticeStore({
     // means the player is at the keyboard, so a pool change re-deals at once
     // as it always has — the gate is about the *first* prompt's clock.
     const dealOrGate = () => {
-      if (get().mode === 'practice' && get().prompt === null) {
+      // The learning loop gates like Practice: its first prompt of a *resumed*
+      // session is a graded rep, and §7.3's rule is about every Stage entry, so
+      // one tap before the first look is the cheap half of the trade.
+      if (modeRecordsReps(get().mode) && get().prompt === null) {
         set({ awaitingReady: true })
         return
       }
@@ -719,6 +1033,18 @@ export function createPracticeStore({
     // advances counts a slot — correct or Learn.
     const bumpDone = () => set((state) => ({ done: state.done + 1 }))
 
+    // Has the session run out? The learning loop's length *is* its batch
+    // (§3.1) — the §7.2 picker doesn't apply, and it ends itself the moment
+    // every combo in the batch has passed. Read after recordOutcome, which has
+    // already written any pass this rep earned.
+    const sessionEnded = (): boolean => {
+      if (get().mode === 'path-learn') {
+        return areCombosPassed(pathRecord, learning.batchKeys)
+      }
+      const length = get().sessionLength
+      return length !== null && get().done >= length
+    }
+
     // A prompt only completes through the 'advancing' phase. Learn-mode
     // prompts complete but feed nothing (§5): not the per-combo records, not
     // the session tallies or the report log. Returns whether a recorded prompt
@@ -728,7 +1054,10 @@ export function createPracticeStore({
       if (currentCombo === null || machine.state.phase !== 'advancing') {
         return false
       }
-      if (get().mode === 'learn') return false
+      // Learn records nothing (§5), and neither does an intro rep — the shape
+      // was on the keys, so the rep measures copying, not recall (§3.1). It
+      // still consumes a session slot, via bumpDone in onAdvance.
+      if (!modeRecordsReps(get().mode) || get().introRep) return false
       const outcome: PromptOutcome =
         machine.state.missCount > 0 ? 'missed' : 'first-try'
       // One clamp point for the whole recording path (§6.2): combo stats and
@@ -742,11 +1071,12 @@ export function createPracticeStore({
       const key = comboKey(currentCombo)
       const label = comboLabel(
         currentCombo,
-        expansion.rootSpellings.get(currentCombo.root),
+        spellingFor(currentCombo),
         voicings(),
       )
       stats.record(key, outcome, timeToCorrectMs)
       applyProgress(currentCombo)
+      applyPathPass(key, label)
       sessionEvents.push({ key, label, outcome, timeToCorrectMs })
       // Defensive: a ✔ is recorded exactly once — clear the combo so a stray
       // second recordOutcome (still 'advancing') can't double-count it.
@@ -775,7 +1105,9 @@ export function createPracticeStore({
     // have no self-paced streak.
     const applyStreak = (next: LifecycleState) => {
       const state = get()
-      if (state.mode === 'learn') return
+      // An intro rep records no outcome, so it can neither extend a streak nor
+      // break one — the shape was on the keys (§3.1).
+      if (!modeRecordsReps(state.mode) || state.introRep) return
       if (next.missCount > state.missCount) {
         if (state.firstTryStreak > 0) set({ firstTryStreak: 0 })
         return
@@ -805,7 +1137,16 @@ export function createPracticeStore({
     }
 
     const projectRep = (next: LifecycleState): ProjectedRep | null => {
-      if (currentCombo === null || get().mode !== 'practice') return null
+      // The learning loop's graded reps get the ★ learned and grade-up news
+      // too (§4.4) — they are ordinary counted reps. Its intro reps don't:
+      // nothing was recorded, so there is nothing to announce.
+      if (
+        currentCombo === null ||
+        !modeRecordsReps(get().mode) ||
+        get().introRep
+      ) {
+        return null
+      }
       const key = comboKey(currentCombo)
       const before = stats.get(key)
       return {
@@ -823,6 +1164,14 @@ export function createPracticeStore({
     // The §7.3 `learned` callout: the same chord grade applyProgress will read,
     // over the same records, with this rep projected in.
     const judgeLearned = ({ key, combo, record }: ProjectedRep): boolean => {
+      // On the path the unit is the combo, and "still learning" means the path
+      // hasn't latched it yet (§2.3) — the preset's chord order has nothing to
+      // say about a chapter combo, and consulting it would silence ★ learned in
+      // the one loop the callout was designed for.
+      if (get().mode === 'path-learn' || isPathCombo(key)) {
+        if (isComboPassed(pathRecord, key)) return false
+        return isPassingGrade(comboMetrics(record).grade)
+      }
       const chordKey = poolChordKey(combo)
       if (!isChordInLearning(chordOrder, progressRecord, chordKey)) return false
       return isPassingGrade(chordGrade(chordKey, { key, record }))
@@ -871,9 +1220,10 @@ export function createPracticeStore({
     const machine = new AttemptLifecycle({
       settings,
       now,
-      // Learn mode shows the answer from the start (§7), so misses never
-      // escalate to the redundant miss-3 reveal (§6.4).
-      revealOnMisses: () => get().mode !== 'learn',
+      // Learn mode — and the learning loop's intro rep (§3.1) — shows the
+      // answer from the start (§7), so misses never escalate to the redundant
+      // miss-3 reveal (§6.4).
+      revealOnMisses: () => get().mode !== 'learn' && !get().introRep,
       onState: (state) => {
         // Both read the pre-transition state, so they run before the set()
         applyStreak(state)
@@ -881,11 +1231,11 @@ export function createPracticeStore({
         set(state)
       },
       onAdvance: () => {
-        // A Learn prompt records nothing but still consumes a slot.
+        // A Learn prompt — or an intro rep — records nothing but still
+        // consumes a slot.
         if (!recordOutcome()) bumpDone()
-        const length = get().sessionLength
-        if (length !== null && get().done >= length) {
-          concludeSession() // reached the §7.2 length → Report
+        if (sessionEnded()) {
+          concludeSession()
           return
         }
         nextPrompt()
@@ -900,17 +1250,46 @@ export function createPracticeStore({
     let songProgression: readonly SongChord[] = []
     let songPrompts: Prompt[] = []
     let songHeld: ReadonlySet<number> = new Set()
+    // A chapter song checkpoint (§3.3) rather than a free-practice Song
+    // session: the pool is pinned to the chapter's key and the progression is
+    // its declared I–IV–V–I, the same four chords every phrase.
+    let songChapterId: string | null = null
+    let songFixed: readonly SongChord[] | null = null
+
+    // The pool the engine draws from: the chapter's key for a checkpoint, the
+    // active preset otherwise.
+    const songPool = (): ChordPool => {
+      if (songChapterId !== null) {
+        const chapter = chapterById(songChapterId)
+        if (chapter?.key !== null && chapter?.key !== undefined) {
+          return { kind: 'diatonic', key: chapter.key }
+        }
+      }
+      return activePreset.pool
+    }
+
+    const startSongEngine = () => {
+      songEngine.start(songPool(), songFixed ?? undefined)
+    }
 
     const songComboKey = (chord: SongChord): string =>
       comboKey({ root: chord.root, typeId: chord.typeId, voicingId: 'any' })
 
-    // Chip/summary label: spelled from the expansion like every other
-    // label — the diatonic pool's key spellings included.
-    const songLabel = (chord: SongChord): string =>
-      songChordLabel(
-        expansion.rootSpellings.get(chord.root) ?? spellRoot(chord.root),
-        chord.typeId,
-      )
+    // Chip/summary label: spelled from the chapter's key for a checkpoint and
+    // from the expansion otherwise, so both keep §3.5's spellings.
+    const songLabel = (chord: SongChord): string => {
+      const chapterKey =
+        songChapterId === null
+          ? null
+          : (chapterById(songChapterId)?.key ?? null)
+      const spelling =
+        chapterKey === null
+          ? expansion.rootSpellings.get(chord.root)
+          : chord.degree === null
+            ? undefined
+            : spellMajorScaleDegree(chapterKey, chord.degree)
+      return songChordLabel(spelling ?? spellRoot(chord.root), chord.typeId)
+    }
 
     // Song's §6.4-style wrong-key marking, without the hint machinery: a
     // foreign held key is marked while held, never escalating. Recomputed on
@@ -934,7 +1313,11 @@ export function createPracticeStore({
           songPrompts = state.progression.map((chord) =>
             createPrompt(
               { root: chord.root, typeId: chord.typeId, voicingId: 'any' },
-              expansion.rootSpellings.get(chord.root),
+              spellingFor({
+                root: chord.root,
+                typeId: chord.typeId,
+                voicingId: 'any',
+              }),
               voicings(),
             ),
           )
@@ -957,6 +1340,22 @@ export function createPracticeStore({
               loops: entry.loops,
             })) ?? null,
         })
+        // A completed phrase stamps the chapter (§3.3) and ends the session:
+        // a checkpoint is a task with a finish line, which is what makes the
+        // stamp a reward rather than a chore, and it puts the 🎵 news on the
+        // Report. `phraseSummary` is non-null exactly during the count-in that
+        // follows a completed phrase, so it *is* the boundary edge.
+        // Participation, not accuracy — the phrase counts whether the bars hit.
+        if (songChapterId !== null && state.phraseSummary !== null) {
+          const chapterId = songChapterId
+          const stamped = stampChapterSong(pathRecord, chapterId)
+          if (stamped !== pathRecord) {
+            sessionChapterStamped = chapterId
+            commitPath(stamped)
+            set({ songJustStamped: true })
+          }
+          concludeSession()
+        }
       },
       // Each judged bar feeds the per-combo record — hit = first-try, miss =
       // attempt — with no time sample (§6.5); Practice weighting inherits it.
@@ -991,7 +1390,15 @@ export function createPracticeStore({
       songEngine.stop()
       songProgression = []
       songPrompts = []
-      set({ song: null, songChords: [], songSummary: null, hint: null })
+      songChapterId = null
+      songFixed = null
+      set({
+        song: null,
+        songChords: [],
+        songSummary: null,
+        hint: null,
+        songChapterId: null,
+      })
     }
 
     // Active minutes (§7): every held-note change is an interaction event
@@ -1019,12 +1426,21 @@ export function createPracticeStore({
       announcedGradeUps = new Set()
       sessionPassedLabels = []
       sessionUnlockedLabels = []
+      sessionChapterDone = null
+      sessionChapterStamped = null
+      sessionReviewKeys = new Set()
+      // Cleared with the session, so returning to an unfinished batch tomorrow
+      // shows the shapes again (§3.1) — the reps in between are exactly what
+      // makes the reminder worth having.
+      introduced = new Set()
       sessionActiveMs = 0
       set({
         session: FRESH_SESSION,
         firstTryStreak: 0,
         done: 0,
         awaitingReady: false,
+        introRep: false,
+        songJustStamped: false,
       })
     }
 
@@ -1065,7 +1481,43 @@ export function createPracticeStore({
         chords: reportChords(),
         setAside: setAsideChords(),
         goal: currentGoal(),
+        chapter: reportChapter(),
+        reviewKeys: [...sessionReviewKeys],
       })
+    }
+
+    // The §4.4 chapter banner: what this session did to the path. Null when it
+    // touched nothing — a free-practice session on chords the track doesn't
+    // declare, or one that passed nothing.
+    const reportChapter = () => {
+      const position = pathPosition(pathRecord)
+      const done =
+        sessionChapterDone === null ? null : chapterById(sessionChapterDone)
+      const stamped =
+        sessionChapterStamped === null
+          ? null
+          : chapterById(sessionChapterStamped)
+      if (
+        done === null &&
+        stamped === null &&
+        sessionPassedLabels.length === 0
+      ) {
+        return null
+      }
+      const song = songOffer(pathRecord)
+      return {
+        chapterTitle: (done ?? stamped ?? position.chapter)?.title ?? null,
+        chapterComplete: done !== null,
+        justStamped: stamped !== null,
+        learnedLabels: [...sessionPassedLabels],
+        nextChapterTitle:
+          done === null ? null : (position.chapter?.title ?? null),
+        nextBatchLabels: position.batch.map((pathCombo) => pathCombo.label),
+        triadsPassed: passedTriadCount(pathRecord),
+        triadsTotal: PATH_TRIAD_TOTAL,
+        songChapterId: song?.id ?? null,
+        songChapterTitle: song?.title ?? null,
+      }
     }
 
     // Halt practice without deciding what comes next: the Song clock and the
@@ -1087,6 +1539,15 @@ export function createPracticeStore({
     const concludeSession = () => {
       haltSession()
       set({ report: get().done > 0 ? buildReport() : null })
+    }
+
+    // Abandon whatever is in flight with no Report, so the next start() begins
+    // fresh — what every path entry point does before setting up its own
+    // session, and what discardSession() exposes to the Start / Go again path.
+    const discardLive = () => {
+      if (!sessionLive) return
+      recordOutcome() // a pending ✔ still counts against the lifetime stats
+      haltSession()
     }
 
     const applySelection = (presetId: string, diatonicKey: PitchClass) => {
@@ -1116,7 +1577,7 @@ export function createPracticeStore({
       // A live song rebuilds from the new pool with a fresh count-in; a
       // paused one (no clock) picks the pool up on the next start().
       if (get().mode === 'song') {
-        songEngine.setPool(preset.pool)
+        songEngine.setPool(songPool())
         return
       }
       dealOrGate()
@@ -1150,6 +1611,10 @@ export function createPracticeStore({
       justUnlocked: false,
       justUnlockedLabels: [],
       gradeUp: null,
+      introRep: false,
+      path: pathSnapshot(),
+      songChapterId: null,
+      songJustStamped: false,
 
       start() {
         // Entering the Stage (§7.2): begins a fresh session, or resumes the
@@ -1167,7 +1632,7 @@ export function createPracticeStore({
           sessionLive = true
         }
         if (get().mode === 'song') {
-          songEngine.start(activePreset.pool)
+          startSongEngine()
           return
         }
         // Practice waits for the player before the clock starts (§7.3). Learn
@@ -1218,7 +1683,7 @@ export function createPracticeStore({
           // Key picker is only shown for the diatonic preset, but keep the
           // state coherent if it's ever set another way.
           memory.save({ presetId: get().presetId, diatonicKey: sanitized })
-          set({ diatonicKey: sanitized, presets: presets(sanitized) })
+          set({ diatonicKey: sanitized, presets: presetList(sanitized) })
         }
       },
 
@@ -1242,7 +1707,7 @@ export function createPracticeStore({
         if (mode === 'song') {
           machine.stop() // clears phase/hint/reactionMs via onState
           set({ mode, upcoming: [] })
-          songEngine.start(activePreset.pool)
+          startSongEngine()
           return
         }
         set({ mode })
@@ -1283,9 +1748,7 @@ export function createPracticeStore({
       discardSession() {
         // Start / Go again (§7.2): whatever was in flight is abandoned with no
         // Report, so the next start() begins fresh rather than resuming.
-        if (!sessionLive) return
-        recordOutcome() // a pending ✔ still counts against the lifetime stats
-        haltSession()
+        discardLive()
       },
 
       dismissReport() {
@@ -1427,6 +1890,86 @@ export function createPracticeStore({
           unlockedChordKeys(order, record),
         )
         return worstOnlyPool(available, order, record).length > 0
+      },
+
+      // ─── The guided path (§3, §4) ─────────────────────────────────────────
+
+      startPathLearn() {
+        // Re-derive first: a Today card left open while the batch finished
+        // elsewhere (daily or free practice, §3.2) must not open an empty
+        // session. The caller routes to practice instead.
+        // The check is the *batch*, not the pool: a complete path still yields
+        // a three-wide pool of backfill, so asking whether there is anything to
+        // deal would happily open a session with nothing to learn.
+        if (isPathComplete(pathRecord)) return false
+        learning = learningPool(pathRecord)
+        if (learning.pool.length === 0) return false
+        discardLive()
+        set({
+          mode: 'path-learn',
+          worstOnly: false,
+          notPassedOnly: false,
+          upcoming: [],
+        })
+        return true
+      },
+
+      startRepertoire() {
+        if (repertoireCombos(pathRecord).length === 0) return false
+        discardLive()
+        // Daily practice is not a session type (§3.2): it is the v9 Practice
+        // session at ∞ on one derived preset, so the goal bar and everything
+        // else about an endless session already applies.
+        set({ mode: 'practice', worstOnly: false, sessionLength: null })
+        applySelection(REPERTOIRE_PRESET_ID, get().diatonicKey)
+        return true
+      },
+
+      startChapterSong(chapterId: string) {
+        const chapter = chapterById(chapterId)
+        if (chapter === undefined || chapter.songDegrees === null) return false
+        if (chapter.key === null) return false
+        discardLive()
+        songChapterId = chapterId
+        songFixed = chapterSong(chapter)
+        set({ mode: 'song', songChapterId: chapterId, upcoming: [] })
+        return true
+      },
+
+      chapterRows() {
+        return chapterRows(pathRecord, stats)
+      },
+
+      setPathComboAside(key: string) {
+        recordOutcome()
+        commitPath(setAsideCombo(pathRecord, key))
+      },
+
+      openPathCombo(key: string) {
+        recordOutcome()
+        commitPath(openCombo(pathRecord, key))
+      },
+
+      canSetPathComboAside(key: string) {
+        return canSetAsideCombo(pathRecord, key)
+      },
+
+      resetPath() {
+        recordOutcome()
+        pathStore.reset()
+        // Not emptyPathProgress() straight into pathRecord: reset() clears the
+        // calibration latch, so re-reading it and calibrating is what returns
+        // the player to where their stats put them rather than to chapter 1
+        // (§5.2). The same two lines the store's construction runs.
+        pathRecord = calibratePath(
+          reconcilePathProgress(pathStore.get()),
+          stats,
+        )
+        pathStore.set(pathRecord)
+        learning = learningPool(pathRecord)
+        queue = []
+        recentKeys = []
+        publishPath()
       },
     }
   })

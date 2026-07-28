@@ -31,10 +31,14 @@ const MODES: { id: SessionMode; label: string }[] = [
   { id: 'song', label: '♪ Song' },
 ]
 
+// The learning loop is never started from here — the path starts it (§4.1), and
+// MODES above deliberately doesn't list it. The label exists only because the
+// record is exhaustive over SessionMode.
 const START_LABEL: Record<SessionMode, string> = {
   learn: 'Start learning ▶',
   practice: 'Start practicing ▶',
   song: 'Start song ▶',
+  'path-learn': 'Learn these ▶',
 }
 
 export function HomeView({

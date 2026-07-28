@@ -49,6 +49,28 @@ export interface ReportUnlock {
   total: number
 }
 
+// The chapter banner (§4.4): what the session did to the guided path. Replaces
+// the unlock banner's per-preset framing — a batch completing names the next
+// batch, a chapter completing celebrates and offers its song. Null when the
+// session touched no path combo at all (free practice off the track).
+export interface ReportChapter {
+  chapterTitle: string | null
+  chapterComplete: boolean
+  // The chapter song's phrase completed this session and stamped it (§3.3).
+  justStamped: boolean
+  // Combos that passed this session, by label.
+  learnedLabels: string[]
+  // Where the path stands *after* this session: the chapter now open and the
+  // batch now current.
+  nextChapterTitle: string | null
+  nextBatchLabels: string[]
+  triadsPassed: number
+  triadsTotal: number
+  // The song still owed, if any — the Report offers it (§4.4).
+  songChapterId: string | null
+  songChapterTitle: string | null
+}
+
 export interface ReportGoal {
   todayMinutes: number
   streak: number
@@ -141,6 +163,12 @@ export interface SessionReport {
   passedLabels: string[]
   shaky: ShakyChord[]
   unlocked: ReportUnlock | null
+  chapter: ReportChapter | null
+  // Backfill the learning loop mixed in (§3.1) — distinct labels and how many
+  // prompts they took, so the Report can say review happened rather than
+  // leaving it looking like the batch was padded.
+  reviewLabels: string[]
+  reviewPrompts: number
   suggestion: ReportSuggestion | null
   goal: ReportGoal
 }
@@ -155,10 +183,14 @@ export interface SessionReportInput {
   increment: { prompts: number; activeMinutes: number }
   passedLabels: readonly string[]
   unlocked: ReportUnlock | null
+  chapter: ReportChapter | null
   // The session's chords and the preset's benched ones, for the §5.2 offer.
   chords: readonly ReportChord[]
   setAside: readonly { chordKey: string; label: string }[]
   goal: ReportGoal
+  // comboKeys the learning loop dealt as backfill rather than as batch material
+  // (§3.1). Empty for every other mode.
+  reviewKeys?: readonly string[]
 }
 
 function mean(values: readonly number[]): number {
@@ -218,6 +250,18 @@ export function buildSessionReport(input: SessionReportInput): SessionReport {
     .map(([label, misses]) => ({ label, misses }))
     .sort((a, b) => b.misses - a.misses || a.label.localeCompare(b.label))
 
+  // Review mixed in (§3.1): the backfill prompts, named. Distinct labels in the
+  // order they were first dealt, so the Report reads as a list of chords rather
+  // than as a tally.
+  const reviewKeys = new Set(input.reviewKeys ?? [])
+  const reviewLabels: string[] = []
+  let reviewPrompts = 0
+  for (const event of input.events) {
+    if (!reviewKeys.has(event.key)) continue
+    reviewPrompts += 1
+    if (!reviewLabels.includes(event.label)) reviewLabels.push(event.label)
+  }
+
   return {
     mode: input.mode,
     promptsPlayed: input.promptsPlayed,
@@ -231,6 +275,9 @@ export function buildSessionReport(input: SessionReportInput): SessionReport {
     passedLabels: [...input.passedLabels],
     shaky,
     unlocked: input.unlocked,
+    chapter: input.chapter,
+    reviewLabels,
+    reviewPrompts,
     suggestion: pickSuggestion(input.mode, grade, input.chords, input.setAside),
     goal: input.goal,
   }

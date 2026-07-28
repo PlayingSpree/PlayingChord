@@ -6,11 +6,15 @@ import {
   type VoicingRule,
 } from '../theory'
 import {
+  builtInPresets,
+  chapterById,
+  CHAPTERS,
   comboGrade,
   comboKey,
   comboMetrics,
   DEFAULT_PRACTICE_SETTINGS,
   GRADE_TIME_MS,
+  MIN_REPERTOIRE_COMBOS,
   RECENT_OUTCOME_WINDOW,
   INITIAL_UNLOCK_COUNT,
   InMemoryComboStats,
@@ -23,6 +27,7 @@ import {
 import {
   InMemoryBestStreak,
   InMemoryDailyActivity,
+  InMemoryPathProgress,
   InMemoryPresetProgress,
 } from '../storage'
 import {
@@ -94,6 +99,7 @@ function setup(
     stats: new InMemoryComboStats(), // never the shared appStorage singleton
     activity: new InMemoryDailyActivity(),
     progress: new InMemoryPresetProgress(),
+    path: new InMemoryPathProgress(),
     bestStreak: new InMemoryBestStreak(),
     ...deps,
   })
@@ -2127,5 +2133,503 @@ describe('practiceStore — Song mode (§6.5)', () => {
     s.press(62)
     expect(activity.todayMinutes()).toBeCloseTo(0.1, 5)
     s.releaseAll()
+  })
+})
+
+// ─── The guided path (§3, §4) ────────────────────────────────────────────────
+
+// The path's own presets, not the single-preset harness: these suites are about
+// the path's pools, which come from the chapter data rather than from a preset.
+// autoStart is off because each entry point sets its own mode first.
+const pathSetup = (deps: Parameters<typeof createPracticeStore>[0] = {}) =>
+  setup({ presets: () => builtInPresets(), ...deps }, false)
+
+const chapter = (id: string) => {
+  const found = chapterById(id)
+  if (!found) throw new Error(`No chapter: ${id}`)
+  return found
+}
+
+const keyAt = (id: string, index: number): string => {
+  const pathCombo = chapter(id).combos[index]
+  if (!pathCombo) throw new Error(`No combo ${id}[${index}]`)
+  return comboKey(pathCombo.combo)
+}
+
+// Pass a combo the way a real session would: enough clean, fast reps for its
+// grade to reach D (§5.1's evidence floor lives inside the grade).
+const passCombo = (stats: InMemoryComboStats, key: string, reps = 4) => {
+  for (let i = 0; i < reps; i++) stats.record(key, 'first-try', 500)
+}
+
+const passChapters = (stats: InMemoryComboStats, ...ids: string[]) => {
+  for (const id of ids) {
+    for (const pathCombo of chapter(id).combos) {
+      passCombo(stats, comboKey(pathCombo.combo))
+    }
+  }
+}
+
+// The prompt's own example voicing (§3.4) — what a player copying the shape
+// plays, and the only thing guaranteed to satisfy the rule being drilled.
+// correctNotes() above stacks chord tones above C4, which is root position for
+// C but not for F or G, so it cannot answer chapter 1's root-position combos.
+const playExampleAndAdvance = (s: ReturnType<typeof setup>, prompt: Prompt) => {
+  s.press(...prompt.example)
+  s.releaseAll()
+  vi.advanceTimersByTime(ADVANCE)
+}
+
+// The same, but slow enough to grade F on speed alone, so it advances the
+// prompt without ever passing a combo.
+const playExampleSlowly = (s: ReturnType<typeof setup>, prompt: Prompt) => {
+  vi.advanceTimersByTime(6000) // past D's second (§7.5)
+  playExampleAndAdvance(s, prompt)
+}
+
+describe('practiceStore — path calibration (§5.2)', () => {
+  it('calibrates on construction, before anything reads a position', () => {
+    const stats = new InMemoryComboStats()
+    // A returning v9 player: all of C proven, but keyed `any` as every v9
+    // built-in was, plus both chords of G.
+    for (const pathCombo of chapter('key-c').combos) {
+      passCombo(stats, comboKey({ ...pathCombo.combo, voicingId: 'any' }))
+    }
+    passChapters(stats, 'key-g')
+    const path = new InMemoryPathProgress()
+    const s = pathSetup({ stats, path })
+    expect(s.store.getState().path.triadsPassed).toBe(8)
+    // Chapter 2 was never played, so that is the real frontier.
+    expect(s.store.getState().path.chapterTitle).toBe('Inversions in C')
+    expect(path.get().calibrated).toBe(true)
+  })
+
+  it('a fresh install opens at chapter 1, batch 1', () => {
+    const { path } = pathSetup().store.getState()
+    expect(path.chapterNumber).toBe(1)
+    expect(path.chapterTitle).toBe('Key of C')
+    expect(path.batchNumber).toBe(1)
+    expect(path.batchTotal).toBe(2)
+    expect(path.batch.map((c) => c.label)).toEqual(['C', 'F', 'G'])
+    expect(path.triadsPassed).toBe(0)
+    expect(path.repertoire).toEqual([])
+    expect(path.complete).toBe(false)
+  })
+
+  it('does not re-run once calibrated', () => {
+    const path = new InMemoryPathProgress()
+    const stats = new InMemoryComboStats()
+    pathSetup({ stats, path }) // calibrates against nothing
+    // The player later proves a chapter-3 combo in free practice.
+    passCombo(stats, keyAt('key-g', 0))
+    const again = pathSetup({ stats, path })
+    // Still chapter 1: a later improvement must not skip a chapter unwalked.
+    expect(again.store.getState().path.chapterTitle).toBe('Key of C')
+  })
+
+  it('resetPath re-derives from the surviving stats rather than back to zero', () => {
+    const stats = new InMemoryComboStats()
+    passChapters(stats, 'key-c')
+    const s = pathSetup({ stats, path: new InMemoryPathProgress() })
+    expect(s.store.getState().path.triadsPassed).toBe(6)
+    s.store.getState().resetPath()
+    // Chapter 1 comes back from history — the control is not a trap.
+    expect(s.store.getState().path.triadsPassed).toBe(6)
+  })
+})
+
+describe('practiceStore — the learning loop (§3.1)', () => {
+  const startLearning = (s: ReturnType<typeof setup>) => {
+    expect(s.store.getState().startPathLearn()).toBe(true)
+    enterStage(s)
+  }
+
+  it('opens each batch combo with a stats-neutral first look', () => {
+    const stats = new InMemoryComboStats()
+    const s = pathSetup({ stats })
+    startLearning(s)
+    const prompt = s.store.getState().prompt
+    expect(prompt).not.toBeNull()
+    expect(s.store.getState().introRep).toBe(true)
+    if (!prompt) return
+    const key = promptComboKey(prompt)
+    playExampleAndAdvance(s, prompt)
+    // Nothing recorded, but the slot still advanced.
+    expect(stats.get(key)).toBeNull()
+    expect(s.store.getState().done).toBe(1)
+  })
+
+  it('grades every later rep of the same combo', () => {
+    const s = pathSetup()
+    startLearning(s)
+    const seen = new Set<string>()
+    let graded = 0
+    for (let i = 0; i < 12; i++) {
+      const prompt = s.store.getState().prompt
+      if (!prompt) break
+      const key = promptComboKey(prompt)
+      // The first look is exactly the combo's first prompt of the session.
+      expect(s.store.getState().introRep).toBe(!seen.has(key))
+      if (seen.has(key)) graded++
+      seen.add(key)
+      playExampleSlowly(s, prompt)
+    }
+    expect(graded).toBeGreaterThan(0)
+  })
+
+  it('deals the batch backfilled to three wide, batch material included', () => {
+    const stats = new InMemoryComboStats()
+    passChapters(stats, 'key-c', 'inversions-c')
+    const s = pathSetup({ stats })
+    expect(s.store.getState().path.chapterTitle).toBe('Key of G')
+    startLearning(s)
+    const dealt = new Set<string>()
+    for (let i = 0; i < 30; i++) {
+      const prompt = s.store.getState().prompt
+      if (!prompt) break
+      dealt.add(promptComboKey(prompt))
+      playExampleSlowly(s, prompt)
+    }
+    // Chapter 3's batch is two combos, so the third slot is old material.
+    expect(dealt.size).toBe(3)
+    expect(dealt).toContain(keyAt('key-g', 0))
+    expect(dealt).toContain(keyAt('key-g', 1))
+  })
+
+  it('labels backfill as review so a passed chord never reads as a mistake', () => {
+    const stats = new InMemoryComboStats()
+    passChapters(stats, 'key-c', 'inversions-c')
+    const s = pathSetup({ stats })
+    startLearning(s)
+    const batchKeys = new Set([keyAt('key-g', 0), keyAt('key-g', 1)])
+    const upcoming = s.store.getState().upcoming
+    expect(upcoming.length).toBeGreaterThan(0)
+    for (const chord of upcoming) {
+      expect(chord.review).toBe(!batchKeys.has(chord.key))
+    }
+  })
+
+  it('never gives backfill a first look — it is passed material by definition', () => {
+    const stats = new InMemoryComboStats()
+    passChapters(stats, 'key-c', 'inversions-c')
+    const s = pathSetup({ stats })
+    startLearning(s)
+    const batchKeys = new Set([keyAt('key-g', 0), keyAt('key-g', 1)])
+    for (let i = 0; i < 20; i++) {
+      const prompt = s.store.getState().prompt
+      if (!prompt) break
+      if (s.store.getState().introRep) {
+        expect(batchKeys).toContain(promptComboKey(prompt))
+      }
+      playExampleSlowly(s, prompt)
+    }
+  })
+
+  it('never deals the same combo twice in a row', () => {
+    const s = pathSetup()
+    startLearning(s)
+    let previous: string | null = null
+    for (let i = 0; i < 25; i++) {
+      const prompt = s.store.getState().prompt
+      if (!prompt) break
+      const key = promptComboKey(prompt)
+      expect(key).not.toBe(previous)
+      previous = key
+      playExampleSlowly(s, prompt)
+    }
+  })
+
+  it('ends itself when the batch passes, ignoring the length picker', () => {
+    const s = pathSetup()
+    startLearning(s)
+    s.store.getState().setSessionLength(40)
+    for (let i = 0; i < 60; i++) {
+      const prompt = s.store.getState().prompt
+      if (!prompt) break
+      playExampleAndAdvance(s, prompt) // fast and clean: these pass
+    }
+    expect(s.store.getState().prompt).toBeNull()
+    expect(s.store.getState().report).not.toBeNull()
+    // Well short of the 40 the picker asked for.
+    expect(s.store.getState().done).toBeLessThan(40)
+    expect(s.store.getState().path.batchNumber).toBe(2)
+    expect(s.store.getState().path.triadsPassed).toBe(3)
+  })
+
+  it('the Report names the chapter it moved and the batch now open', () => {
+    const s = pathSetup()
+    startLearning(s)
+    for (let i = 0; i < 60; i++) {
+      const prompt = s.store.getState().prompt
+      if (!prompt) break
+      playExampleAndAdvance(s, prompt)
+    }
+    const chapterInfo = s.store.getState().report?.chapter
+    expect(chapterInfo?.chapterTitle).toBe('Key of C')
+    expect(chapterInfo?.chapterComplete).toBe(false) // batch 2 is still ahead
+    expect(chapterInfo?.learnedLabels).toEqual(['C', 'F', 'G'])
+    expect(chapterInfo?.nextBatchLabels).toEqual(['Am', 'Dm', 'Em'])
+    expect(chapterInfo?.triadsPassed).toBe(3)
+    expect(chapterInfo?.triadsTotal).toBe(24)
+  })
+
+  it('keeps latched passes when the session is abandoned mid-batch', () => {
+    const s = pathSetup()
+    startLearning(s)
+    for (let i = 0; i < 8; i++) {
+      const prompt = s.store.getState().prompt
+      if (!prompt) break
+      playExampleAndAdvance(s, prompt)
+    }
+    const passedNow = s.store.getState().path.triadsPassed
+    s.store.getState().endSession()
+    expect(s.store.getState().path.triadsPassed).toBe(passedNow)
+  })
+
+  it('announces ★ learned, which Learn mode never could', () => {
+    const s = pathSetup()
+    startLearning(s)
+    let sawLearned = false
+    for (let i = 0; i < 30; i++) {
+      const prompt = s.store.getState().prompt
+      if (!prompt) break
+      s.press(...prompt.example)
+      s.releaseAll()
+      if (s.store.getState().justLearned) sawLearned = true
+      vi.advanceTimersByTime(ADVANCE)
+    }
+    expect(sawLearned).toBe(true)
+  })
+
+  it('shows the shapes again on a later visit to the same batch', () => {
+    const s = pathSetup()
+    startLearning(s)
+    const first = s.store.getState().prompt
+    if (!first) throw new Error('no prompt')
+    playExampleAndAdvance(s, first)
+    s.store.getState().endSession()
+    s.store.getState().dismissReport()
+    // A fresh session on the unfinished batch: the first look is news again,
+    // because the reps in between are what made it worth repeating.
+    startLearning(s)
+    expect(s.store.getState().introRep).toBe(true)
+  })
+
+  it('refuses to start when the whole path is passed', () => {
+    const stats = new InMemoryComboStats()
+    passChapters(stats, ...CHAPTERS.map((c) => c.id))
+    const s = pathSetup({ stats })
+    expect(s.store.getState().path.complete).toBe(true)
+    expect(s.store.getState().startPathLearn()).toBe(false)
+  })
+})
+
+describe('practiceStore — the Repertoire preset (§3.2)', () => {
+  it('is absent until something passes, then leads the picker', () => {
+    const s = pathSetup()
+    expect(s.store.getState().presets.map((p) => p.id)).not.toContain(
+      'repertoire',
+    )
+    expect(s.store.getState().startPathLearn()).toBe(true)
+    enterStage(s)
+    for (let i = 0; i < 8; i++) {
+      const prompt = s.store.getState().prompt
+      if (!prompt) break
+      playExampleAndAdvance(s, prompt)
+    }
+    expect(s.store.getState().path.triadsPassed).toBeGreaterThan(0)
+    expect(s.store.getState().presets[0]?.id).toBe('repertoire')
+  })
+
+  it('deals only passed combos, at ∞', () => {
+    const stats = new InMemoryComboStats()
+    const passed = chapter('key-c').combos.slice(0, 3)
+    for (const pathCombo of passed) passCombo(stats, comboKey(pathCombo.combo))
+    const s = pathSetup({ stats })
+    expect(s.store.getState().startRepertoire()).toBe(true)
+    enterStage(s)
+    expect(s.store.getState().sessionLength).toBeNull()
+    expect(s.store.getState().presetId).toBe('repertoire')
+    const allowed = new Set(passed.map((c) => comboKey(c.combo)))
+    for (let i = 0; i < 20; i++) {
+      const prompt = s.store.getState().prompt
+      if (!prompt) break
+      expect(allowed).toContain(promptComboKey(prompt))
+      playExampleSlowly(s, prompt)
+    }
+  })
+
+  it('refuses to start with nothing passed', () => {
+    expect(pathSetup().store.getState().startRepertoire()).toBe(false)
+  })
+
+  it('grows itself as combos pass', () => {
+    const stats = new InMemoryComboStats()
+    passChapters(stats, 'key-c')
+    const before = pathSetup({ stats }).store.getState().path.repertoire.length
+    passCombo(stats, keyAt('inversions-c', 0))
+    const after = pathSetup({
+      stats,
+      path: new InMemoryPathProgress(),
+    }).store.getState().path.repertoire.length
+    expect(after).toBe(before + 1)
+  })
+})
+
+describe('practiceStore — the chapter song (§3.3)', () => {
+  const BEAT = 60_000 / DEFAULT_PRACTICE_SETTINGS.songTempoBpm
+  const BAR = BEAT * 4
+  const PHRASE = BAR + 4 * 4 * BAR // count-in + 4 chords × 4 loops
+
+  it('plays the chapter’s I-IV-V-I, pinned to its key', () => {
+    const s = pathSetup()
+    expect(s.store.getState().startChapterSong('key-g')).toBe(true)
+    enterStage(s)
+    expect(s.store.getState().songChapterId).toBe('key-g')
+    expect(s.store.getState().songChords.map((c) => c.label)).toEqual([
+      'G',
+      'C',
+      'D',
+      'G',
+    ])
+    expect(s.store.getState().songChords.map((c) => c.roman)).toEqual([
+      'I',
+      'IV',
+      'V',
+      'I',
+    ])
+  })
+
+  it('stamps the chapter at the phrase boundary and ends the session', () => {
+    const path = new InMemoryPathProgress()
+    const s = pathSetup({ path })
+    s.store.getState().startChapterSong('key-c')
+    enterStage(s)
+    vi.advanceTimersByTime(PHRASE)
+    expect(path.get().chapters['key-c']?.songStamped).toBe(true)
+    expect(s.store.getState().songJustStamped).toBe(true)
+    expect(s.store.getState().report).not.toBeNull()
+    expect(s.store.getState().song).toBeNull()
+  })
+
+  it('stamps on participation, not accuracy', () => {
+    // Nothing is ever played: every bar misses, and the phrase still stamps.
+    const path = new InMemoryPathProgress()
+    const s = pathSetup({ path })
+    s.store.getState().startChapterSong('key-c')
+    enterStage(s)
+    vi.advanceTimersByTime(PHRASE)
+    expect(path.get().chapters['key-c']?.songStamped).toBe(true)
+    expect(s.store.getState().report?.accuracy).toBe(0)
+  })
+
+  it('records no further bar once it has stamped and ended', () => {
+    const stats = new InMemoryComboStats()
+    const s = pathSetup({ stats })
+    const cKey = comboKey({ root: 0, typeId: 'maj', voicingId: 'any' })
+    s.store.getState().startChapterSong('key-c')
+    enterStage(s)
+    vi.advanceTimersByTime(PHRASE)
+    const attempts = stats.get(cKey)?.attempts
+    vi.advanceTimersByTime(BAR * 20)
+    expect(stats.get(cKey)?.attempts).toBe(attempts)
+  })
+
+  it('does not gate the next chapter — the stamp is progress, not a lock', () => {
+    const stats = new InMemoryComboStats()
+    passChapters(stats, 'key-c')
+    const s = pathSetup({ stats })
+    // Chapter 1 finished and unstamped, yet chapter 2 is already current.
+    expect(s.store.getState().path.chapterTitle).toBe('Inversions in C')
+    expect(s.store.getState().path.songChapterId).toBe('key-c')
+  })
+
+  it('stops offering the song once it is stamped', () => {
+    const stats = new InMemoryComboStats()
+    passChapters(stats, 'key-c')
+    const s = pathSetup({ stats })
+    s.store.getState().startChapterSong('key-c')
+    enterStage(s)
+    vi.advanceTimersByTime(PHRASE)
+    expect(s.store.getState().path.songChapterId).toBeNull()
+  })
+
+  it('refuses a skill chapter — Song voices everything `any`', () => {
+    expect(pathSetup().store.getState().startChapterSong('inversions-c')).toBe(
+      false,
+    )
+    expect(pathSetup().store.getState().startChapterSong('nope')).toBe(false)
+  })
+})
+
+describe('practiceStore — path set aside (§5.2)', () => {
+  const withChapterOnePassed = () => {
+    const stats = new InMemoryComboStats()
+    passChapters(stats, 'key-c')
+    return pathSetup({ stats })
+  }
+
+  it('takes a combo out of the repertoire with its grade intact', () => {
+    const s = withChapterOnePassed()
+    const key = keyAt('key-c', 0)
+    expect(s.store.getState().canSetPathComboAside(key)).toBe(true)
+    s.store.getState().setPathComboAside(key)
+    const view = s.store.getState().path.repertoire.find((c) => c.key === key)
+    expect(view?.setAside).toBe(true)
+    expect(view?.grade).not.toBeNull() // benched, not forgotten
+  })
+
+  it('refuses below the floor of three', () => {
+    const s = withChapterOnePassed()
+    const keys = chapter('key-c').combos.map((c) => comboKey(c.combo))
+    for (const key of keys) s.store.getState().setPathComboAside(key)
+    const benched = s.store
+      .getState()
+      .path.repertoire.filter((c) => c.setAside).length
+    expect(benched).toBe(keys.length - MIN_REPERTOIRE_COMBOS)
+  })
+
+  it('brings one back', () => {
+    const s = withChapterOnePassed()
+    const key = keyAt('key-c', 0)
+    s.store.getState().setPathComboAside(key)
+    s.store.getState().openPathCombo(key)
+    expect(
+      s.store.getState().path.repertoire.find((c) => c.key === key)?.setAside,
+    ).toBe(false)
+  })
+
+  it('leaves the learning batch alone — benching it would stall the path', () => {
+    const s = withChapterOnePassed()
+    s.store.getState().setPathComboAside(keyAt('key-c', 0))
+    expect(s.store.getState().path.batch).toHaveLength(3)
+    expect(s.store.getState().startPathLearn()).toBe(true)
+  })
+})
+
+describe('practiceStore — the path map (§4.2)', () => {
+  it('names every chapter, marking done, current and locked', () => {
+    const stats = new InMemoryComboStats()
+    passChapters(stats, 'key-c', 'inversions-c')
+    const rows = pathSetup({ stats }).store.getState().chapterRows()
+    expect(rows).toHaveLength(CHAPTERS.length)
+    expect(rows.slice(0, 4).map((r) => r.state)).toEqual([
+      'done',
+      'done',
+      'current',
+      'locked',
+    ])
+    for (const row of rows) expect(row.chapter.title).not.toBe('')
+  })
+
+  it('carries live grades on the current chapter only', () => {
+    const stats = new InMemoryComboStats()
+    passChapters(stats, 'key-c', 'inversions-c')
+    const rows = pathSetup({ stats }).store.getState().chapterRows()
+    const current = rows.find((r) => r.state === 'current')
+    expect(current?.batch.map((c) => c.label)).toEqual(['D', 'Bm'])
+    for (const row of rows) {
+      if (row.state !== 'current') expect(row.batch).toEqual([])
+    }
   })
 })
