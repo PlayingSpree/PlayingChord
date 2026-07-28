@@ -26,18 +26,35 @@ export function comboWeight(history: ComboRecentHistory | null): number {
   return 1 + MISS_WEIGHT_BOOST * (1 - comboScore(history))
 }
 
+// A per-combo multiplier on top of comboWeight — how a caller says "these
+// matter more right now" without touching the pool. The learning loop (§3.1)
+// uses it to keep the current batch ahead of the passed material backfilled in
+// beside it. Duplicating those combos in the pool would do it too, but would
+// inflate pool.length and so change the exclusion window below, breaking the
+// duplicate-free upcoming preview.
+export type WeightBoost = (combo: Combo) => number
+
+const NO_BOOST: WeightBoost = () => 1
+
 // Miss-weighted random pick with no immediate repeat. `recentKeys` is the
 // played history, oldest first; only the allowed tail of it is excluded.
 // `window` widens the exclusion for queued-but-not-yet-played picks (§5's
 // upcoming preview): the caller passes RECENT_WINDOW + however many combos
 // are already queued, so the preview and the current prompt stay
 // duplicate-free whenever the pool is large enough.
+//
+// Note what a wide window costs on a small pool: the exclusion is capped at
+// pool.length − 1, so a 3-combo pool with the default window leaves exactly one
+// candidate and the weights stop mattering at all. That is fine for the §5
+// preview (a small custom preset genuinely has nothing else to deal) but wrong
+// for a drill, which is why the path passes a window of 1 (§3.1).
 export function pickWeightedCombo(
   pool: readonly Combo[],
   recentKeys: readonly string[],
   stats: RecentStatsSource,
   rng: Rng = Math.random,
   window: number = RECENT_WINDOW,
+  boost: WeightBoost = NO_BOOST,
 ): Combo {
   if (pool.length === 0) throw new Error('Cannot pick from an empty pool')
 
@@ -48,8 +65,8 @@ export function pickWeightedCombo(
   )
   const candidates = pool.filter((combo) => !excluded.has(comboKey(combo)))
 
-  const weights = candidates.map((combo) =>
-    comboWeight(stats.recentHistory(comboKey(combo))),
+  const weights = candidates.map(
+    (combo) => comboWeight(stats.recentHistory(comboKey(combo))) * boost(combo),
   )
   const total = weights.reduce((sum, weight) => sum + weight, 0)
   let remaining = rng() * total
@@ -92,6 +109,8 @@ export function fillQueue(
   recentKeys: readonly string[],
   stats: RecentStatsSource,
   rng: Rng = Math.random,
+  window: number = RECENT_WINDOW,
+  boost?: WeightBoost,
 ): Combo[] {
   const filled = [...queue]
   while (filled.length < count) {
@@ -102,7 +121,8 @@ export function fillQueue(
         excluded,
         stats,
         rng,
-        RECENT_WINDOW + filled.length,
+        window + filled.length,
+        boost,
       ),
     )
   }

@@ -229,6 +229,122 @@ describe('pickWeightedCombo (§5)', () => {
   })
 })
 
+// The seam the learning loop (§3.1) uses to keep the current batch ahead of the
+// passed material backfilled beside it.
+describe('pickWeightedCombo — weight boost', () => {
+  it('defaults to no boost at all', () => {
+    const pool = poolOf(6)
+    const rngA = seededRng(5)
+    const rngB = seededRng(5)
+    for (let i = 0; i < 50; i++) {
+      expect(
+        pickWeightedCombo(pool, [], statsOf({}), rngA, RECENT_WINDOW, () => 1),
+      ).toEqual(pickWeightedCombo(pool, [], statsOf({}), rngB))
+    }
+  })
+
+  it('multiplies the combo’s own weight rather than replacing it', () => {
+    const pool = poolOf(2)
+    const favoured = pool[0]!
+    // No history anywhere → both weigh 1; a 3× boost on one takes three draws
+    // in four. Window 0 excludes nothing, so both stay candidates every draw.
+    const boost = (combo: Combo) =>
+      comboKey(combo) === comboKey(favoured) ? 3 : 1
+    const rng = seededRng(19)
+    let hits = 0
+    const draws = 5000
+    for (let i = 0; i < draws; i++) {
+      const picked = pickWeightedCombo(pool, [], statsOf({}), rng, 0, boost)
+      if (comboKey(picked) === comboKey(favoured)) hits++
+    }
+    expect(hits / draws).toBeGreaterThan(0.72)
+    expect(hits / draws).toBeLessThan(0.78)
+  })
+
+  it('a boost of 1 + MISS_WEIGHT_BOOST outweighs the shakiest possible combo', () => {
+    // The bound the path's BATCH_WEIGHT_BOOST relies on: comboWeight caps at
+    // 1 + MISS_WEIGHT_BOOST, so a fresh batch combo boosted by that much is at
+    // worst level with an old chord that missed every recent rep.
+    const pool = poolOf(2)
+    const shaky = pool[0]!
+    const fresh = pool[1]!
+    const stats = statsOf({
+      [comboKey(shaky)]: { misses: 5, total: 5, avgTimeToCorrectMs: 9000 },
+    })
+    const boost = (combo: Combo) =>
+      comboKey(combo) === comboKey(fresh) ? 1 + MISS_WEIGHT_BOOST : 1
+    const rng = seededRng(23)
+    let freshHits = 0
+    const draws = 4000
+    for (let i = 0; i < draws; i++) {
+      const picked = pickWeightedCombo(pool, [], stats, rng, 0, boost)
+      if (comboKey(picked) === comboKey(fresh)) freshHits++
+    }
+    expect(freshHits / draws).toBeGreaterThan(0.45)
+  })
+
+  it('fillQueue passes the boost and the window through', () => {
+    const pool = poolOf(3)
+    const favoured = pool[0]!
+    const boost = (combo: Combo) =>
+      comboKey(combo) === comboKey(favoured) ? 50 : 1
+    // Window 1 leaves 2 candidates in a 3-pool, so the heavy favourite takes
+    // every slot it is allowed to — every other one.
+    const queue = fillQueue(
+      [],
+      4,
+      pool,
+      [],
+      statsOf({}),
+      seededRng(31),
+      1,
+      boost,
+    )
+    expect(queue).toHaveLength(4)
+    const favouredCount = queue.filter(
+      (c) => comboKey(c) === comboKey(favoured),
+    ).length
+    expect(favouredCount).toBeGreaterThanOrEqual(2)
+    // And still never twice in a row.
+    for (let i = 1; i < queue.length; i++) {
+      expect(comboKey(queue[i]!)).not.toBe(comboKey(queue[i - 1]!))
+    }
+  })
+})
+
+// The finding that forced the path to pass its own window (§3.1).
+describe('the exclusion window on a small pool', () => {
+  it('leaves exactly one candidate in a 3-pool at the default window', () => {
+    // min(3, 3 − 1) = 2 excluded of 3 → the pick is forced, and the weights,
+    // boosted or not, cannot matter.
+    const pool = poolOf(3)
+    const recent = [comboKey(pool[0]!), comboKey(pool[1]!)]
+    const boost = (combo: Combo) =>
+      comboKey(combo) === comboKey(pool[0]!) ? 1000 : 1
+    expect(
+      pickWeightedCombo(
+        pool,
+        recent,
+        statsOf({}),
+        fixedRng(0.5),
+        RECENT_WINDOW,
+        boost,
+      ),
+    ).toEqual(pool[2])
+  })
+
+  it('leaves two candidates at a window of 1, so the weights decide', () => {
+    const pool = poolOf(3)
+    const recent = [comboKey(pool[0]!), comboKey(pool[1]!)]
+    const seen = new Set<string>()
+    const rng = seededRng(13)
+    for (let i = 0; i < 200; i++) {
+      seen.add(comboKey(pickWeightedCombo(pool, recent, statsOf({}), rng, 1)))
+    }
+    expect(seen).toEqual(new Set([comboKey(pool[0]!), comboKey(pool[2]!)]))
+  })
+})
+
 describe('fillQueue (§5 upcoming preview)', () => {
   it('fills an empty queue to count', () => {
     const pool = poolOf(12)
