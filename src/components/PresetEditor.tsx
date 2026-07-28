@@ -14,6 +14,7 @@ import {
   expandPreset,
   newLibraryId,
   presetWarnings,
+  type AuthorablePoolKind,
   type ChordPool,
   type PoolChord,
   type Preset,
@@ -64,7 +65,11 @@ export function PresetEditor({
 
   const pool = preset?.pool
   const [name, setName] = useState(preset?.name ?? '')
-  const [kind, setKind] = useState<ChordPool['kind']>(pool?.kind ?? 'product')
+  // Not ChordPool['kind']: the derived `combos` pool (§3.2) has no editor —
+  // it is a projection of path progress, not something to author.
+  const [kind, setKind] = useState<AuthorablePoolKind>(
+    pool?.kind === 'combos' ? 'product' : (pool?.kind ?? 'product'),
+  )
   const [roots, setRoots] = useState<readonly PitchClass[]>(
     pool?.kind === 'product' ? pool.roots : ALL_PITCH_CLASSES,
   )

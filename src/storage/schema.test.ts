@@ -385,6 +385,26 @@ describe('sanitizeCustomPresets (Phase 9, §4)', () => {
       sanitizeCustomPresets([{ ...valid, id: 'major-triads' }], []),
     ).toEqual([])
   })
+
+  it('rejects a persisted combos pool — that kind is derived, never stored', () => {
+    // The Repertoire preset (§3.2) is a projection of path progress, so a
+    // stored one could only come from a hand-edited blob and must not become a
+    // second source of truth.
+    expect(
+      sanitizeCustomPresets(
+        [
+          {
+            ...valid,
+            pool: {
+              kind: 'combos',
+              combos: [{ root: 0, typeId: 'maj', voicingId: 'any' }],
+            },
+          },
+        ],
+        [],
+      ),
+    ).toEqual([])
+  })
 })
 
 describe('sanitizeStateV2', () => {

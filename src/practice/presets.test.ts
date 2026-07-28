@@ -5,7 +5,7 @@ import {
   voicingLibrary,
   type VoicingRule,
 } from '../theory'
-import { comboKey } from './combos'
+import { comboKey, type Combo } from './combos'
 import { createPrompt } from './prompts'
 import {
   builtInPresets,
@@ -102,6 +102,70 @@ describe('pool expansion (§4/§5)', () => {
   it('diatonic roots wrap around the octave', () => {
     const roots = poolChords({ kind: 'diatonic', key: 9 }).map((c) => c.root)
     expect(roots).toEqual([9, 11, 1, 2, 4, 6, 8]) // A major: A B C♯ D E F♯ G♯
+  })
+})
+
+// The pool the derived Repertoire preset uses (§3.2/§4): per-chord voicings,
+// which no other pool kind can express.
+describe('combos pools (§4)', () => {
+  const preset = (combos: readonly Combo[], voicingIds = ['any']): Preset => ({
+    id: 'p',
+    name: 'p',
+    pool: { kind: 'combos', combos },
+    voicingIds,
+  })
+
+  it('expands to exactly its combos, per-chord voicings intact', () => {
+    const combos: Combo[] = [
+      { root: 0, typeId: 'maj', voicingId: 'first-inversion' },
+      { root: 7, typeId: 'maj', voicingId: 'root-position' },
+    ]
+    expect(expandPreset(preset(combos)).combos).toEqual(combos)
+  })
+
+  it('ignores the preset’s voicingIds rather than crossing them in', () => {
+    const combos: Combo[] = [{ root: 0, typeId: 'maj', voicingId: 'any' }]
+    // `voicingIds` naming two other rules changes nothing — the pool decides.
+    const expanded = expandPreset(
+      preset(combos, ['first-inversion', 'second-inversion']),
+    )
+    expect(expanded.combos).toEqual(combos)
+  })
+
+  it('drops unsatisfiable combos like every other pool', () => {
+    // lh-root names a third; sus2 has none (§3.3 pattern rules).
+    const expanded = expandPreset(
+      preset([
+        { root: 0, typeId: 'maj', voicingId: 'lh-root' },
+        { root: 0, typeId: 'sus2', voicingId: 'lh-root' },
+      ]),
+    )
+    expect(expanded.combos).toEqual([
+      { root: 0, typeId: 'maj', voicingId: 'lh-root' },
+    ])
+  })
+
+  it('drops back to deduped chords, so Song mode can read it', () => {
+    expect(
+      poolChords({
+        kind: 'combos',
+        combos: [
+          { root: 0, typeId: 'maj', voicingId: 'root-position' },
+          { root: 0, typeId: 'maj', voicingId: 'first-inversion' },
+          { root: 9, typeId: 'min', voicingId: 'any' },
+        ],
+      }),
+    ).toEqual([
+      { root: 0, typeId: 'maj' },
+      { root: 9, typeId: 'min' },
+    ])
+  })
+
+  it('has no root-spelling overrides — the path supplies its own', () => {
+    expect(
+      expandPreset(preset([{ root: 0, typeId: 'maj', voicingId: 'any' }]))
+        .rootSpellings.size,
+    ).toBe(0)
   })
 })
 

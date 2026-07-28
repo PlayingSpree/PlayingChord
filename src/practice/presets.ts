@@ -24,11 +24,23 @@ export type ChordPool =
     }
   | { kind: 'explicit'; chords: readonly PoolChord[] }
   | { kind: 'diatonic'; key: PitchClass } // major key → I ii iii IV V vi vii° triads
+  // Full combos, voicing included — the only pool that can say "C in first
+  // inversion but G in root position only". The path's material varies per
+  // chord that way, which no pool above can express, so the derived
+  // Repertoire preset (§3.2) is this kind and this kind exists for it. Never
+  // persisted: the sanitizer rejects it, because the pool is a projection of
+  // the path record rather than a second source of truth.
+  | { kind: 'combos'; combos: readonly Combo[] }
 
 export interface PoolChord {
   root: PitchClass
   typeId: ChordTypeId
 }
+
+// The pool kinds a *user* can author (§7.6's preset editor) — everything but
+// `combos`, which only the path derives. Naming it keeps the editor's state
+// from silently widening when a derived kind is added.
+export type AuthorablePoolKind = Exclude<ChordPool['kind'], 'combos'>
 
 export interface Preset {
   id: string
@@ -62,6 +74,20 @@ export function poolChords(pool: ChordPool): PoolChord[] {
         const semitones = MAJOR_SCALE_SEMITONES[degree] ?? 0
         return { root: pitchClass(pool.key + semitones), typeId }
       })
+    case 'combos': {
+      // Drops back to chords, deduped — several combos of one chord (C in two
+      // inversions) are one chord here. Song mode and the preset description
+      // read the pool this way; generation reads the combos directly.
+      const seen = new Set<string>()
+      const chords: PoolChord[] = []
+      for (const { root, typeId } of pool.combos) {
+        const key = `${root}:${typeId}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        chords.push({ root, typeId })
+      }
+      return chords
+    }
   }
 }
 
@@ -95,11 +121,19 @@ export function expandPreset(
     }
     return ok
   }
-  const combos = poolChords(preset.pool).flatMap(({ root, typeId }) =>
-    preset.voicingIds
-      .filter((voicingId) => isSatisfiable(typeId, voicingId))
-      .map((voicingId) => ({ root, typeId, voicingId })),
-  )
+  // A `combos` pool already names its voicings, so preset.voicingIds is not a
+  // cross product to take — it is ignored outright rather than intersected,
+  // which is what lets the Repertoire preset carry per-chord voicings.
+  const combos =
+    preset.pool.kind === 'combos'
+      ? preset.pool.combos.filter((combo) =>
+          isSatisfiable(combo.typeId, combo.voicingId),
+        )
+      : poolChords(preset.pool).flatMap(({ root, typeId }) =>
+          preset.voicingIds
+            .filter((voicingId) => isSatisfiable(typeId, voicingId))
+            .map((voicingId) => ({ root, typeId, voicingId })),
+        )
   const rootSpellings = new Map<PitchClass, NoteSpelling>()
   const pool = preset.pool
   if (pool.kind === 'diatonic') {
