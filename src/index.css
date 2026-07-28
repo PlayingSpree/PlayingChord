@@ -39,15 +39,25 @@
   --color-danger: #ff8080;
   --color-danger-tint: #3a1414;
 
-  /* Warn (amber) — correct but slow (§7.3), editor validation notes */
-  --color-warn: #fbbf24;
-  --color-warn-tint: #3a2a0c;
+  /* Warn (amber) — the song checkpoint (§3.3), correct but slow (§7.3),
+     editor validation notes. A full ramp like primary/info because amber is
+     now a surface color and not only a text one: the song card, its button
+     and its Stage chip are all amber, which is what lets the day's step read
+     from across the room. One amber in the app, so the slow pill shifts with
+     it. */
+  --color-warn: #f0b429;
+  --color-warn-shadow: #8a6209;
+  --color-warn-ink: #2c1e00; /* text on an amber fill */
+  --color-warn-light: #c8a253;
+  --color-warn-border: #7a5410;
+  --color-warn-tint: #241a06; /* amber-tinted card background */
 
   /* Hard offset shadow (no blur) — cards 3px, buttons 2px, primary 4px green */
   --shadow-hard: 0 3px 0 #0a0c1a;
   --shadow-hard-sm: 0 2px 0 #0a0c1a;
   --shadow-hard-lg: 0 6px 0 #0a0c1a;
   --shadow-primary: 0 4px 0 var(--color-primary-shadow);
+  --shadow-warn: 0 4px 0 var(--color-warn-shadow);
 }
 
 /* The app is dark-only; letting the browser know keeps native widgets

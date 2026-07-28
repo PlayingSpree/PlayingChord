@@ -40,13 +40,22 @@ export function SectionLabel({
   )
 }
 
-type RaisedVariant = 'primary' | 'outline' | 'raised'
+type RaisedVariant =
+  'primary' | 'primary-outline' | 'warn' | 'outline' | 'raised'
 type RaisedSize = 'sm' | 'md' | 'lg'
 
 const RAISED_VARIANTS: Record<RaisedVariant, string> = {
   // Green fill with a green hard shadow — the one primary action per screen.
   primary:
     'border-2 border-transparent bg-primary text-primary-ink shadow-primary font-extrabold',
+  // Hollow green: the primary action of a screen that is deliberately *not*
+  // the app's next step — free practice's Start, the Report's extra practice.
+  // Same weight and shape as `primary` so it still reads as the button to
+  // press, drained of the fill that says "this is the thing to do".
+  'primary-outline':
+    'border-2 border-primary bg-primary-tint text-primary-light shadow-hard font-extrabold',
+  // Amber fill — the song checkpoint only (§3.3), the one place amber acts.
+  warn: 'border-2 border-transparent bg-warn text-warn-ink shadow-warn font-extrabold',
   // Quiet bordered action (End, Home, Change).
   outline:
     'border-2 border-muted-border bg-transparent text-ink-muted font-semibold',
@@ -86,7 +95,7 @@ export function RaisedButton({
   )
 }
 
-type ChipTone = 'default' | 'info' | 'locked'
+type ChipTone = 'default' | 'info' | 'warn' | 'locked'
 
 const CHIP_TONES: Record<ChipTone, { on: string; off: string }> = {
   default: {
@@ -96,6 +105,10 @@ const CHIP_TONES: Record<ChipTone, { on: string; off: string }> = {
   info: {
     on: 'border-info-border bg-info-tint text-info-light',
     off: 'border-info-border bg-info-tint text-info-light',
+  },
+  warn: {
+    on: 'border-warn-border bg-warn-tint text-warn',
+    off: 'border-warn-border bg-warn-tint text-warn-light',
   },
   locked: {
     on: 'border-dashed border-muted-border text-ink-faint',

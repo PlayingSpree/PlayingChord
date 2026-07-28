@@ -82,6 +82,17 @@ export const BUILT_IN_VOICING_RULES: readonly VoicingRule[] = [
     span: { min: 12 },
     doubling: 'exact',
   },
+  // The first built-in *pattern* rule (§3.3 / §9.3) — until now patterns only
+  // existed as user creations. The path's LH-root-bass chapter drills it, and
+  // a shape spelled per hand is exactly what constraint rules can't express:
+  // "bass on the root" would also accept a one-hand root-position triad.
+  {
+    kind: 'pattern',
+    id: 'lh-root',
+    name: 'LH root · RH 1-3-5',
+    leftHand: [1],
+    rightHand: [1, 3, 5],
+  },
 ]
 
 const BY_ID = new Map(BUILT_IN_VOICING_RULES.map((rule) => [rule.id, rule]))

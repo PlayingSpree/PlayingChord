@@ -9,9 +9,11 @@ import {
 import {
   BUILT_IN_VOICING_RULES,
   getBuiltInVoicingRule,
+  isPatternRule,
   type PatternVoicingRule,
 } from './voicingRules'
 import { matches } from './matcher'
+import { resolvePattern } from './pattern'
 import { realizeVoicing } from './realize'
 
 const chord = (root: number, id: ChordTypeId): Chord => ({
@@ -28,9 +30,16 @@ describe('realizeVoicing — property over every built-in combination', () => {
           const notes = realizeVoicing(c, rule)
           const label = `${type.id} root=${root} rule=${rule.id}`
 
-          // Every built-in combination is satisfiable (all types have ≥ 3
-          // tones, so even second-inversion has a valid bass index).
-          expect(notes, label).not.toBeNull()
+          // Every built-in *constraint* rule is satisfiable over every built-in
+          // type (all have ≥ 3 tones, so even second-inversion has a valid bass
+          // index). A built-in *pattern* rule names specific degrees, so it is
+          // satisfiable exactly where those degrees resolve — `lh-root` wants a
+          // third, which sus2/sus4 don't have. Unsatisfiable pairs are dropped
+          // by expandPreset (§4), never drilled.
+          const satisfiable = isPatternRule(rule)
+            ? resolvePattern(c, rule) !== null
+            : true
+          expect(notes === null, label).toBe(!satisfiable)
           if (!notes) continue
 
           expect(matches(notes, c, rule), label).toBe(true)
@@ -138,6 +147,15 @@ describe('realizeVoicing — pattern rules', () => {
       rightHand: [1, 3, 5, 7],
     }
     expect(realizeVoicing(chord(0, 'maj'), needsSeventh)).toBeNull()
+  })
+
+  it('lh-root realizes on a triad and not on a sus chord', () => {
+    const lhRoot = getBuiltInVoicingRule('lh-root')
+    // LH root under RH 1-3-5 — the LH note is an octave below the RH stack.
+    expect(realizeVoicing(chord(0, 'maj'), lhRoot)).toEqual([48, 60, 64, 67])
+    // sus2/sus4 replace the third, which the pattern names outright.
+    expect(realizeVoicing(chord(0, 'sus2'), lhRoot)).toBeNull()
+    expect(realizeVoicing(chord(0, 'sus4'), lhRoot)).toBeNull()
   })
 
   it('a single-hand pattern realizes as a compact ascending stack', () => {
