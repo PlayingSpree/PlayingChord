@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_PRACTICE_SETTINGS } from '../practice'
 import { migrateState } from './migrate'
-import { defaultState } from './schema'
+import { defaultState, SCHEMA_VERSION } from './schema'
 
 describe('migrateState', () => {
   it('returns defaults when nothing was ever persisted', () => {
@@ -31,7 +31,7 @@ describe('migrateState', () => {
     expect(migrateState(JSON.parse(JSON.stringify(state)))).toEqual(state)
   })
 
-  it('upgrades a v1 state to v2, keeping its data and adding empty progress', () => {
+  it('upgrades a v1 state through the whole chain, keeping its data', () => {
     const v1 = {
       ...defaultState(),
       version: 1,
@@ -46,11 +46,65 @@ describe('migrateState', () => {
     } as Record<string, unknown>
     delete v1.presetProgress
     delete v1.bestComboStreak
+    delete v1.pathProgress
     const state = migrateState(v1)
-    expect(state.version).toBe(2)
+    expect(state.version).toBe(SCHEMA_VERSION)
     expect(state.comboStats).toEqual(v1.comboStats)
     expect(state.presetProgress).toEqual({})
     expect(state.bestComboStreak).toBe(0)
+    expect(state.pathProgress).toEqual({ calibrated: false, chapters: {} })
+  })
+
+  it('upgrades a v2 state to v3, leaving the path uncalibrated', () => {
+    // The whole of §5.2's migration: `calibrated: false` means the first load
+    // fast-passes whatever this player's comboStats already prove, so they open
+    // at their real frontier rather than back at chapter 1.
+    const v2 = {
+      ...defaultState(),
+      version: 2,
+      comboStats: {
+        '0:maj:any': {
+          attempts: 6,
+          firstTrySuccesses: 6,
+          recentOutcomes: Array(6).fill('first-try'),
+          timeToCorrectMs: Array(6).fill(600),
+        },
+      },
+      presetProgress: {
+        'major-triads': {
+          unlockedCount: 9,
+          masteredIndices: [0, 1, 2],
+          setAsideIndices: [],
+        },
+      },
+      bestComboStreak: 11,
+    } as Record<string, unknown>
+    delete v2.pathProgress
+    const state = migrateState(v2)
+    expect(state.version).toBe(SCHEMA_VERSION)
+    expect(state.pathProgress).toEqual({ calibrated: false, chapters: {} })
+    // The durable half of the retired per-preset records is the stat history,
+    // which survives untouched — it is what calibration reads.
+    expect(state.comboStats).toEqual(v2.comboStats)
+    expect(state.bestComboStreak).toBe(11)
+  })
+
+  it('keeps a v3 state’s path progress through the passthrough', () => {
+    const state = migrateState({
+      ...defaultState(),
+      pathProgress: {
+        calibrated: true,
+        chapters: {
+          'key-c': { passed: [0, 1], setAside: [0], songStamped: true },
+        },
+      },
+    })
+    expect(state.pathProgress).toEqual({
+      calibrated: true,
+      chapters: {
+        'key-c': { passed: [0, 1], setAside: [0], songStamped: true },
+      },
+    })
   })
 
   it('folds the Phase 2–5 plain keys into a fresh state', () => {
@@ -80,7 +134,10 @@ describe('migrateState', () => {
   })
 
   it('resets on an unrecognized (newer) version instead of guessing', () => {
-    const newer = { version: 3, settings: { judgmentDelayMs: 750 } }
+    const newer = {
+      version: SCHEMA_VERSION + 1,
+      settings: { judgmentDelayMs: 750 },
+    }
     expect(migrateState(newer)).toEqual(defaultState())
   })
 

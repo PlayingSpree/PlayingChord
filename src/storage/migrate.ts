@@ -7,9 +7,11 @@ import {
   sanitizePresetSelection,
   sanitizeStateV1,
   sanitizeStateV2,
+  sanitizeStateV3,
   SCHEMA_VERSION,
   type PersistedState,
   type PersistedStateV1,
+  type PersistedStateV2,
 } from './schema'
 import { sanitizeSettings } from '../practice'
 
@@ -31,12 +33,26 @@ export interface LegacySnapshot {
 // v1 → v2: unlock progress (§5) starts empty — every preset opens at the
 // initial unlock count on first use; the lifetime best combo streak (also
 // new in v2) starts at 0, same as a fresh install.
-export function migrateV1ToV2(state: PersistedStateV1): PersistedState {
+export function migrateV1ToV2(state: PersistedStateV1): PersistedStateV2 {
+  return {
+    ...state,
+    version: 2,
+    presetProgress: {},
+    bestComboStreak: 0,
+  }
+}
+
+// v2 → v3: the guided path (§5.1). `calibrated: false` is the whole of the
+// migration — the first load then fast-passes every chapter combo the player's
+// existing comboStats already prove (§5.2), so an upgrader opens at their real
+// frontier rather than at chapter 1. That is why nothing here reads the old
+// per-preset records: the durable half of what they described is the stat
+// history, which survives untouched and is what calibration reads.
+export function migrateV2ToV3(state: PersistedStateV2): PersistedState {
   return {
     ...state,
     version: SCHEMA_VERSION,
-    presetProgress: {},
-    bestComboStreak: 0,
+    pathProgress: { calibrated: false, chapters: {} },
   }
 }
 
@@ -51,8 +67,11 @@ export function migrateState(
 ): PersistedState {
   if (typeof raw === 'object' && raw !== null && !Array.isArray(raw)) {
     const state = raw as Record<string, unknown>
-    if (state.version === SCHEMA_VERSION) return sanitizeStateV2(state)
-    if (state.version === 1) return migrateV1ToV2(sanitizeStateV1(state))
+    if (state.version === SCHEMA_VERSION) return sanitizeStateV3(state)
+    if (state.version === 2) return migrateV2ToV3(sanitizeStateV2(state))
+    if (state.version === 1) {
+      return migrateV2ToV3(migrateV1ToV2(sanitizeStateV1(state)))
+    }
   }
   // Nothing versioned yet: fold in the Phase 2–5 plain keys (each may be
   // absent or junk — sanitizers fall back per slice). defaultState() is

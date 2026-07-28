@@ -1,4 +1,4 @@
-// The versioned localStorage schema (DESIGN.md §8), currently v2. Pure TS: types,
+// The versioned localStorage schema (DESIGN.md §8), currently v3. Pure TS: types,
 // defaults, and sanitizers that coerce unknown persisted data (hand-edited,
 // stale, corrupted) into a valid state. Reading/writing localStorage happens
 // only in localStorageAdapter.ts.
@@ -11,7 +11,9 @@ import {
   sanitizeSettings,
   TIME_TO_CORRECT_SAMPLE_CAP,
   type ChordPool,
+  type ChapterProgressRecord,
   type ComboStatRecord,
+  type PathProgressRecord,
   type PoolChord,
   type PracticeSettings,
   type Preset,
@@ -28,7 +30,7 @@ import {
   type VoicingRule,
 } from '../theory'
 
-export const SCHEMA_VERSION = 2
+export const SCHEMA_VERSION = 3
 
 // The single versioned key. The version lives *inside* the payload so
 // migrations read one blob, check `version`, and upgrade in a chain.
@@ -84,7 +86,7 @@ export interface PersistedStateV1 {
 
 // v2 adds flashcard unlock progress (§5), keyed by preset id.
 export interface PersistedStateV2 extends Omit<PersistedStateV1, 'version'> {
-  version: typeof SCHEMA_VERSION
+  version: 2
   presetProgress: Record<string, PresetProgressRecord>
   // Added within v2 (§7 History): the longest combo streak (consecutive
   // first-try prompts) ever reached, across all sessions. Absent in early-v2
@@ -92,8 +94,16 @@ export interface PersistedStateV2 extends Omit<PersistedStateV1, 'version'> {
   bestComboStreak: number
 }
 
+// v3 adds the guided path (§5.1): one record for the whole path, replacing the
+// per-preset unlock records above — which stay in the type only until the
+// migration that drops them.
+export interface PersistedStateV3 extends Omit<PersistedStateV2, 'version'> {
+  version: typeof SCHEMA_VERSION
+  pathProgress: PathProgressRecord
+}
+
 // The current schema — what AppStorage holds and every consumer reads.
-export type PersistedState = PersistedStateV2
+export type PersistedState = PersistedStateV3
 
 export function defaultState(): PersistedState {
   return {
@@ -107,6 +117,7 @@ export function defaultState(): PersistedState {
     customPresets: [],
     presetProgress: {},
     bestComboStreak: 0,
+    pathProgress: { calibrated: false, chapters: {} },
   }
 }
 
@@ -567,11 +578,59 @@ export function sanitizeBestComboStreak(value: unknown): number {
   return asCount(value) ?? 0
 }
 
-export function sanitizeStateV2(raw: Record<string, unknown>): PersistedState {
+// ——— Path progress (v3, §5.1) ———
+//
+// One record for the whole path, keyed by chapter id. Indices can only be
+// filtered here, not clamped: chapter sizes live in practice/chapters.ts and
+// this module must not depend on the track's content — reconcilePathProgress
+// does the clamping on load, exactly as reconcileProgress did for presets.
+// A garbled chapter entry is dropped whole; the chapter just starts over.
+export function sanitizePathProgress(value: unknown): PathProgressRecord {
+  const raw = asRecord(value)
+  if (!raw) return { calibrated: false, chapters: {} }
+  const indices = (list: unknown): number[] =>
+    Array.isArray(list)
+      ? [
+          ...new Set(
+            list.filter(
+              (i): i is number =>
+                typeof i === 'number' && Number.isInteger(i) && i >= 0,
+            ),
+          ),
+        ].sort((a, b) => a - b)
+      : []
+  const chapters: Record<string, ChapterProgressRecord> = {}
+  const storedChapters = asRecord(raw.chapters)
+  for (const [chapterId, entry] of Object.entries(storedChapters ?? {})) {
+    const record = asRecord(entry)
+    if (!record) continue
+    chapters[chapterId] = {
+      passed: indices(record.passed),
+      setAside: indices(record.setAside),
+      songStamped: record.songStamped === true,
+    }
+  }
+  // Absent or garbled reads as *not* calibrated, which is the safe default:
+  // an unnecessary second calibration only re-passes what already passed
+  // (§5.2), while a wrongly-true flag would strand a v9 upgrader at chapter 1.
+  return { calibrated: raw.calibrated === true, chapters }
+}
+
+export function sanitizeStateV2(
+  raw: Record<string, unknown>,
+): PersistedStateV2 {
   return {
     ...sanitizeStateV1(raw),
-    version: SCHEMA_VERSION,
+    version: 2,
     presetProgress: sanitizePresetProgress(raw.presetProgress),
     bestComboStreak: sanitizeBestComboStreak(raw.bestComboStreak),
+  }
+}
+
+export function sanitizeStateV3(raw: Record<string, unknown>): PersistedState {
+  return {
+    ...sanitizeStateV2(raw),
+    version: SCHEMA_VERSION,
+    pathProgress: sanitizePathProgress(raw.pathProgress),
   }
 }

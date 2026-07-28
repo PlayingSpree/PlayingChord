@@ -10,10 +10,13 @@ import {
   sanitizeCustomVoicingRules,
   sanitizeDailyRecords,
   sanitizeDevice,
+  sanitizePathProgress,
   sanitizePresetProgress,
   sanitizePresetSelection,
   sanitizeStateV1,
   sanitizeStateV2,
+  sanitizeStateV3,
+  SCHEMA_VERSION,
 } from './schema'
 import {
   EDITOR_MAX_HAND_NOTES,
@@ -407,8 +410,130 @@ describe('sanitizeCustomPresets (Phase 9, §4)', () => {
   })
 })
 
-describe('sanitizeStateV2', () => {
+describe('sanitizePathProgress (v3, §5.1)', () => {
+  it('reads a missing or junk payload as an uncalibrated empty path', () => {
+    for (const junk of [undefined, null, 'nope', 42, []]) {
+      expect(sanitizePathProgress(junk)).toEqual({
+        calibrated: false,
+        chapters: {},
+      })
+    }
+  })
+
+  it('keeps a sound record verbatim', () => {
+    const record = {
+      calibrated: true,
+      chapters: {
+        'key-c': { passed: [0, 1, 2], setAside: [1], songStamped: true },
+      },
+    }
+    expect(sanitizePathProgress(record)).toEqual(record)
+  })
+
+  it('filters, dedupes and sorts indices without dropping the chapter', () => {
+    expect(
+      sanitizePathProgress({
+        calibrated: true,
+        chapters: {
+          'key-c': {
+            passed: [2, 0, 0, -1, 1.5, 'x', null],
+            setAside: 'junk',
+            songStamped: true,
+          },
+        },
+      }),
+    ).toEqual({
+      calibrated: true,
+      chapters: {
+        'key-c': { passed: [0, 2], setAside: [], songStamped: true },
+      },
+    })
+  })
+
+  it('drops a garbled chapter entry whole', () => {
+    expect(
+      sanitizePathProgress({
+        calibrated: true,
+        chapters: { 'key-c': 'junk', 'key-g': { passed: [0] } },
+      }),
+    ).toEqual({
+      calibrated: true,
+      chapters: {
+        'key-g': { passed: [0], setAside: [], songStamped: false },
+      },
+    })
+  })
+
+  it('does not clamp to a chapter’s real size — that is reconcile’s job', () => {
+    // schema.ts must not depend on the track's content, so an out-of-range
+    // index survives here and is dropped by reconcilePathProgress on load.
+    expect(
+      sanitizePathProgress({
+        calibrated: true,
+        chapters: { 'key-g': { passed: [99] } },
+      }).chapters['key-g']?.passed,
+    ).toEqual([99])
+  })
+
+  it('reads a non-boolean calibrated flag as false', () => {
+    // The safe direction: a needless second calibration only re-passes what
+    // already passed, while a wrongly-true flag strands a v9 upgrader.
+    expect(sanitizePathProgress({ calibrated: 'yes' }).calibrated).toBe(false)
+    expect(sanitizePathProgress({ calibrated: 1 }).calibrated).toBe(false)
+    expect(sanitizePathProgress({ calibrated: true }).calibrated).toBe(true)
+  })
+
+  it('reads a non-boolean stamp as unstamped', () => {
+    expect(
+      sanitizePathProgress({
+        chapters: { 'key-c': { passed: [], songStamped: 'yes' } },
+      }).chapters['key-c']?.songStamped,
+    ).toBe(false)
+  })
+})
+
+describe('sanitizeStateV3', () => {
   it('coerces a fully junk payload to defaults', () => {
+    expect(
+      sanitizeStateV3({
+        version: 3,
+        settings: 'junk',
+        lastMidiDevice: 42,
+        presetSelection: [],
+        comboStats: null,
+        dailyRecords: 7,
+        presetProgress: 'junk',
+        bestComboStreak: 'not a number',
+        pathProgress: 'junk',
+      }),
+    ).toEqual(defaultState())
+  })
+
+  it('carries path progress through', () => {
+    const state = sanitizeStateV3({
+      version: 3,
+      pathProgress: {
+        calibrated: true,
+        chapters: { 'key-c': { passed: [0] } },
+      },
+    })
+    expect(state.version).toBe(SCHEMA_VERSION)
+    expect(state.pathProgress).toEqual({
+      calibrated: true,
+      chapters: {
+        'key-c': { passed: [0], setAside: [], songStamped: false },
+      },
+    })
+  })
+})
+
+describe('sanitizeStateV2', () => {
+  it('stays on version 2 — it is a step in the chain, not the current state', () => {
+    expect(sanitizeStateV2({ version: 2 }).version).toBe(2)
+  })
+
+  it('coerces a fully junk payload to v2 defaults', () => {
+    const { pathProgress: _path, ...v2Defaults } = defaultState()
     expect(
       sanitizeStateV2({
         version: 2,
@@ -420,7 +545,7 @@ describe('sanitizeStateV2', () => {
         presetProgress: 'junk',
         bestComboStreak: 'not a number',
       }),
-    ).toEqual(defaultState())
+    ).toEqual({ ...v2Defaults, version: 2 })
   })
 
   it('defaults the Phase 9 library slices in early-v1 states', () => {
