@@ -3,6 +3,7 @@ import { spellRoot } from '../theory'
 import type { ChordPool } from './presets'
 import { DEFAULT_PRACTICE_SETTINGS, type PracticeSettings } from './settings'
 import {
+  buildDegreeProgression,
   buildProgression,
   romanNumeral,
   SONG_BEATS_PER_BAR,
@@ -80,6 +81,40 @@ describe('buildProgression (§6.5)', () => {
     }
     const progression = buildProgression(pool, 4, () => 0)
     expect(progression.map((c) => c.root)).toEqual([0, 7])
+  })
+})
+
+describe('buildDegreeProgression (the chapter song, §3.3)', () => {
+  it('realizes I-IV-V-I in the chapter’s key', () => {
+    // Chapter 3 is the key of G: G — C — D — G, with D the new chord.
+    expect(buildDegreeProgression(7, [0, 3, 4, 0])).toEqual([
+      { degree: 0, root: 7, typeId: 'maj' },
+      { degree: 3, root: 0, typeId: 'maj' },
+      { degree: 4, root: 2, typeId: 'maj' },
+      { degree: 0, root: 7, typeId: 'maj' },
+    ])
+  })
+
+  it('allows the repeated chord buildProgression forbids', () => {
+    const degrees = buildDegreeProgression(0, [0, 3, 4, 0]).map((c) => c.degree)
+    expect(degrees).toEqual([0, 3, 4, 0])
+    expect(new Set(degrees).size).toBeLessThan(degrees.length)
+  })
+
+  it('keeps degrees so Roman numerals render', () => {
+    expect(
+      buildDegreeProgression(7, [0, 3, 4, 0]).map((c) =>
+        romanNumeral(c.degree ?? 0),
+      ),
+    ).toEqual(['I', 'IV', 'V', 'I'])
+  })
+
+  it('takes quality from the scale degree, not the caller', () => {
+    // ii and vi of C are minor; the caller only names degrees.
+    expect(buildDegreeProgression(0, [1, 5]).map((c) => c.typeId)).toEqual([
+      'min',
+      'min',
+    ])
   })
 })
 
@@ -313,5 +348,50 @@ describe('SongEngine (§6.5 clock-paced lifecycle)', () => {
     // Finish the phrase: count-in + 2 bars × loops.
     vi.advanceTimersByTime(BAR + 2 * SONG_LOOPS_PER_PHRASE * BAR)
     expect(h.last().progression).toHaveLength(3)
+  })
+
+  // The chapter song (§3.3): the same four chords every phrase, so the loops
+  // read as repetitions of one song rather than as fresh drills.
+  describe('a fixed progression', () => {
+    const G_SONG = buildDegreeProgression(7, [0, 3, 4, 0])
+
+    it('is used verbatim instead of a random draw', () => {
+      const h = harness()
+      h.engine.start(diatonic(7), G_SONG)
+      expect(h.last().progression).toEqual(G_SONG)
+    })
+
+    it('survives the phrase rollover unchanged', () => {
+      const h = harness()
+      h.engine.start(diatonic(7), G_SONG)
+      vi.advanceTimersByTime(BAR + 4 * SONG_LOOPS_PER_PHRASE * BAR)
+      expect(h.last().phraseSummary).not.toBeNull() // the phrase boundary
+      vi.advanceTimersByTime(BAR)
+      expect(h.last().progression).toEqual(G_SONG)
+    })
+
+    it('ignores the chords-per-progression setting', () => {
+      const h = harness({ songChordCount: 2 })
+      h.engine.start(diatonic(7), G_SONG)
+      expect(h.last().progression).toHaveLength(4)
+    })
+
+    it('still judges its repeated chord in both of its bars', () => {
+      const h = harness()
+      h.engine.start(diatonic(7), G_SONG)
+      const G_MAJOR = new Set([67, 71, 74])
+      h.engine.heldChange(G_MAJOR)
+      vi.advanceTimersByTime(BAR) // count-in over, bar 0 (G) begins
+      vi.advanceTimersByTime(BAR * 4) // bars 0-3 complete
+      expect(h.barResults.map((r) => r.hit)).toEqual([true, false, false, true])
+    })
+
+    it('a later start() without one goes back to random draws', () => {
+      const h = harness()
+      h.engine.start(diatonic(7), G_SONG)
+      h.engine.start(diatonic(0))
+      // rng () => 0 in C major: I ii iii IV — four distinct degrees.
+      expect(h.last().progression.map((c) => c.degree)).toEqual([0, 1, 2, 3])
+    })
   })
 })

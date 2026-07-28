@@ -118,6 +118,20 @@ function songChordAt(key: PitchClass, degree: number): SongChord {
   }
 }
 
+// A declared degree progression, realized in one major key — the path's
+// chapter song (§3.3): I–IV–V–I is `[0, 3, 4, 0]` in the chapter's key.
+// Deliberately *not* buildProgression with a seeded pool: this allows a
+// repeated chord, which that function forbids by design, and returning to the
+// tonic is what makes four bars sound like music rather than a drill. Nothing
+// random, so no rng and no chord-count setting — the caller declares the
+// shape and gets exactly it, every phrase.
+export function buildDegreeProgression(
+  key: PitchClass,
+  degrees: readonly number[],
+): SongChord[] {
+  return degrees.map((degree) => songChordAt(key, degree))
+}
+
 // §6.5 progression generation, from the active preset's chord pool. No
 // repeated chord, length clamped to 2–4 and to the pool's distinct chords.
 // A diatonic pool keeps its musical shape — always starts on I, excludes
@@ -174,6 +188,11 @@ export class SongEngine {
   private readonly anyRule = getBuiltInVoicingRule('any')
 
   private pool: ChordPool = { kind: 'diatonic', key: 0 }
+  // A declared progression (the path's chapter song, §3.3) instead of a fresh
+  // random one per phrase. Non-null pins every phrase to the same chords —
+  // which is what makes it a *song* — and makes the chords-per-progression
+  // setting inapplicable: the caller already said how long it is.
+  private fixed: readonly SongChord[] | null = null
   private progression: SongChord[] = []
   private countingIn = true
   private loopIndex = 0
@@ -213,9 +232,13 @@ export class SongEngine {
   }
 
   // Begin (or restart) on this pool: fresh progression, count-in, beat 0 now.
-  start(pool: ChordPool): void {
+  // `fixedProgression` pins every phrase to the given chords (§3.3's chapter
+  // song); omitted, each phrase draws a new random one as it always has. The
+  // pool is still needed either way — a mid-session pool change reads it.
+  start(pool: ChordPool, fixedProgression?: readonly SongChord[]): void {
     this.stop()
     this.pool = pool
+    this.fixed = fixedProgression ?? null
     this.hitCount = 0
     this.beat = -1
     this.restartPhrase(null)
@@ -223,7 +246,9 @@ export class SongEngine {
 
   // A pool change mid-song (preset or key switch, a library edit) rebuilds
   // the progression and counts in again; the in-flight bar is abandoned
-  // silently, nothing recorded.
+  // silently, nothing recorded. A fixed progression (§3.3) is *not* rebuilt —
+  // it is the chapter's song, not a draw from the pool — so a stray pool
+  // change costs a count-in and nothing else.
   setPool(pool: ChordPool): void {
     if (this.timer === null) return
     this.pool = pool
@@ -258,11 +283,14 @@ export class SongEngine {
       clearTimeout(this.timer)
       this.timer = null
     }
-    this.progression = buildProgression(
-      this.pool,
-      this.host.settings().songChordCount,
-      this.host.rng,
-    )
+    this.progression =
+      this.fixed !== null
+        ? [...this.fixed]
+        : buildProgression(
+            this.pool,
+            this.host.settings().songChordCount,
+            this.host.rng,
+          )
     this.countingIn = true
     this.loopIndex = 0
     this.barIndex = 0
