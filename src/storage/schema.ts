@@ -17,7 +17,6 @@ import {
   type PoolChord,
   type PracticeSettings,
   type Preset,
-  type PresetProgressRecord,
   type PromptOutcome,
 } from '../practice'
 import {
@@ -70,6 +69,16 @@ export interface DailyRecord {
   timeToCorrectMs: number
 }
 
+// The v2 per-preset unlock record, kept only so the v2 → v3 step has a shape to
+// read. Nothing in the app consumes it: v10 replaced per-preset unlocking with
+// one path record (§5.1), and practice/progress.ts is gone. Persistence
+// archaeology, not a live type.
+interface PresetProgressRecordV2 {
+  unlockedCount: number
+  masteredIndices: number[]
+  setAsideIndices: number[]
+}
+
 export interface PersistedStateV1 {
   version: 1
   settings: PracticeSettings
@@ -87,7 +96,7 @@ export interface PersistedStateV1 {
 // v2 adds flashcard unlock progress (§5), keyed by preset id.
 export interface PersistedStateV2 extends Omit<PersistedStateV1, 'version'> {
   version: 2
-  presetProgress: Record<string, PresetProgressRecord>
+  presetProgress: Record<string, PresetProgressRecordV2>
   // Added within v2 (§7 History): the longest combo streak (consecutive
   // first-try prompts) ever reached, across all sessions. Absent in early-v2
   // states, so it defaults to 0 rather than invalidating the record.
@@ -97,7 +106,10 @@ export interface PersistedStateV2 extends Omit<PersistedStateV1, 'version'> {
 // v3 adds the guided path (§5.1): one record for the whole path, replacing the
 // per-preset unlock records above — which stay in the type only until the
 // migration that drops them.
-export interface PersistedStateV3 extends Omit<PersistedStateV2, 'version'> {
+export interface PersistedStateV3 extends Omit<
+  PersistedStateV2,
+  'version' | 'presetProgress'
+> {
   version: typeof SCHEMA_VERSION
   pathProgress: PathProgressRecord
 }
@@ -115,7 +127,6 @@ export function defaultState(): PersistedState {
     dailyRecords: {},
     customVoicingRules: [],
     customPresets: [],
-    presetProgress: {},
     bestComboStreak: 0,
     pathProgress: { calibrated: false, chapters: {} },
   }
@@ -530,10 +541,10 @@ export function sanitizeStateV1(
 // reconcileProgress in the store, since pool sizes aren't known here.
 export function sanitizePresetProgress(
   value: unknown,
-): Record<string, PresetProgressRecord> {
+): Record<string, PresetProgressRecordV2> {
   const raw = asRecord(value)
   if (!raw) return {}
-  const progress: Record<string, PresetProgressRecord> = {}
+  const progress: Record<string, PresetProgressRecordV2> = {}
   for (const [presetId, entry] of Object.entries(raw)) {
     const record = asRecord(entry)
     if (!record) continue
@@ -628,8 +639,9 @@ export function sanitizeStateV2(
 }
 
 export function sanitizeStateV3(raw: Record<string, unknown>): PersistedState {
+  const { presetProgress: _retired, ...rest } = sanitizeStateV2(raw)
   return {
-    ...sanitizeStateV2(raw),
+    ...rest,
     version: SCHEMA_VERSION,
     pathProgress: sanitizePathProgress(raw.pathProgress),
   }

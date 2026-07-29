@@ -534,6 +534,7 @@ describe('sanitizeStateV2', () => {
 
   it('coerces a fully junk payload to v2 defaults', () => {
     const { pathProgress: _path, ...v2Defaults } = defaultState()
+    // v2 still carried per-preset unlock records; v3 drops them.
     expect(
       sanitizeStateV2({
         version: 2,
@@ -545,7 +546,7 @@ describe('sanitizeStateV2', () => {
         presetProgress: 'junk',
         bestComboStreak: 'not a number',
       }),
-    ).toEqual({ ...v2Defaults, version: 2 })
+    ).toEqual({ ...v2Defaults, version: 2, presetProgress: {} })
   })
 
   it('defaults the Phase 9 library slices in early-v1 states', () => {

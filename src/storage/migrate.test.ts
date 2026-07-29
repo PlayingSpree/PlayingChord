@@ -19,13 +19,6 @@ describe('migrateState', () => {
           timeToCorrectMs: [4000, 1500],
         },
       },
-      presetProgress: {
-        'major-triads': {
-          unlockedCount: 5,
-          masteredIndices: [0, 2],
-          setAsideIndices: [1],
-        },
-      },
       bestComboStreak: 7,
     }
     expect(migrateState(JSON.parse(JSON.stringify(state)))).toEqual(state)
@@ -50,7 +43,6 @@ describe('migrateState', () => {
     const state = migrateState(v1)
     expect(state.version).toBe(SCHEMA_VERSION)
     expect(state.comboStats).toEqual(v1.comboStats)
-    expect(state.presetProgress).toEqual({})
     expect(state.bestComboStreak).toBe(0)
     expect(state.pathProgress).toEqual({ calibrated: false, chapters: {} })
   })
@@ -77,12 +69,14 @@ describe('migrateState', () => {
           setAsideIndices: [],
         },
       },
+      // Dropped by the migration, not carried along ignored.
       bestComboStreak: 11,
     } as Record<string, unknown>
     delete v2.pathProgress
     const state = migrateState(v2)
     expect(state.version).toBe(SCHEMA_VERSION)
     expect(state.pathProgress).toEqual({ calibrated: false, chapters: {} })
+    expect('presetProgress' in state).toBe(false)
     // The durable half of the retired per-preset records is the stat history,
     // which survives untouched — it is what calibration reads.
     expect(state.comboStats).toEqual(v2.comboStats)

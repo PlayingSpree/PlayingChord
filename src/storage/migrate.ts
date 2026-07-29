@@ -49,8 +49,13 @@ export function migrateV1ToV2(state: PersistedStateV1): PersistedStateV2 {
 // per-preset records: the durable half of what they described is the stat
 // history, which survives untouched and is what calibration reads.
 export function migrateV2ToV3(state: PersistedStateV2): PersistedState {
+  // The per-preset unlock records are dropped rather than carried along and
+  // ignored: nothing reads them, their record type is gone, and the durable half
+  // of what they described — the stat history — survives untouched and is what
+  // calibration reads.
+  const { presetProgress: _retired, ...rest } = state
   return {
-    ...state,
+    ...rest,
     version: SCHEMA_VERSION,
     pathProgress: { calibrated: false, chapters: {} },
   }
