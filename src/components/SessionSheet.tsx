@@ -108,7 +108,10 @@ export function SessionSheet({
       />
       <div className="relative flex w-[420px] max-w-full flex-col gap-4 rounded-[22px] border-2 border-card-border bg-card p-6 text-ink shadow-hard-lg">
         <div className="flex items-center">
-          <b className="text-[22px] font-extrabold">Session</b>
+          <b className="text-[22px] font-extrabold">Free practice</b>
+          <span className="ml-2 text-[13px] font-semibold text-ink-muted">
+            off the path
+          </span>
           <RaisedButton
             variant="outline"
             size="sm"
@@ -150,6 +153,12 @@ export function SessionSheet({
             )}
           </div>
         </div>
+
+        <p className="text-[13px] font-semibold text-ink-muted">
+          Every preset deals from its full pool here — nothing is locked. Stats
+          land in the same records, so a chord passed here is passed on the
+          path.
+        </p>
 
         <div className="flex flex-col gap-1.5">
           <SectionLabel>Mode</SectionLabel>
@@ -201,7 +210,7 @@ export function SessionSheet({
 
         <RaisedButton
           autoFocus
-          variant="primary"
+          variant="primary-outline"
           size="lg"
           className="w-full"
           onClick={start}
