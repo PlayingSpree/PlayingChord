@@ -135,7 +135,7 @@ function LearningHeader({
             {combo.passed && '★ '}
             {combo.label}
             {combo.grade !== null && (
-              <b className="text-ink-soft">{gradeText(combo.grade)}</b>
+              <b className={gradeText(combo.grade)}>{combo.grade}</b>
             )}
           </Chip>
         ))}

@@ -1,7 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { usePractice } from '../store/practiceStore'
 import { useSettings } from '../store/settingsStore'
-import { useLibrary } from '../store/libraryStore'
 import {
   appStorage,
   lastDateKeys,
@@ -9,115 +8,39 @@ import {
   meetsGoal,
   weekFirstTryDelta,
 } from '../storage'
-import {
-  worstChordDisplayGrade,
-  type DisplayGrade,
-  type SessionMode,
-} from '../practice'
 import { DevicePicker } from './DevicePicker'
-import { Card, Chip, RaisedButton, SectionLabel } from './ui'
+import { Card, RaisedButton } from './ui'
 import { cx } from './cx'
-import { gradeText } from './grades'
+import { TodayCard, type StartIntent } from './TodayCard'
+import { RepertoireRow } from './RepertoireRow'
 
-// The Home screen (DESIGN.md §7.1): the entry point. The no-device gate
-// (§6.1) doesn't block it. Top bar, the Continue card (preset, unlock
-// progress, the "In play" grade row, the mode selector and Start), the daily
-// goal ring, a 14-day mini calendar, and the Progress button with this
-// week's first-try delta. `onOpenSheet` opens the session sheet for full
-// config (preset / mode / length, §7.2).
-const MODES: { id: SessionMode; label: string }[] = [
-  { id: 'learn', label: '🎓 Learn' },
-  { id: 'practice', label: '▶ Practice' },
-  { id: 'song', label: '♪ Song' },
-]
-
-// The learning loop is never started from here — the path starts it (§4.1), and
-// MODES above deliberately doesn't list it. The label exists only because the
-// record is exhaustive over SessionMode.
-const START_LABEL: Record<SessionMode, string> = {
-  learn: 'Start learning ▶',
-  practice: 'Start practicing ▶',
-  song: 'Start song ▶',
-  'path-learn': 'Learn these ▶',
-}
-
+// The Home screen (DESIGN.md §4.1): the path's face. The no-device gate (§6.1)
+// doesn't block it.
+//
+// v9 asked the player to assemble a session here — preset, then mode, then
+// Start — which put the pedagogy on the person least able to do it. Home is now
+// a shell around the Today card: it carries identity and the day's numbers, and
+// the card owns the decision. The mode selector is gone entirely, because
+// Learn-vs-Practice is no longer a choice anyone makes (§3.1).
 export function HomeView({
   onStart,
-  onOpenSheet,
+  onFreePractice,
   onSettings,
   onProgress,
+  onPathMap,
 }: {
-  onStart: () => void
-  onOpenSheet: () => void
+  onStart: (intent: StartIntent, chapterId?: string) => void
+  onFreePractice: () => void
   onSettings: () => void
   onProgress: () => void
+  onPathMap: () => void
 }) {
-  const presets = usePractice((s) => s.presets)
-  const presetId = usePractice((s) => s.presetId)
-  const mode = usePractice((s) => s.mode)
-  const setMode = usePractice((s) => s.setMode)
-  const progress = usePractice((s) => s.progress)
   const goal = usePractice((s) => s.goal)
-  const chordPassStatus = usePractice((s) => s.chordPassStatus)
-  const canSetChordAside = usePractice((s) => s.canSetChordAside)
-  const chordsOpenedWith = usePractice((s) => s.chordsOpenedWith)
-  const setChordAside = usePractice((s) => s.setChordAside)
-  const openChordForPlay = usePractice((s) => s.openChordForPlay)
+  const path = usePractice((s) => s.path)
   const goalMinutes = useSettings((s) => s.settings.dailyGoalMinutes)
-  const customRules = useLibrary((s) => s.customRules)
-  const [showLocked, setShowLocked] = useState(false)
-  // The §5.2 by-hand pool controls. Behind a toggle rather than always on:
-  // the row is read far more often than it is edited, and a chip that sets a
-  // chord aside on a stray click would be a trap in a row you scan every
-  // session.
-  const [editing, setEditing] = useState(false)
 
-  const presetName = presets.find((p) => p.id === presetId)?.name ?? 'Practice'
-
-  // In-play chips: unlocked chords with their worst-combo grade (§7.1), plus
-  // the locked ones behind the 🔒 chip. Read the persisted per-combo stats
-  // once — Home re-mounts after every session, so the grades reflect the
-  // latest play. `customRules` in the deps keeps it in step with a library
-  // edit.
-  const inPlay = useMemo(() => {
-    const comboStats = appStorage.state.comboStats
-    const entries = chordPassStatus()
-    const withGrade = (chord: (typeof entries)[number]) => {
-      const records = Object.entries(comboStats)
-        .filter(([key]) => key.startsWith(`${chord.key}:`))
-        .map(([, record]) => record)
-      return {
-        key: chord.key,
-        label: chord.label,
-        passed: chord.passed,
-        grade: worstChordDisplayGrade(records),
-        canSetAside: canSetChordAside(chord.key),
-      }
-    }
-    const chips = entries
-      .filter((chord) => chord.unlocked && !chord.setAside)
-      .map(withGrade)
-    // Set aside by hand (§5.2): unlocked, but held out of play. Shown beside
-    // the row rather than folded into the 🔒 chip — these are chords the
-    // player benched and owes themselves, not ones they haven't reached.
-    const aside = entries
-      .filter((chord) => chord.unlocked && chord.setAside)
-      .map(withGrade)
-    // Locked chords keep their unlock order (§5.1) — the list reads as
-    // "what's coming next", so the head of it is the next batch.
-    const locked = entries
-      .filter((chord) => !chord.unlocked)
-      .map((chord) => ({
-        key: chord.key,
-        label: chord.label,
-        opensWith: chordsOpenedWith(chord.key),
-      }))
-    return { chips, aside, locked }
-    // chordPassStatus is a stable store method; re-run on preset/progress/lib.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [presetId, progress, customRules])
-
-  // 14-day mini calendar + this-week delta, read once per mount.
+  // 14-day mini calendar + this-week delta, read once per mount. Home remounts
+  // after every session, so this is always the latest.
   const { calendar, week } = useMemo(() => {
     const { dailyRecords } = appStorage.state
     const todayKey = localDateKey(new Date())
@@ -138,12 +61,6 @@ export function HomeView({
     }
   }, [goalMinutes])
 
-  const nextBatch = Math.min(2, progress.total - progress.unlocked)
-  const unlockPct =
-    progress.total > 0
-      ? Math.round((100 * progress.unlocked) / progress.total)
-      : 0
-
   return (
     <main className="min-h-screen bg-surface px-6 py-6 text-ink">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-5">
@@ -163,160 +80,30 @@ export function HomeView({
         </header>
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_300px]">
-          <Card className="flex flex-col gap-3.5 p-6">
-            <SectionLabel>Continue</SectionLabel>
-            <div className="flex flex-wrap items-center gap-3.5">
-              <span className="text-4xl font-extrabold leading-none">
-                {presetName}
-              </span>
+          <div className="flex flex-col gap-4">
+            <TodayCard onStart={onStart} onFreePractice={onFreePractice} />
+            <RepertoireRow onPathMap={onPathMap} />
+            {/* Free practice reads as the side door it now is: hollow, quiet,
+                and saying so in words (§4.3). */}
+            <div className="flex items-center gap-3 rounded-[20px] border-2 border-muted-border px-5 py-4">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-base font-extrabold text-ink-soft">
+                  Free practice
+                </span>
+                <span className="text-sm font-semibold text-ink-muted">
+                  Any preset, any mode, any length — no gate
+                </span>
+              </div>
+              <span className="flex-1" />
               <RaisedButton
                 variant="outline"
                 size="sm"
-                className="border-card-border"
-                onClick={onOpenSheet}
+                onClick={onFreePractice}
               >
-                Change ▾
+                Open ▾
               </RaisedButton>
             </div>
-
-            <div className="flex flex-wrap items-center gap-2.5 text-[15px] text-ink-muted">
-              <span className="font-semibold text-ink-soft">
-                {progress.unlocked} / {progress.total} chords unlocked
-              </span>
-              <div className="h-2.5 w-full max-w-[280px] overflow-hidden rounded-full bg-track">
-                <div
-                  className="h-full rounded-full bg-info"
-                  style={{ width: `${unlockPct}%` }}
-                />
-              </div>
-              {nextBatch > 0 && <span>{nextBatch} unlock on next pass</span>}
-            </div>
-
-            <div className="mt-1 flex flex-col gap-2">
-              <div className="flex items-center gap-3">
-                <SectionLabel>In play</SectionLabel>
-                <button
-                  type="button"
-                  className={cx(
-                    'text-[13px] font-bold',
-                    editing ? 'text-info-light' : 'text-ink-muted',
-                  )}
-                  aria-pressed={editing}
-                  onClick={() => setEditing((open) => !open)}
-                >
-                  {editing ? 'Done' : '✎ Edit pool'}
-                </button>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {inPlay.chips.map((chip) => (
-                  <InPlayChip
-                    key={chip.key}
-                    label={chip.label}
-                    passed={chip.passed}
-                    grade={chip.grade}
-                    action={
-                      editing && chip.canSetAside
-                        ? { glyph: '✕', run: () => setChordAside(chip.key) }
-                        : null
-                    }
-                  />
-                ))}
-                {inPlay.aside.map((chip) => (
-                  <Chip
-                    key={chip.key}
-                    tone="locked"
-                    className="px-3 py-1.5 text-sm"
-                    onClick={
-                      editing ? () => openChordForPlay(chip.key) : undefined
-                    }
-                  >
-                    💤 {chip.label}
-                    {chip.grade !== null && (
-                      <b
-                        className={cx('font-extrabold', gradeText(chip.grade))}
-                      >
-                        {chip.grade}
-                      </b>
-                    )}
-                    {editing && <span aria-hidden>↩</span>}
-                  </Chip>
-                ))}
-                {inPlay.locked.length > 0 && (
-                  <Chip
-                    tone="locked"
-                    className="px-3 py-1.5 text-sm"
-                    onClick={() => setShowLocked((open) => !open)}
-                    aria-expanded={showLocked}
-                  >
-                    🔒 {inPlay.locked.length} locked {showLocked ? '▴' : '▾'}
-                  </Chip>
-                )}
-              </div>
-              {editing && (
-                <p className="text-[13px] text-ink-muted">
-                  Set a chord aside to stop it being dealt — it also stops
-                  holding up the next unlock. Bring it back any time.
-                </p>
-              )}
-              {/* What's still to come, in unlock order (§5.1) — the chip is a
-                  disclosure rather than a popover so it needs no focus trap.
-                  Editing opens it too: unlocking early (§5.2) is the other
-                  half of the controls and it acts on this list. */}
-              {(showLocked || editing) && inPlay.locked.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {inPlay.locked.map((chord) => (
-                    <Chip
-                      key={chord.key}
-                      tone="locked"
-                      className="px-3 py-1.5 text-sm"
-                      onClick={
-                        editing ? () => openChordForPlay(chord.key) : undefined
-                      }
-                      // The frontier is a prefix (§5.1), so opening one chord
-                      // opens everything ahead of it — said on the control
-                      // rather than done silently.
-                      title={
-                        editing
-                          ? chord.opensWith > 0
-                            ? `Unlock now — also opens the ${chord.opensWith} chord${chord.opensWith === 1 ? '' : 's'} before it`
-                            : 'Unlock now'
-                          : undefined
-                      }
-                    >
-                      {chord.label}
-                      {editing && (
-                        <span aria-hidden>
-                          🔓{chord.opensWith > 0 && ` +${chord.opensWith}`}
-                        </span>
-                      )}
-                    </Chip>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="mt-auto flex flex-wrap gap-2.5 pt-2">
-              {MODES.map((m) => (
-                <Chip
-                  key={m.id}
-                  selected={mode === m.id}
-                  onClick={() => setMode(m.id)}
-                  className="px-4 py-2.5 text-base"
-                >
-                  {m.label}
-                </Chip>
-              ))}
-            </div>
-
-            <RaisedButton
-              variant="primary"
-              size="lg"
-              className="w-full"
-              onClick={onStart}
-            >
-              {START_LABEL[mode]}
-            </RaisedButton>
-          </Card>
+          </div>
 
           <div className="flex flex-col gap-4">
             <Card className="flex items-center gap-[18px] p-5">
@@ -354,6 +141,19 @@ export function HomeView({
             <RaisedButton
               variant="raised"
               className="justify-start gap-3 px-5 py-4 text-[17px] font-extrabold text-ink"
+              onClick={onPathMap}
+            >
+              🗺 Path map
+              <span className="text-[13px] font-semibold text-info-light">
+                ch. {Math.min(path.chapterNumber, path.chapterTotal)} /{' '}
+                {path.chapterTotal}
+              </span>
+              <span className="ml-auto text-ink-muted">→</span>
+            </RaisedButton>
+
+            <RaisedButton
+              variant="raised"
+              className="justify-start gap-3 px-5 py-4 text-[17px] font-extrabold text-ink"
               onClick={onProgress}
             >
               📈 Progress
@@ -369,40 +169,6 @@ export function HomeView({
         </div>
       </div>
     </main>
-  )
-}
-
-// `action`, when given, makes the whole chip the button for it (§5.2) — a
-// nested button inside a chip would be invalid markup, and the row is only
-// clickable while editing anyway.
-function InPlayChip({
-  label,
-  passed,
-  grade,
-  action,
-}: {
-  label: string
-  passed: boolean
-  grade: DisplayGrade | null
-  action?: { glyph: string; run: () => void } | null
-}) {
-  const onClick = action ? action.run : undefined
-  if (!passed) {
-    return (
-      <Chip tone="info" className="px-3 py-1.5 text-sm" onClick={onClick}>
-        {label} · learning
-        {action && <span aria-hidden>{action.glyph}</span>}
-      </Chip>
-    )
-  }
-  return (
-    <Chip className="px-3 py-1.5 text-sm" onClick={onClick}>
-      {label}
-      {grade !== null && (
-        <b className={cx('font-extrabold', gradeText(grade))}>{grade}</b>
-      )}
-      {action && <span aria-hidden>{action.glyph}</span>}
-    </Chip>
   )
 }
 

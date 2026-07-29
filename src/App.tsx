@@ -6,6 +6,8 @@ import { chime, metronome, piano, primeOnFirstGesture } from './audio'
 import { MidiGate } from './components/MidiGate'
 import { SettingsView } from './components/SettingsView'
 import { StageView } from './components/StageView'
+import { PathMapView } from './components/PathMapView'
+import type { StartIntent } from './components/TodayCard'
 import { Toasts } from './components/Toasts'
 import { HomeView } from './components/HomeView'
 import { SessionSheet } from './components/SessionSheet'
@@ -19,7 +21,8 @@ import {
   type MidiSource,
 } from './midi'
 
-type View = 'home' | 'stage' | 'report' | 'progress' | 'chordStats' | 'settings'
+type View =
+  'home' | 'stage' | 'report' | 'progress' | 'chordStats' | 'settings' | 'path'
 
 function createSource(): MidiSource {
   const wantSim =
@@ -132,13 +135,30 @@ export default function App() {
     }
   }, [])
 
-  // Start / restart a session with the current config: clear any report,
-  // abandon anything still in flight so the Stage can't resume it instead,
-  // and remount the Stage so start() deals a fresh session (§7.2).
-  const startSession = () => {
+  // Start / restart a session, and *what kind* — the Today card's four states
+  // and the free-practice sheet all land here (§4.1). Each intent configures the
+  // store before the Stage mounts, then the nonce remounts it so start() deals a
+  // fresh session (§7.2). An intent the path can't honour right now (a stale
+  // Today card whose batch finished elsewhere) returns false and leaves the
+  // player where they were rather than opening an empty Stage.
+  const startSession = (
+    intent: StartIntent = 'free',
+    chapterId?: string,
+  ): void => {
+    const store = practiceStore.getState()
     setSheetOpen(false)
-    practiceStore.getState().dismissReport()
-    practiceStore.getState().discardSession()
+    store.dismissReport()
+    if (intent === 'path-learn' && !store.startPathLearn()) return
+    if (intent === 'repertoire' && !store.startRepertoire()) return
+    if (
+      intent === 'chapter-song' &&
+      (chapterId === undefined || !store.startChapterSong(chapterId))
+    ) {
+      return
+    }
+    // Free practice keeps whatever the sheet drafted; the path intents have
+    // already discarded anything in flight themselves.
+    if (intent === 'free') practiceStore.getState().discardSession()
     setSessionNonce((n) => n + 1)
     setView('stage')
   }
@@ -185,7 +205,13 @@ export default function App() {
           </MidiGate>
         )
       case 'report':
-        return <ReportView onGoAgain={startSession} onHome={goHomeFromReport} />
+        return (
+          <ReportView
+            onGoAgain={startSession}
+            onHome={goHomeFromReport}
+            onStart={startSession}
+          />
+        )
       case 'progress':
         return (
           <ProgressView
@@ -197,13 +223,16 @@ export default function App() {
         return <ChordStatsView onBack={() => setView('progress')} />
       case 'settings':
         return <SettingsView onBack={() => setView('home')} />
+      case 'path':
+        return <PathMapView onBack={() => setView('home')} />
       default:
         return (
           <HomeView
             onStart={startSession}
-            onOpenSheet={openSheet}
+            onFreePractice={openSheet}
             onSettings={() => setView('settings')}
             onProgress={() => setView('progress')}
+            onPathMap={() => setView('path')}
           />
         )
     }

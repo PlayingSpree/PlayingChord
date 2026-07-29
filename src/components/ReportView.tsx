@@ -5,6 +5,7 @@ import type { ComboGrade, SessionReport } from '../practice'
 import { Card, RaisedButton, SectionLabel } from './ui'
 import { cx } from './cx'
 import { gradeRing } from './grades'
+import type { StartIntent } from './TodayCard'
 
 // The end-of-session Report (DESIGN.md §7.4): a full screen replacing the
 // Draft-v5 summary modal. Headline + grade, the four stat cards with
@@ -16,9 +17,11 @@ import { gradeRing } from './grades'
 export function ReportView({
   onGoAgain,
   onHome,
+  onStart,
 }: {
   onGoAgain: () => void
   onHome: () => void
+  onStart: (intent: StartIntent, chapterId?: string) => void
 }) {
   const report = usePractice((s) => s.report)
   const goalMinutes = useSettings((s) => s.settings.dailyGoalMinutes)
@@ -99,8 +102,15 @@ export function ReportView({
           </div>
         )}
 
-        {report.unlocked !== null && (
-          <UnlockBanner unlocked={report.unlocked} />
+        {report.chapter !== null && <ChapterBanner chapter={report.chapter} />}
+
+        {report.chapter?.songChapterId != null && (
+          <SongOffer
+            title={report.chapter.songChapterTitle}
+            onPlay={() =>
+              onStart('chapter-song', report.chapter?.songChapterId ?? '')
+            }
+          />
         )}
 
         {report.suggestion !== null && (
@@ -187,30 +197,80 @@ function StatCard({
   )
 }
 
-function UnlockBanner({
-  unlocked,
+// The chapter banner (§4.4): what this session did to the path. Replaces the
+// v9 unlock banner, whose framing was per preset — there is one path now, so the
+// news is "these chords are yours and here is what opens next" rather than "this
+// preset's frontier moved".
+function ChapterBanner({
+  chapter,
 }: {
-  unlocked: NonNullable<SessionReport['unlocked']>
+  chapter: NonNullable<SessionReport['chapter']>
 }) {
   const pct =
-    unlocked.total > 0
-      ? Math.round((100 * unlocked.unlocked) / unlocked.total)
+    chapter.triadsTotal > 0
+      ? Math.round((100 * chapter.triadsPassed) / chapter.triadsTotal)
       : 0
+  const learned = chapter.learnedLabels
   return (
-    <Card className="flex flex-col gap-2 border-info-border bg-info-tint px-[18px] py-3.5">
-      <span className="text-[17px] font-extrabold text-info-light">
-        🔓 Unlocked: {unlocked.labels.join(' & ')}
+    <Card className="flex flex-col gap-2.5 border-primary-shadow bg-primary-tint px-[18px] py-4">
+      <span className="text-lg font-extrabold text-primary-light">
+        {chapter.justStamped && '🎵 '}
+        {learned.length > 0 ? (
+          <>
+            ★ {learned.join(' & ')} learned — {chapter.triadsPassed} of{' '}
+            {chapter.triadsTotal} chords
+          </>
+        ) : (
+          <>
+            🎵 {chapter.chapterTitle} stamped — {chapter.triadsPassed} of{' '}
+            {chapter.triadsTotal} chords
+          </>
+        )}
       </span>
-      <div className="flex items-center gap-2.5 text-[13px] text-info-light/80">
-        <div className="h-2 flex-1 overflow-hidden rounded bg-info-tint ring-1 ring-info-border">
+      <div className="flex items-center gap-2.5 text-[13px] font-semibold text-primary-light/80">
+        <div className="h-2 flex-1 overflow-hidden rounded bg-black/25">
           <div
-            className="h-full rounded bg-info"
+            className="h-full rounded bg-primary"
             style={{ width: `${pct}%` }}
           />
         </div>
-        {unlocked.unlocked} / {unlocked.total} — bring every unlocked chord to a
-        good grade to open more
+        {/* A completed chapter names the next one; a completed *batch* names the
+            batch now open. Both answer "so what comes next", which is the only
+            question a celebration leaves behind. */}
+        {chapter.chapterComplete && chapter.nextChapterTitle !== null
+          ? `${chapter.nextChapterTitle} opens next: ${chapter.nextBatchLabels.join(' and ')}`
+          : chapter.nextBatchLabels.length > 0
+            ? `Next up: ${chapter.nextBatchLabels.join(' and ')}`
+            : 'The whole path is yours'}
       </div>
+    </Card>
+  )
+}
+
+// The song still owed (§3.3/§4.4). Amber, and offered rather than required: the
+// next chapter is already open, so this is a reward the player can take now or
+// leave — which is exactly why it must not look like a gate.
+function SongOffer({
+  title,
+  onPlay,
+}: {
+  title: string | null
+  onPlay: () => void
+}) {
+  return (
+    <Card className="flex flex-wrap items-center gap-3.5 border-warn-border bg-warn-tint px-[18px] py-4">
+      <div className="flex flex-col gap-0.5">
+        <span className="text-[17px] font-extrabold text-warn">
+          🎵 Play the song in {title?.replace(/^Key of /, '') ?? 'your key'}
+        </span>
+        <span className="text-sm font-semibold text-warn-light">
+          One phrase stamps the chapter
+        </span>
+      </div>
+      <span className="flex-1" />
+      <RaisedButton variant="warn" size="sm" onClick={onPlay}>
+        Play ▶
+      </RaisedButton>
     </Card>
   )
 }
@@ -225,8 +285,8 @@ function SuggestionCard({
 }: {
   suggestion: NonNullable<SessionReport['suggestion']>
 }) {
-  const setChordAside = usePractice((s) => s.setChordAside)
-  const openChordForPlay = usePractice((s) => s.openChordForPlay)
+  const setAside = usePractice((s) => s.setPathComboAside)
+  const openCombo = usePractice((s) => s.openPathCombo)
   const [done, setDone] = useState(false)
   const [dismissed, setDismissed] = useState(false)
   if (dismissed) return null
@@ -239,7 +299,7 @@ function SuggestionCard({
           aside ? (
             <>
               <b className="text-ink">{suggestion.label}</b> set aside — it
-              won&rsquo;t be dealt, and it won&rsquo;t hold up the next unlock.
+              won&rsquo;t be dealt, and it won&rsquo;t hold up the path.
             </>
           ) : (
             <>
@@ -249,7 +309,7 @@ function SuggestionCard({
         ) : aside ? (
           <>
             <b className="text-ink">{suggestion.label}</b> is what&rsquo;s
-            dragging this preset down. Set it aside for now?
+            dragging this session down. Set it aside for now?
           </>
         ) : (
           <>
@@ -264,8 +324,8 @@ function SuggestionCard({
             variant="outline"
             size="sm"
             onClick={() => {
-              if (aside) setChordAside(suggestion.chordKey)
-              else openChordForPlay(suggestion.chordKey)
+              if (aside) setAside(suggestion.chordKey)
+              else openCombo(suggestion.chordKey)
               setDone(true)
             }}
           >
