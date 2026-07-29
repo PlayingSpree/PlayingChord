@@ -5,6 +5,7 @@ import {
   FIRST_TRY_STREAK_DISPLAY_MIN,
   FAST_TIME_MS,
   MAX_TIME_TO_CORRECT_MS,
+  modeRecordsReps,
   SLOW_TIME_MS,
   type ChordNameSize,
   type Hint,
@@ -88,6 +89,7 @@ export function PromptCard() {
               )}
             >
               {next2[0].label}
+              {next2[0].review && <ReviewTag />}
             </span>
           )}
           {next2[1] && (
@@ -98,6 +100,7 @@ export function PromptCard() {
               )}
             >
               {next2[1].label}
+              {next2[1].review && <ReviewTag />}
             </span>
           )}
         </div>
@@ -131,6 +134,17 @@ export function PromptCard() {
   )
 }
 
+// Backfill in the learning loop (§3.1): already-passed material mixed in beside
+// the batch. Named in the upcoming row so a chord the player has already learned
+// coming round again reads as review rather than as a chord they got wrong.
+function ReviewTag() {
+  return (
+    <span className="ml-2 align-middle text-sm font-semibold text-ink-faint">
+      review
+    </span>
+  )
+}
+
 // The fixed-height feedback line (§7.3): a pill under the prompt. Always pairs
 // color with an icon (§6.4); misses are visual-only (§9). The combo streak
 // rides the ✔ flash once it reaches 10; a Practice answer past the §7.5 D/F
@@ -145,6 +159,7 @@ function FeedbackPill() {
   const hint = usePractice((s) => s.hint)
   const song = usePractice((s) => s.song)
   const mode = usePractice((s) => s.mode)
+  const introRep = usePractice((s) => s.introRep)
   const justLearned = usePractice((s) => s.justLearned)
   const gradeUp = usePractice((s) => s.gradeUp)
 
@@ -167,7 +182,9 @@ function FeedbackPill() {
     // exactly the reps that would grade the combo F on speed alone. Amber, not
     // F's red: this is one rep, a warning about pace, while the red letter is a
     // verdict on a whole window of them.
-    const graded = mode === 'practice' && song === null
+    // The learning loop's non-intro reps are ordinary graded reps, so they earn
+    // the slow/fast chips too; its intro reps show the answer, so they don't.
+    const graded = modeRecordsReps(mode) && song === null && !introRep
     const slow = graded && reactionMs > SLOW_TIME_MS
     // Fast is the same idea from the other end (§7.3): A's second, so the chip
     // fires on exactly the reps that would grade the combo A on speed alone.
@@ -210,6 +227,15 @@ function FeedbackPill() {
     content = (
       <span className={cx(base, 'bg-danger-tint text-lg text-danger')}>
         ✕ {hintText(hint)}
+      </span>
+    )
+  } else if (introRep && song === null) {
+    // The learning loop's first look at a batch combo (§3.1). Says outright that
+    // nothing is counted, because the very next rep of the same chord *is* — and
+    // a player who thought the shown rep was being graded would rush it.
+    content = (
+      <span className={cx(base, 'bg-info-tint text-base text-info-light')}>
+        ◎ First look — shape shown, nothing counted
       </span>
     )
   } else if (mode === 'learn' && song === null) {

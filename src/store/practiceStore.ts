@@ -865,10 +865,15 @@ export function createPracticeStore({
         sessionChapterDone = update.chapter.id
       }
       commitPath(update.record)
-      // The pool's *membership* is pinned for the session, but the preview queue
-      // is dropped like on any other pool change: a combo that just passed
-      // should stop being weighted as outstanding from the next prompt on.
-      queue = []
+      // Only the learning loop redeals. Its pool membership is pinned for the
+      // session, but a combo that just passed should stop being weighted as
+      // outstanding from the next prompt on, so the preview is rebuilt.
+      //
+      // Free practice deliberately does *not*: a pass on the path changes
+      // nothing about the preset being drilled, and re-rolling the upcoming row
+      // under the player because some other bookkeeping moved would be a visible
+      // twitch with no cause they could see.
+      if (get().mode === 'path-learn') queue = []
     }
 
     // The §5/§7 "worst chords only" pool, drawn from the persisted records:

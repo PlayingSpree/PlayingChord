@@ -4,6 +4,7 @@
 export * from './MidiGate'
 export * from './DevicePicker'
 export * from './PromptCard'
+export * from './StageView'
 export * from './KeyboardView'
 export * from './SettingsView'
 export * from './VoicingBuilder'
