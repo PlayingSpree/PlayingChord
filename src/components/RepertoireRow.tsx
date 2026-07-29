@@ -3,6 +3,7 @@ import { usePractice } from '../store/practiceStore'
 import { Card, RaisedButton, SectionLabel } from './ui'
 import { cx } from './cx'
 import { gradeText } from './grades'
+import type { DisplayGrade } from '../practice'
 
 // Home's repertoire row (DESIGN.md §4.1): every chord the path has passed, with
 // its live grade. What the v9 "In play" row did, keyed per combo now, because
@@ -108,7 +109,7 @@ function Chip({
   action,
 }: {
   label: string
-  grade: string | null
+  grade: DisplayGrade | null
   dimmed?: boolean
   action?: { glyph: string; run: () => void }
 }) {
@@ -116,7 +117,7 @@ function Chip({
     <>
       {dimmed && '💤 '}
       {label}
-      {grade !== null && <b className={gradeText(grade as never)}>{grade}</b>}
+      {grade !== null && <b className={gradeText(grade)}>{grade}</b>}
       {action && <span className="text-ink-muted">{action.glyph}</span>}
     </>
   )

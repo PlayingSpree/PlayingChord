@@ -13,7 +13,7 @@ import {
 import type { ImportResult } from '../storage'
 import { useSettings } from '../store/settingsStore'
 import { useLibrary } from '../store/libraryStore'
-import { practiceStore } from '../store/practiceStore'
+import { practiceStore, usePractice } from '../store/practiceStore'
 import { DevicePicker } from './DevicePicker'
 import { VoicingBuilder } from './VoicingBuilder'
 import { PresetEditor } from './PresetEditor'
@@ -243,7 +243,7 @@ function GoalSection() {
     practiceStore.getState().refreshGoal() // streak is derived against the goal
   }
   return (
-    <SettingsCard title="Goal & unlocks" hint="what keeps the streak alive">
+    <SettingsCard title="Goal & path" hint="what keeps the streak alive">
       <Row label="Daily goal">
         <Stepper
           label="daily goal minutes"
@@ -258,7 +258,52 @@ function GoalSection() {
           onIncrement={() => setGoal(settings.dailyGoalMinutes + 5)}
         />
       </Row>
+      <ResetPathRow />
     </SettingsCard>
+  )
+}
+
+// "Reset path" (§6): the one progress reset there is now, in place of the v9
+// per-preset ones. Two clicks rather than a dialog — it is destructive and
+// global, and the app has no modals by design (§7.4), so the confirmation is the
+// button admitting what it is.
+//
+// It does not return the player to chapter 1: reset clears the calibration latch,
+// so the next derivation re-reads their stat history and reopens the path at
+// whatever their playing actually proves (§5.2). Said on the control, because a
+// "reset" that silently kept progress would be more surprising than one that
+// didn't.
+function ResetPathRow() {
+  const resetPath = usePractice((s) => s.resetPath)
+  const [armed, setArmed] = useState(false)
+  const [done, setDone] = useState(false)
+  return (
+    <Row label="Reset path">
+      {done ? (
+        <span className="text-xs font-semibold text-ink-muted">
+          Reset — chapters you have history for reopened straight away
+        </span>
+      ) : armed ? (
+        <div className="flex items-center gap-2">
+          <SmallButton
+            onClick={() => {
+              resetPath()
+              setDone(true)
+            }}
+          >
+            Really reset
+          </SmallButton>
+          <SmallButton onClick={() => setArmed(false)}>Cancel</SmallButton>
+        </div>
+      ) : (
+        <SmallButton
+          onClick={() => setArmed(true)}
+          title="Start the path over; chords you have history for pass again on the next load"
+        >
+          Reset path
+        </SmallButton>
+      )}
+    </Row>
   )
 }
 
@@ -266,12 +311,10 @@ function LibraryRow({
   name,
   detail,
   onEdit,
-  onResetProgress,
 }: {
   name: string
   detail: string
   onEdit?: () => void
-  onResetProgress?: () => void
 }) {
   return (
     <li className="flex items-center justify-between gap-3 border-b border-track py-2 last:border-0 text-sm">
@@ -280,14 +323,6 @@ function LibraryRow({
         <span className="ml-2 font-semibold text-ink-muted">· {detail}</span>
       </div>
       <div className="flex items-center gap-2">
-        {onResetProgress && (
-          <SmallButton
-            onClick={onResetProgress}
-            title="Restart this preset's chord unlocks at the first few chords"
-          >
-            Reset progress
-          </SmallButton>
-        )}
         {onEdit ? (
           <SmallButton onClick={onEdit}>Edit</SmallButton>
         ) : (
@@ -378,8 +413,6 @@ function PresetsSection({
   onClose: () => void
 }) {
   const customPresets = useLibrary((s) => s.customPresets)
-  const resetProgress = (presetId: string) =>
-    practiceStore.getState().resetPresetProgress(presetId)
 
   return (
     <SettingsCard title="Presets" hint="what the generator draws from (§4)">
@@ -393,7 +426,6 @@ function PresetsSection({
                 key={preset.id}
                 name={preset.name}
                 detail={describePreset(preset)}
-                onResetProgress={() => resetProgress(preset.id)}
               />
             ))}
             {customPresets.map((preset) => (
@@ -402,7 +434,6 @@ function PresetsSection({
                 name={preset.name}
                 detail={describePreset(preset)}
                 onEdit={() => onEdit(preset)}
-                onResetProgress={() => resetProgress(preset.id)}
               />
             ))}
           </ul>

@@ -35,7 +35,6 @@ export function StageView({
   const ready = usePractice((s) => s.ready)
   const done = usePractice((s) => s.done)
   const sessionLength = usePractice((s) => s.sessionLength)
-  const progress = usePractice((s) => s.progress)
   const song = usePractice((s) => s.song)
   const songChapterId = usePractice((s) => s.songChapterId)
   const path = usePractice((s) => s.path)
@@ -69,8 +68,6 @@ export function StageView({
               sessionLength={sessionLength}
               todayMinutes={goal.todayMinutes}
               goalMinutes={goalMinutes}
-              unlocked={progress.unlocked}
-              total={progress.total}
               loopIndex={song?.loopIndex ?? 0}
               tempo={tempo}
             />
@@ -198,8 +195,6 @@ function FreePracticeCenter({
   sessionLength,
   todayMinutes,
   goalMinutes,
-  unlocked,
-  total,
   loopIndex,
   tempo,
 }: {
@@ -208,8 +203,6 @@ function FreePracticeCenter({
   sessionLength: number | null
   todayMinutes: number
   goalMinutes: number
-  unlocked: number
-  total: number
   loopIndex: number
   tempo: number
 }) {
@@ -243,14 +236,6 @@ function FreePracticeCenter({
           {goalMet
             ? '🔥 Streak safe'
             : `🔥 ${Math.floor(todayMinutes)} / ${goalMinutes} min`}
-        </span>
-      )}
-      {mode === 'learn' && (
-        <span className="flex items-center gap-1.5 text-sm font-semibold text-ink-muted">
-          🔓{' '}
-          <b className="text-info-light">
-            {unlocked}/{total}
-          </b>
         </span>
       )}
       {mode === 'song' && (

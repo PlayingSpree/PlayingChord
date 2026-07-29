@@ -8,7 +8,6 @@ import { SettingsView } from './components/SettingsView'
 import { StageView } from './components/StageView'
 import { PathMapView } from './components/PathMapView'
 import type { StartIntent } from './components/TodayCard'
-import { Toasts } from './components/Toasts'
 import { HomeView } from './components/HomeView'
 import { SessionSheet } from './components/SessionSheet'
 import { ReportView } from './components/ReportView'
@@ -244,7 +243,6 @@ export default function App() {
       {sheetOpen && (
         <SessionSheet onStart={startSession} onClose={closeSheet} />
       )}
-      <Toasts />
     </>
   )
 }

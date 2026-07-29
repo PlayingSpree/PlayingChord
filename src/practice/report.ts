@@ -40,15 +40,6 @@ export interface ReportBaseline {
   avgTimeMs: number | null
 }
 
-// The unlock banner (§7.4): the chords opened this session and the pool's
-// progress toward the next batch.
-export interface ReportUnlock {
-  labels: string[]
-  unlocked: number
-  passed: number
-  total: number
-}
-
 // The chapter banner (§4.4): what the session did to the guided path. Replaces
 // the unlock banner's per-preset framing — a batch completing names the next
 // batch, a chapter completing celebrates and offers its song. Null when the
@@ -162,7 +153,6 @@ export interface SessionReport {
   increment: { prompts: number; activeMinutes: number }
   passedLabels: string[]
   shaky: ShakyChord[]
-  unlocked: ReportUnlock | null
   chapter: ReportChapter | null
   // Backfill the learning loop mixed in (§3.1) — distinct labels and how many
   // prompts they took, so the Report can say review happened rather than
@@ -182,7 +172,6 @@ export interface SessionReportInput {
   lifetime: { prompts: number; activeMinutes: number }
   increment: { prompts: number; activeMinutes: number }
   passedLabels: readonly string[]
-  unlocked: ReportUnlock | null
   chapter: ReportChapter | null
   // The session's chords and the preset's benched ones, for the §5.2 offer.
   chords: readonly ReportChord[]
@@ -274,7 +263,6 @@ export function buildSessionReport(input: SessionReportInput): SessionReport {
     increment: input.increment,
     passedLabels: [...input.passedLabels],
     shaky,
-    unlocked: input.unlocked,
     chapter: input.chapter,
     reviewLabels,
     reviewPrompts,

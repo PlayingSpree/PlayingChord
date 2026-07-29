@@ -119,7 +119,6 @@ function input(
     lifetime: { prompts: 0, activeMinutes: 0 },
     increment: { prompts: 0, activeMinutes: 0 },
     passedLabels: [],
-    unlocked: null,
     chapter: null,
     chords: [],
     setAside: [],
@@ -185,22 +184,6 @@ describe('buildSessionReport (§7.4)', () => {
       { label: 'C', misses: 2 },
       { label: 'D', misses: 1 },
     ])
-  })
-
-  it('passes through lifetime, increment, passed and unlock data', () => {
-    const report = buildSessionReport(
-      input({
-        events: [timed('a', 'first-try', 1000)],
-        lifetime: { prompts: 400, activeMinutes: 200 },
-        increment: { prompts: 1, activeMinutes: 2.5 },
-        passedLabels: ['C maj7'],
-        unlocked: { labels: ['B♭ maj7'], unlocked: 7, passed: 5, total: 36 },
-      }),
-    )
-    expect(report.lifetime).toEqual({ prompts: 400, activeMinutes: 200 })
-    expect(report.increment).toEqual({ prompts: 1, activeMinutes: 2.5 })
-    expect(report.passedLabels).toEqual(['C maj7'])
-    expect(report.unlocked?.labels).toEqual(['B♭ maj7'])
   })
 })
 
