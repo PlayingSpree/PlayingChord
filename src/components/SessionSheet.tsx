@@ -2,14 +2,19 @@ import { useEffect, useMemo, useState } from 'react'
 import { practiceStore, usePractice } from '../store/practiceStore'
 import { settingsStore, useSettings } from '../store/settingsStore'
 import {
+  DAILY_CAP_MINUTES,
   MAX_SONG_TEMPO_BPM,
   MIN_SONG_TEMPO_BPM,
-  SESSION_LENGTHS,
+  SESSION_MINUTE_LENGTHS,
+  SESSION_PROMPT_LENGTHS,
   SONG_CHORD_COUNTS,
+  type SessionLength,
+  type SessionLengthUnit,
   type SessionMode,
 } from '../practice'
 import { ALL_PITCH_CLASSES, keyDisplayName, type PitchClass } from '../theory'
 import { Chip, RaisedButton, SectionLabel, Toggle } from './ui'
+import { MODE_LABELS, MODE_ORDER } from './modes'
 import { cx } from './cx'
 
 // The session sheet (DESIGN.md §7.2): a modal over Home or the Stage holding
@@ -24,25 +29,25 @@ import { cx } from './cx'
 // Song's tempo / chord count / show-example are the exception — they're
 // persisted preferences that apply from the next beat or progression (§7.3),
 // not session config, so they keep writing straight through to settings.
-const MODES: { id: SessionMode; label: string }[] = [
-  { id: 'learn', label: '🎓 Learn' },
-  { id: 'practice', label: '▶ Practice' },
-  { id: 'song', label: '♪ Song' },
-]
+// Length values per unit (§7.2), ∞ last in both. A unit switch rather than
+// one long row: prompts and minutes answer different questions ("give me 20
+// reps" vs "give me 10 minutes") and mixing them in a single row of chips
+// makes neither readable.
+const LENGTH_VALUES: Record<SessionLengthUnit, (number | null)[]> = {
+  prompts: [...SESSION_PROMPT_LENGTHS, null],
+  minutes: [...SESSION_MINUTE_LENGTHS, null],
+}
 
-const LENGTHS: { value: number | null; label: string }[] = [
-  ...SESSION_LENGTHS.map((n) => ({
-    value: n as number | null,
-    label: String(n),
-  })),
-  { value: null, label: '∞' },
+const UNITS: { id: SessionLengthUnit; label: string }[] = [
+  { id: 'prompts', label: 'Prompts' },
+  { id: 'minutes', label: 'Minutes' },
 ]
 
 interface Draft {
   presetId: string
   diatonicKey: PitchClass
   mode: SessionMode
-  sessionLength: number | null
+  sessionLength: SessionLength
   worstOnly: boolean
   notPassedOnly: boolean
 }
@@ -68,6 +73,13 @@ export function SessionSheet({
   })
   const patch = (fields: Partial<Draft>) =>
     setDraft((current) => ({ ...current, ...fields }))
+  const daily = draft.mode === 'daily'
+  // What daily practice would deal right now (§5.3) — read once per open,
+  // like the worst-only availability below: the sheet sits outside a session,
+  // so nothing can change under it while it's up.
+  const [learnedChords] = useState(() =>
+    practiceStore.getState().learnedChordCount(),
+  )
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -122,7 +134,11 @@ export function SessionSheet({
           </RaisedButton>
         </div>
 
-        <div className="flex flex-col gap-1.5">
+        {/* Daily practice draws from every preset's learned chords (§5.3), so
+            there is no preset to pick — the picker would look like it was
+            choosing the pool when it wasn't. It still governs the other three
+            modes, so it comes back with them. */}
+        <div className={cx('flex flex-col gap-1.5', daily && 'hidden')}>
           <SectionLabel>Preset</SectionLabel>
           <div className="flex gap-2">
             <select
@@ -157,21 +173,28 @@ export function SessionSheet({
         <div className="flex flex-col gap-1.5">
           <SectionLabel>Mode</SectionLabel>
           <div className="flex overflow-hidden rounded-[14px] border-2 border-card-border">
-            {MODES.map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => patch({ mode: m.id })}
-                className={cx(
-                  'flex-1 py-2.5 text-[15px] transition-colors',
-                  draft.mode === m.id
-                    ? 'bg-primary font-extrabold text-primary-ink'
-                    : 'font-semibold text-ink-muted hover:text-ink-soft',
-                )}
-              >
-                {m.label}
-              </button>
-            ))}
+            {MODE_ORDER.map((id) => {
+              // Nothing learned yet, nothing for daily to deal (§5.3).
+              const locked = id === 'daily' && learnedChords === 0
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  disabled={locked}
+                  onClick={() => patch({ mode: id })}
+                  className={cx(
+                    'flex-1 py-2.5 text-[13px] transition-colors',
+                    draft.mode === id
+                      ? 'bg-primary font-extrabold text-primary-ink'
+                      : locked
+                        ? 'font-semibold text-ink-faint'
+                        : 'font-semibold text-ink-muted hover:text-ink-soft',
+                  )}
+                >
+                  {MODE_LABELS[id]}
+                </button>
+              )
+            })}
           </div>
           {draft.mode === 'learn' && (
             <NotPassedOnlyRow
@@ -179,7 +202,8 @@ export function SessionSheet({
               onChange={(notPassedOnly) => patch({ notPassedOnly })}
             />
           )}
-          {draft.mode === 'practice' && (
+          {daily && <DailySettings learnedChords={learnedChords} />}
+          {draft.mode === 'free' && (
             <WorstOnlyRow
               presetId={draft.presetId}
               diatonicKey={draft.diatonicKey}
@@ -190,18 +214,54 @@ export function SessionSheet({
           {draft.mode === 'song' && <SongSettings />}
         </div>
 
-        {draft.mode !== 'song' && (
+        {/* Song runs until ended and daily runs to its own cap (§5.3), so the
+            length is Learn's and free practice's. */}
+        {(draft.mode === 'learn' || draft.mode === 'free') && (
           <div className="flex flex-col gap-1.5">
             <SectionLabel>Length</SectionLabel>
+            <div className="flex overflow-hidden rounded-[14px] border-2 border-card-border">
+              {UNITS.map((unit) => (
+                <button
+                  key={unit.id}
+                  type="button"
+                  onClick={() =>
+                    patch({
+                      sessionLength: {
+                        unit: unit.id,
+                        // Switching unit keeps ∞ but can't keep a number —
+                        // 20 prompts is not 20 minutes. Fall to the middle
+                        // value of the new unit, which is also its default.
+                        value:
+                          draft.sessionLength.value === null
+                            ? null
+                            : (LENGTH_VALUES[unit.id][1] ?? null),
+                      },
+                    })
+                  }
+                  className={cx(
+                    'flex-1 py-2 text-[14px] transition-colors',
+                    draft.sessionLength.unit === unit.id
+                      ? 'bg-info font-extrabold text-primary-ink'
+                      : 'font-semibold text-ink-muted hover:text-ink-soft',
+                  )}
+                >
+                  {unit.label}
+                </button>
+              ))}
+            </div>
             <div className="flex gap-2">
-              {LENGTHS.map((len) => (
+              {LENGTH_VALUES[draft.sessionLength.unit].map((value) => (
                 <Chip
-                  key={len.label}
-                  selected={draft.sessionLength === len.value}
-                  onClick={() => patch({ sessionLength: len.value })}
+                  key={value ?? '∞'}
+                  selected={draft.sessionLength.value === value}
+                  onClick={() =>
+                    patch({
+                      sessionLength: { unit: draft.sessionLength.unit, value },
+                    })
+                  }
                   className="px-3.5 py-1.5 text-sm"
                 >
-                  {len.label}
+                  {value ?? '∞'}
                 </Chip>
               ))}
             </div>
@@ -218,6 +278,40 @@ export function SessionSheet({
           Start ▶
         </RaisedButton>
       </div>
+    </div>
+  )
+}
+
+// Daily practice's whole configuration (§5.3): how long it runs, and a line
+// saying what it will deal. The cap is a persisted preference, not session
+// config — like Song's tempo it writes straight through as it's set, because
+// the point of the daily drill is that it is the same tomorrow.
+function DailySettings({ learnedChords }: { learnedChords: number }) {
+  const cap = useSettings((s) => s.settings.dailyCapMinutes)
+  const update = settingsStore.getState().update
+  return (
+    <div className="mt-1 flex flex-col gap-2.5">
+      <SettingRow label="Cap">
+        <div className="flex gap-1.5">
+          {DAILY_CAP_MINUTES.map((minutes) => (
+            <Chip
+              key={minutes}
+              selected={cap === minutes}
+              onClick={() => update({ dailyCapMinutes: minutes })}
+              className="px-3 py-1 text-sm"
+            >
+              {minutes}m
+            </Chip>
+          ))}
+        </div>
+      </SettingRow>
+      <p className="text-[13px] text-ink-muted">
+        Every chord you have learned, from every preset —{' '}
+        <b className="font-semibold text-ink-soft">
+          {learnedChords} chord{learnedChords === 1 ? '' : 's'}
+        </b>
+        . Unlocking stays in Learn and Free.
+      </p>
     </div>
   )
 }

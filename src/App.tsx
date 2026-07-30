@@ -14,7 +14,9 @@ import { ReportView } from './components/ReportView'
 import { ProgressView } from './components/ProgressView'
 import { ChordStatsView } from './components/ChordStatsView'
 import { Chip, RaisedButton } from './components/ui'
+import { MODE_LABELS } from './components/modes'
 import { cx } from './components/cx'
+import type { SessionLength } from './practice'
 import {
   SimulatedMidiSource,
   WebMidiSource,
@@ -245,26 +247,44 @@ function StageView({
   const ready = usePractice((s) => s.ready)
   const done = usePractice((s) => s.done)
   const sessionLength = usePractice((s) => s.sessionLength)
+  const sessionActiveMs = usePractice((s) => s.sessionActiveMs)
   const progress = usePractice((s) => s.progress)
   const notPassedOnly = usePractice((s) => s.notPassedOnly)
   const song = usePractice((s) => s.song)
   const goal = usePractice((s) => s.goal)
   const tempo = useSettings((s) => s.settings.songTempoBpm)
   const goalMinutes = useSettings((s) => s.settings.dailyGoalMinutes)
+  const dailyCapMinutes = useSettings((s) => s.settings.dailyCapMinutes)
 
-  const presetName = presets.find((p) => p.id === presetId)?.name ?? 'Practice'
-  const modeLabel =
-    mode === 'song' ? '♪ Song' : mode === 'learn' ? '🎓 Learn' : '▶ Practice'
-  // The length applies to Learn as well as Practice (§7.2), so both get the
-  // done/length readout; ∞ has no length to fill, so the bar tracks today's
-  // goal minutes instead — the one thing still on a clock in an endless
-  // session (§7.3).
-  const counted = mode !== 'song'
-  const bounded = sessionLength !== null && sessionLength > 0
+  // Daily practice has no preset behind it — it draws the chords already
+  // learned, wherever they were learned (§5.3) — so the label names the pool
+  // rather than a preset that isn't governing anything.
+  const presetName =
+    mode === 'daily'
+      ? 'Learned chords'
+      : (presets.find((p) => p.id === presetId)?.name ?? 'Practice')
+  const modeLabel = MODE_LABELS[mode]
+  // The length applies to Learn as well as the practice modes (§7.2), so all
+  // of them get a readout: prompts count reps, minutes count active time
+  // (daily's cap is always minutes, §5.3). ∞ has no length to fill, so the bar
+  // tracks today's goal minutes instead — the one thing still on a clock in an
+  // endless session (§7.3).
+  const length: SessionLength =
+    mode === 'daily'
+      ? { unit: 'minutes', value: dailyCapMinutes }
+      : sessionLength
+  const limit = length.value !== null && length.value > 0 ? length.value : null
+  const timed = length.unit === 'minutes'
+  const bounded = limit !== null
+  // Minutes read as whole minutes played; the bar keeps the sub-minute detail
+  // so it still creeps forward inside one.
+  const elapsed = timed ? Math.floor(sessionActiveMs / 60_000) : done
+  const filled = timed ? sessionActiveMs / 60_000 : done
   const pct =
-    sessionLength !== null && sessionLength > 0
-      ? Math.min(100, (100 * done) / sessionLength)
+    limit !== null
+      ? Math.min(100, (100 * filled) / limit)
       : Math.min(100, (100 * goal.todayMinutes) / Math.max(1, goalMinutes))
+  const counted = mode !== 'song'
   const goalMet = goal.todayMinutes >= goalMinutes
 
   return (
@@ -287,7 +307,11 @@ function StageView({
         )}
         {counted && (
           <span className="text-sm font-semibold tabular-nums text-ink-muted">
-            {bounded ? `${done} / ${sessionLength}` : done}
+            {bounded
+              ? timed
+                ? `⏱ ${elapsed} / ${limit} min`
+                : `${elapsed} / ${limit}`
+              : done}
           </span>
         )}
         {/* ∞ has no length to run out, so the streak does the pacing (§7.3):

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  DEFAULT_SESSION_LENGTH,
   sanitizeSessionLength,
+  sessionLengthReached,
   summarizeSession,
   type SessionEvent,
 } from './session'
@@ -49,20 +51,65 @@ describe('summarizeSession (§7 end-of-session summary)', () => {
 })
 
 describe('sanitizeSessionLength (§7.2)', () => {
-  it('keeps null as ∞', () => {
-    expect(sanitizeSessionLength(null)).toBeNull()
+  it('keeps null as ∞, in either unit', () => {
+    expect(sanitizeSessionLength({ unit: 'prompts', value: null })).toEqual({
+      unit: 'prompts',
+      value: null,
+    })
+    expect(sanitizeSessionLength({ unit: 'minutes', value: null })).toEqual({
+      unit: 'minutes',
+      value: null,
+    })
   })
 
-  it('rounds positive counts', () => {
-    expect(sanitizeSessionLength(10)).toBe(10)
-    expect(sanitizeSessionLength(20)).toBe(20)
-    expect(sanitizeSessionLength(40.4)).toBe(40)
+  it('rounds positive counts and keeps the unit', () => {
+    expect(sanitizeSessionLength({ unit: 'prompts', value: 40.4 })).toEqual({
+      unit: 'prompts',
+      value: 40,
+    })
+    expect(sanitizeSessionLength({ unit: 'minutes', value: 10 })).toEqual({
+      unit: 'minutes',
+      value: 10,
+    })
   })
 
-  it('falls back to the default on junk', () => {
-    expect(sanitizeSessionLength(0)).toBe(20)
-    expect(sanitizeSessionLength(-5)).toBe(20)
-    expect(sanitizeSessionLength(NaN)).toBe(20)
-    expect(sanitizeSessionLength('10')).toBe(20)
+  it('falls back to the default value on a junk count', () => {
+    for (const value of [0, -5, NaN, '10']) {
+      expect(sanitizeSessionLength({ unit: 'minutes', value })).toEqual({
+        unit: 'minutes',
+        value: 20,
+      })
+    }
+  })
+
+  it('falls back whole on a junk length, and to prompts on a junk unit', () => {
+    expect(sanitizeSessionLength(null)).toEqual(DEFAULT_SESSION_LENGTH)
+    expect(sanitizeSessionLength(20)).toEqual(DEFAULT_SESSION_LENGTH)
+    expect(sanitizeSessionLength({ unit: 'bars', value: 10 })).toEqual({
+      unit: 'prompts',
+      value: 10,
+    })
+  })
+})
+
+describe('sessionLengthReached (§7.2)', () => {
+  const prompts = (value: number | null) =>
+    ({ unit: 'prompts', value }) as const
+  const minutes = (value: number | null) =>
+    ({ unit: 'minutes', value }) as const
+
+  it('never ends an ∞ session', () => {
+    expect(sessionLengthReached(prompts(null), 999, 9e9)).toBe(false)
+    expect(sessionLengthReached(minutes(null), 999, 9e9)).toBe(false)
+  })
+
+  it('counts prompts against a prompt length', () => {
+    expect(sessionLengthReached(prompts(20), 19, 9e9)).toBe(false)
+    expect(sessionLengthReached(prompts(20), 20, 0)).toBe(true)
+  })
+
+  it('counts active time against a minute length', () => {
+    expect(sessionLengthReached(minutes(10), 999, 9 * 60_000)).toBe(false)
+    expect(sessionLengthReached(minutes(10), 0, 10 * 60_000)).toBe(true)
   })
 })

@@ -15,6 +15,29 @@ artifact and are not recoverable.
 
 ---
 
+## 9.11.0 — 2026-07-30
+
+**Two ways to practice.** Practice splits into **Daily** and **Free** (§7.1,
+§7.2, §7.3). Free is the old mode under a new name — a preset, its unlock gate,
+its narrows, a chosen length. Daily is the drill that needs no choosing: every
+chord already *passed*, in every preset at once, deduplicated by combo, run to a
+persisted time cap (§5.3, new). The pool is drawn from passed chords for a
+reason beyond the obvious one — everything in it is passed already and passing
+is a latch, so daily practice can move no unlock queue and needs no rule saying
+it doesn't. It still records per-combo stats, which is what makes it maintenance
+rather than rehearsal: a chord that rots shows up in its grade and is weighted
+back to the front. Chords set aside by hand (§5.2) stay out of it, and with
+nothing learned yet the mode reads locked rather than dealing an empty session.
+The Report's set-aside offer stays free-practice-only (§7.4): a cross-preset
+session has no one preset for it to act on.
+
+Session length gains a **unit** (§7.2). Prompts still offers 10/20/40/∞; minutes
+offers 5/10/15/∞ and counts *active* time — the same clock the daily goal uses —
+so a timed session can't run out while nobody is at the keyboard, and a length
+is only ever checked between prompts, so it never cuts a rep off mid-attempt.
+Daily's cap is always minutes and lives in settings rather than the session
+draft: the point of a daily drill is that it is the same tomorrow.
+
 ## 9.10.0 — 2026-07-27
 
 **Worst chords only, actually reachable.** The Practice toggle (§7.2) was gated

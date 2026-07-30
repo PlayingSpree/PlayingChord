@@ -71,6 +71,7 @@ describe('sanitizeSettings', () => {
       judgmentDelayMs: 750,
       autoAdvanceMs: 1200,
       dailyGoalMinutes: 20,
+      dailyCapMinutes: 15,
       staffEnabled: false,
       staffKeyEnabled: true,
       chimeEnabled: false,

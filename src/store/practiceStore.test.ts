@@ -118,7 +118,7 @@ function setup(
     store.getState().ready()
     // Default to ∞ so length-agnostic tests can drill as many prompts as they
     // like; the session-length suite sets its own length explicitly.
-    store.getState().setSessionLength(null)
+    store.getState().setSessionLength({ unit: 'prompts', value: null })
   }
   return { store, press, release, releaseAll }
 }
@@ -974,7 +974,7 @@ describe('practiceStore — session stats & worst chords (§7)', () => {
     s.store.getState().setMode('learn')
     expect(s.store.getState().firstTryStreak).toBe(0)
 
-    s.store.getState().setMode('practice')
+    s.store.getState().setMode('free')
     playCorrectAndAdvance(s, s.store.getState().prompt!)
     expect(s.store.getState().firstTryStreak).toBe(1) // starts over, not at 3
   })
@@ -1183,7 +1183,7 @@ describe('practiceStore — Learn mode (§7)', () => {
     s.press(...correctNotes(s.store.getState().prompt!))
     expect(s.store.getState().phase).toBe('advancing')
 
-    s.store.getState().setMode('practice')
+    s.store.getState().setMode('free')
     expect(stats.get('0:maj:any')).toBeNull()
     expect(s.store.getState().session.prompts).toBe(0)
   })
@@ -1318,7 +1318,7 @@ describe('practiceStore — session length & report (§7.2/§7.4)', () => {
 
   it('reaching the length ends the session and builds a report', () => {
     const s = setup({ presets: onePreset })
-    s.store.getState().setSessionLength(3)
+    s.store.getState().setSessionLength({ unit: 'prompts', value: 3 })
     for (let i = 0; i < 3; i++) {
       playCorrectAndAdvance(s, s.store.getState().prompt!)
     }
@@ -1357,7 +1357,7 @@ describe('practiceStore — session length & report (§7.2/§7.4)', () => {
   it('a Learn prompt consumes a length slot without being recorded', () => {
     const s = setup({ presets: onePreset })
     s.store.getState().setMode('learn')
-    s.store.getState().setSessionLength(2)
+    s.store.getState().setSessionLength({ unit: 'prompts', value: 2 })
     playCorrectAndAdvance(s, s.store.getState().prompt!) // slot 1
     expect(s.store.getState().report).toBeNull()
     expect(s.store.getState().done).toBe(1)
@@ -1372,7 +1372,7 @@ describe('practiceStore — session length & report (§7.2/§7.4)', () => {
 
   it('∞ length never auto-ends', () => {
     const s = setup({ presets: onePreset })
-    s.store.getState().setSessionLength(null)
+    s.store.getState().setSessionLength({ unit: 'prompts', value: null })
     for (let i = 0; i < 25; i++) {
       playCorrectAndAdvance(s, s.store.getState().prompt!)
     }
@@ -1407,7 +1407,7 @@ describe('practiceStore — session length & report (§7.2/§7.4)', () => {
 
   it('input and start are ignored while a report is open', () => {
     const s = setup({ presets: onePreset })
-    s.store.getState().setSessionLength(1)
+    s.store.getState().setSessionLength({ unit: 'prompts', value: 1 })
     playCorrectAndAdvance(s, s.store.getState().prompt!)
     expect(s.store.getState().report).not.toBeNull()
 
@@ -1420,7 +1420,7 @@ describe('practiceStore — session length & report (§7.2/§7.4)', () => {
 
   it('dismissing the report and starting again begins a fresh session', () => {
     const s = setup({ presets: onePreset })
-    s.store.getState().setSessionLength(1)
+    s.store.getState().setSessionLength({ unit: 'prompts', value: 1 })
     playCorrectAndAdvance(s, s.store.getState().prompt!)
     expect(s.store.getState().report).not.toBeNull()
 
@@ -1437,7 +1437,7 @@ describe('practiceStore — session length & report (§7.2/§7.4)', () => {
   it('a Learn session reports prompts played but no grade (§7.4)', () => {
     const s = setup({ presets: onePreset })
     s.store.getState().setMode('learn')
-    s.store.getState().setSessionLength(2)
+    s.store.getState().setSessionLength({ unit: 'prompts', value: 2 })
     for (let i = 0; i < 2; i++) {
       playCorrectAndAdvance(s, s.store.getState().prompt!)
     }
@@ -1447,6 +1447,181 @@ describe('practiceStore — session length & report (§7.2/§7.4)', () => {
     expect(report!.grade).toBeNull()
     expect(report!.promptsPlayed).toBe(2)
     expect(report!.recordedPrompts).toBe(0) // Learn is stats-neutral (§5)
+  })
+
+  it('a minutes length ends the session on active time, not prompts', () => {
+    const s = setup({ presets: onePreset })
+    s.store.getState().setSessionLength({ unit: 'minutes', value: 5 })
+    // Each rep contributes the gap since the previous held-note event, and
+    // only if that gap is inside the idle window (activeTime.ts) — so ~21 s of
+    // playing per prompt reaches 5 minutes in 16, many more prompts than any
+    // prompt length would have allowed.
+    for (let i = 0; i < 15; i++) {
+      vi.advanceTimersByTime(20_000)
+      playCorrectAndAdvance(s, s.store.getState().prompt!)
+    }
+    expect(s.store.getState().report).toBeNull()
+    expect(s.store.getState().sessionActiveMs).toBeGreaterThan(4 * 60_000)
+
+    vi.advanceTimersByTime(20_000)
+    playCorrectAndAdvance(s, s.store.getState().prompt!)
+    expect(s.store.getState().report).not.toBeNull()
+    expect(s.store.getState().report!.promptsPlayed).toBe(16)
+  })
+
+  it('idling never runs a timed session out', () => {
+    const s = setup({ presets: onePreset })
+    s.store.getState().setSessionLength({ unit: 'minutes', value: 5 })
+    // Gaps past the idle window earn no active time (§7.6), so an hour of
+    // walking away leaves the cap exactly where it was.
+    for (let i = 0; i < 10; i++) {
+      vi.advanceTimersByTime(6 * 60_000)
+      playCorrectAndAdvance(s, s.store.getState().prompt!)
+    }
+    expect(s.store.getState().report).toBeNull()
+    expect(s.store.getState().sessionActiveMs).toBeLessThan(60_000)
+  })
+})
+
+// Daily practice (§5.3): the maintenance drill over every chord already
+// learned, wherever it was learned, run to a persisted time cap.
+describe('practiceStore — daily practice (§5.3)', () => {
+  // Two presets: C/D major learned in the first, F minor in the second, and
+  // E major reached but not passed anywhere.
+  const twoPresets = (): readonly Preset[] => [
+    {
+      id: 'first',
+      name: 'First',
+      pool: {
+        kind: 'explicit',
+        chords: [
+          { root: 0, typeId: 'maj' },
+          { root: 2, typeId: 'maj' },
+          { root: 4, typeId: 'maj' },
+          { root: 7, typeId: 'maj' },
+        ],
+      },
+      voicingIds: ['any'],
+    },
+    {
+      id: 'second',
+      name: 'Second',
+      pool: { kind: 'explicit', chords: [{ root: 5, typeId: 'min' }] },
+      voicingIds: ['any'],
+    },
+  ]
+
+  const learnedProgress = () => {
+    const progress = new InMemoryPresetProgress()
+    progress.set('first', {
+      unlockedCount: 4,
+      // C maj, D maj learned; E maj and G maj unlocked but not passed.
+      masteredIndices: [0, 1],
+      setAsideIndices: [],
+    })
+    progress.set('second', {
+      unlockedCount: 1,
+      masteredIndices: [0], // F min
+      setAsideIndices: [],
+    })
+    return progress
+  }
+
+  const dailySetup = (
+    extra: Parameters<typeof createPracticeStore>[0] = {},
+  ) => {
+    const s = setup(
+      { presets: twoPresets, progress: learnedProgress(), ...extra },
+      false,
+    )
+    s.store.getState().setMode('daily')
+    enterStage(s)
+    return s
+  }
+
+  it('counts the learned chords of every preset', () => {
+    const s = setup({ presets: twoPresets, progress: learnedProgress() }, false)
+    expect(s.store.getState().learnedChordCount()).toBe(3)
+  })
+
+  it('deals learned chords from every preset and nothing else', () => {
+    const s = dailySetup()
+    const seen = new Set<string>()
+    for (let i = 0; i < 30; i++) {
+      const prompt = s.store.getState().prompt!
+      seen.add(`${prompt.chord.root}:${prompt.chord.type.id}`)
+      playSlowAndAdvance(s, prompt)
+    }
+    expect([...seen].sort()).toEqual(['0:maj', '2:maj', '5:min'])
+  })
+
+  it('records outcomes like free practice does', () => {
+    const stats = new InMemoryComboStats()
+    const s = dailySetup({ stats })
+    const prompt = s.store.getState().prompt!
+    playCorrectAndAdvance(s, prompt)
+    expect(stats.get(promptComboKey(prompt))?.attempts).toBe(1)
+  })
+
+  it('never moves the selected preset’s unlock progress', () => {
+    // The active preset is the first, where E maj and G maj are unlocked but
+    // unpassed — daily deals neither, and passes nothing it does deal.
+    const progress = learnedProgress()
+    const s = dailySetup({ progress })
+    for (let i = 0; i < 20; i++) {
+      playCorrectAndAdvance(s, s.store.getState().prompt!)
+      expect(s.store.getState().justLearned).toBe(false)
+    }
+    expect(s.store.getState().progress).toMatchObject({
+      unlocked: 4,
+      passed: 2,
+    })
+    expect(progress.get('first')).toEqual({
+      unlockedCount: 4,
+      masteredIndices: [0, 1],
+      setAsideIndices: [],
+    })
+  })
+
+  it('runs to the persisted cap rather than the drafted length', () => {
+    const s = dailySetup({
+      settings: () => ({ ...DEFAULT_PRACTICE_SETTINGS, dailyCapMinutes: 5 }),
+    })
+    // A prompt length is set but must not apply — the cap is minutes (§5.3).
+    s.store.getState().setSessionLength({ unit: 'prompts', value: 2 })
+    for (let i = 0; i < 15; i++) {
+      vi.advanceTimersByTime(20_000)
+      playCorrectAndAdvance(s, s.store.getState().prompt!)
+    }
+    expect(s.store.getState().report).toBeNull()
+
+    vi.advanceTimersByTime(20_000)
+    playCorrectAndAdvance(s, s.store.getState().prompt!)
+    expect(s.store.getState().report).not.toBeNull()
+    expect(s.store.getState().report!.mode).toBe('daily')
+    expect(s.store.getState().report!.suggestion).toBeNull() // free only (§7.4)
+  })
+
+  it('picks up chords passed in free practice without a reload', () => {
+    const s = setup({ presets: twoPresets, progress: learnedProgress() }, false)
+    expect(s.store.getState().learnedChordCount()).toBe(3)
+
+    // Pass the rest of the active preset in free practice — clean, fast reps
+    // until each grades D or better (§5.1) — and the daily pool grows with it.
+    enterStage(s)
+    s.store.getState().setSessionLength({ unit: 'prompts', value: null })
+    for (let i = 0; i < 40; i++) {
+      playCorrectAndAdvance(s, s.store.getState().prompt!)
+    }
+    expect(s.store.getState().progress.passed).toBe(4)
+    expect(s.store.getState().learnedChordCount()).toBe(5)
+  })
+
+  it('drops a set-aside chord out of the daily pool too (§5.2)', () => {
+    const s = setup({ presets: twoPresets, progress: learnedProgress() }, false)
+    s.store.getState().setChordAside('0:maj')
+    expect(s.store.getState().progress.setAside).toBe(1)
+    expect(s.store.getState().learnedChordCount()).toBe(2)
   })
 })
 
@@ -1655,7 +1830,7 @@ describe('practiceStore — session lifecycle (§7.2)', () => {
 
     s.store.getState().setMode('learn')
     s.store.getState().setNotPassedOnly(true)
-    s.store.getState().setSessionLength(10)
+    s.store.getState().setSessionLength({ unit: 'prompts', value: 10 })
 
     expect(s.store.getState().prompt).toBeNull()
     expect(s.store.getState().phase).toBe('idle')
@@ -1694,7 +1869,7 @@ describe('practiceStore — session lifecycle (§7.2)', () => {
 
   it('a config change between sessions never leaks into the next one', () => {
     const s = setup({ presets: onePreset }, false)
-    s.store.getState().setSessionLength(2)
+    s.store.getState().setSessionLength({ unit: 'prompts', value: 2 })
     enterStage(s)
     for (let i = 0; i < 2; i++) {
       playCorrectAndAdvance(s, s.store.getState().prompt!)
@@ -1702,7 +1877,7 @@ describe('practiceStore — session lifecycle (§7.2)', () => {
     expect(s.store.getState().report!.recordedPrompts).toBe(2)
     s.store.getState().dismissReport()
 
-    s.store.getState().setMode('practice') // already practice — a no-op
+    s.store.getState().setMode('free') // already practice — a no-op
     s.store.getState().setPreset('test') // the sheet's picker, unchanged
     expect(s.store.getState().prompt).toBeNull()
 
@@ -1723,7 +1898,7 @@ describe('practiceStore — session lifecycle (§7.2)', () => {
     // The §6.1 gate raised by an unplug, or the session sheet opened over the
     // Stage: the Stage unmounts and remounts around the same session.
     const s = setup({ presets: onePreset }, false)
-    s.store.getState().setSessionLength(null)
+    s.store.getState().setSessionLength({ unit: 'prompts', value: null })
     enterStage(s)
     playCorrectAndAdvance(s, s.store.getState().prompt!)
 
@@ -1738,7 +1913,7 @@ describe('practiceStore — session lifecycle (§7.2)', () => {
 
   it('a resumed session reports everything it played, across the pause', () => {
     const s = setup({ presets: onePreset }, false)
-    s.store.getState().setSessionLength(null)
+    s.store.getState().setSessionLength({ unit: 'prompts', value: null })
     enterStage(s)
     playCorrectAndAdvance(s, s.store.getState().prompt!)
     s.store.getState().pause()
@@ -1751,7 +1926,7 @@ describe('practiceStore — session lifecycle (§7.2)', () => {
 
   it('discardSession makes the next start a fresh session', () => {
     const s = setup({ presets: onePreset }, false)
-    s.store.getState().setSessionLength(null)
+    s.store.getState().setSessionLength({ unit: 'prompts', value: null })
     enterStage(s)
     playCorrectAndAdvance(s, s.store.getState().prompt!)
 
@@ -1867,7 +2042,7 @@ describe('practiceStore — pause/resume (Phase 7 History nav)', () => {
 
   it('start never deals a prompt over an open report', () => {
     const s = setup({ presets: onePreset })
-    s.store.getState().setSessionLength(1)
+    s.store.getState().setSessionLength({ unit: 'prompts', value: 1 })
     playCorrectAndAdvance(s, s.store.getState().prompt!) // reaches length → report
     expect(s.store.getState().report).not.toBeNull()
 
@@ -2093,7 +2268,7 @@ describe('practiceStore — Song mode (§6.5)', () => {
     const stats = new InMemoryComboStats()
     const s = enterSong({ stats })
     vi.advanceTimersByTime(BAR + BEAT) // a bar in flight
-    s.store.getState().setMode('practice')
+    s.store.getState().setMode('free')
     const state = s.store.getState()
     expect(state.song).toBeNull()
     expect(state.songChords).toEqual([])

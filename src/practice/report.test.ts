@@ -111,7 +111,7 @@ function input(
   overrides: Partial<SessionReportInput> = {},
 ): SessionReportInput {
   return {
-    mode: 'practice',
+    mode: 'free',
     promptsPlayed: 0,
     events: [],
     records: {},
@@ -219,7 +219,7 @@ describe('pickSuggestion (§5.2 set-aside offer)', () => {
 
   it('offers the most-missed failing chord after an F session', () => {
     const suggestion = pickSuggestion(
-      'practice',
+      'free',
       'F',
       [chord('C', 'F', 1), chord('D', 'F', 4), chord('E', 'C', 6)],
       [],
@@ -233,30 +233,23 @@ describe('pickSuggestion (§5.2 set-aside offer)', () => {
 
   it('breaks a tie on label, so an identical report offers the same chord', () => {
     const chords = [chord('D', 'F', 2), chord('B', 'F', 2)]
-    expect(pickSuggestion('practice', 'F', chords, [])?.label).toBe('B')
+    expect(pickSuggestion('free', 'F', chords, [])?.label).toBe('B')
   })
 
   it('says nothing when the session graded F but no chord did', () => {
     // A slow-but-accurate session: the letter is the pace, not one chord.
     expect(
-      pickSuggestion(
-        'practice',
-        'F',
-        [chord('C', 'C', 0), chord('D', 'D', 1)],
-        [],
-      ),
+      pickSuggestion('free', 'F', [chord('C', 'C', 0), chord('D', 'D', 1)], []),
     ).toBeNull()
   })
 
   it('never offers an unproven chord — `new` needs reps, not a bench', () => {
-    expect(
-      pickSuggestion('practice', 'F', [chord('C', 'new', 3)], []),
-    ).toBeNull()
+    expect(pickSuggestion('free', 'F', [chord('C', 'new', 3)], [])).toBeNull()
   })
 
   it('says nothing when the floor already blocks the move', () => {
     expect(
-      pickSuggestion('practice', 'F', [chord('C', 'F', 3, false)], []),
+      pickSuggestion('free', 'F', [chord('C', 'F', 3, false)], []),
     ).toBeNull()
   })
 
@@ -264,22 +257,20 @@ describe('pickSuggestion (§5.2 set-aside offer)', () => {
     const chords = [chord('C', 'F', 3)]
     expect(pickSuggestion('learn', 'F', chords, [])).toBeNull()
     expect(pickSuggestion('song', 'F', chords, [])).toBeNull()
-    expect(pickSuggestion('practice', null, chords, [])).toBeNull()
+    expect(pickSuggestion('free', null, chords, [])).toBeNull()
   })
 
   it('offers a benched chord back after a strong session', () => {
     const waiting = [{ chordKey: 'k:F♯', label: 'F♯' }]
-    expect(pickSuggestion('practice', 'A', [], waiting)).toEqual({
+    expect(pickSuggestion('free', 'A', [], waiting)).toEqual({
       kind: 'bring-back',
       chordKey: 'k:F♯',
       label: 'F♯',
     })
-    expect(pickSuggestion('practice', 'S', [], waiting)?.kind).toBe(
-      'bring-back',
-    )
+    expect(pickSuggestion('free', 'S', [], waiting)?.kind).toBe('bring-back')
     // Mid-scale sessions leave it alone, either way.
-    expect(pickSuggestion('practice', 'B', [], waiting)).toBeNull()
-    expect(pickSuggestion('practice', 'A', [], [])).toBeNull()
+    expect(pickSuggestion('free', 'B', [], waiting)).toBeNull()
+    expect(pickSuggestion('free', 'A', [], [])).toBeNull()
   })
 
   it('rides along on the built report', () => {

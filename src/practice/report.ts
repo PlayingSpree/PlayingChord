@@ -86,9 +86,11 @@ const BRING_BACK_MIN_GRADE: readonly ComboGrade[] = ['S', 'A']
 // When the Report offers to set a chord aside (§7.4). Deliberately narrow, so
 // it needs no "don't show this again" memory of its own:
 //
-//  - Practice only. Learn is stats-neutral (§5) and Song isn't gated by
+//  - Free practice only. Learn is stats-neutral (§5) and Song isn't gated by
 //    unlocks at all (§6.5), so setting a chord aside wouldn't change what
-//    either of them deals.
+//    either of them deals — and daily practice (§5.3) draws across every
+//    preset, so an offer made after one would act on whichever preset happens
+//    to be selected rather than on the pool that was just played.
 //  - The *session* graded F, and
 //  - some chord in it is *currently* graded F too. A session can grade F on
 //    pace alone with every chord sitting at C; naming a scapegoat there would
@@ -103,7 +105,7 @@ export function pickSuggestion(
   chords: readonly ReportChord[],
   setAside: readonly { chordKey: string; label: string }[],
 ): ReportSuggestion | null {
-  if (mode !== 'practice' || grade === null) return null
+  if (mode !== 'free' || grade === null) return null
   if (grade === 'F') {
     const candidate = chords
       .filter((chord) => chord.grade === 'F' && chord.canSetAside)

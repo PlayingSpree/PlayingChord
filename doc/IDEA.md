@@ -1,7 +1,14 @@
 # Idea
-- Practice loop - Split practice mode into daily practice (All learned chord + cap at set time) + free practice (custom choose preset + time)
-- Learning loop - Learn new unlocked chord or bad chord (F grade). Select few chord to learn. Practice until chord is D or better. (Don't count the stat for passed chord, that still need practice mode)
-- Preset calibation - calibate when using preset first time to quickly unlock known chord
-- Chord identification - sound to chord name or key press
+
+## Major
+
+- ~~Practice loop - Split practice mode into daily practice (All learned chord + cap at set time) + free practice (custom preset + time)~~ — shipped in 9.11.0 (DESIGN.md §5.3)
+- Learning loop - Learn new unlocked chord. Select few chord to learn. Practice until all chord is D or better (Keep at least 3. Filled with learned chord).
 - Preset revamp - preset page + preset maker (Maybe voicing + chord combo rework?)
-- Chord decay - Decay score the more time pass so it not just get S and done. Maybe add proficency metric? (Need more refinement how it will work)
+
+## Minor
+- Preset calibation - calibate when using preset first time to quickly unlock known chord
+- Song mode - Custom progression (Create your own song)
+
+## Extra
+- Chord identification - sound to chord name or key press

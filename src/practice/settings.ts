@@ -18,6 +18,11 @@ export interface PracticeSettings extends MatchSettings {
   autoAdvanceMs: number
   // Daily active-practice goal (§7), in minutes.
   dailyGoalMinutes: number
+  // Daily practice's time cap (§5.3), in active minutes. Persisted rather
+  // than drafted per session like the free-practice length (§7.2): the point
+  // of the daily drill is that it is the same every day, so how long it runs
+  // is a standing preference, not a pick.
+  dailyCapMinutes: number
   // Grand-staff notation (§3.4): shown whenever this is on, in both Learn
   // and Practice; off keeps name+keyboard-only practice first-class.
   staffEnabled: boolean
@@ -49,6 +54,7 @@ export const DEFAULT_PRACTICE_SETTINGS: PracticeSettings = {
   judgmentDelayMs: 500,
   autoAdvanceMs: 800,
   dailyGoalMinutes: 10,
+  dailyCapMinutes: 10,
   staffEnabled: true,
   staffKeyEnabled: false,
   chimeEnabled: true,
@@ -62,6 +68,17 @@ export const DEFAULT_PRACTICE_SETTINGS: PracticeSettings = {
 
 export const MAX_DELAY_MS = 10_000
 export const MAX_DAILY_GOAL_MINUTES = 1_440 // one full day
+
+// Daily practice's cap choices (§5.3) — offered as chips, so an off-list
+// value (hand-edited storage) falls back to the default rather than clamping
+// into a length no chip shows.
+export const DAILY_CAP_MINUTES: readonly number[] = [5, 10, 15, 20]
+
+export function sanitizeDailyCapMinutes(value: unknown): number {
+  return DAILY_CAP_MINUTES.includes(value as number)
+    ? (value as number)
+    : DEFAULT_PRACTICE_SETTINGS.dailyCapMinutes
+}
 
 // Song-mode tempo bounds (§6.5) and progression-length choices (§7).
 export const MIN_SONG_TEMPO_BPM = 40
@@ -130,6 +147,7 @@ export function sanitizeSettings(value: unknown): PracticeSettings {
       raw.dailyGoalMinutes,
       defaults.dailyGoalMinutes,
     ),
+    dailyCapMinutes: sanitizeDailyCapMinutes(raw.dailyCapMinutes),
     staffEnabled: asBoolean(raw.staffEnabled, defaults.staffEnabled),
     staffKeyEnabled: asBoolean(raw.staffKeyEnabled, defaults.staffKeyEnabled),
     chimeEnabled: asBoolean(raw.chimeEnabled, defaults.chimeEnabled),

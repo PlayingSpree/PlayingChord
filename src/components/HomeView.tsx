@@ -9,12 +9,9 @@ import {
   meetsGoal,
   weekFirstTryDelta,
 } from '../storage'
-import {
-  worstChordDisplayGrade,
-  type DisplayGrade,
-  type SessionMode,
-} from '../practice'
+import { worstChordDisplayGrade, type DisplayGrade } from '../practice'
 import { DevicePicker } from './DevicePicker'
+import { MODE_LABELS, MODE_ORDER, START_LABEL } from './modes'
 import { Card, Chip, RaisedButton, SectionLabel } from './ui'
 import { cx } from './cx'
 import { gradeText } from './grades'
@@ -25,17 +22,11 @@ import { gradeText } from './grades'
 // goal ring, a 14-day mini calendar, and the Progress button with this
 // week's first-try delta. `onOpenSheet` opens the session sheet for full
 // config (preset / mode / length, §7.2).
-const MODES: { id: SessionMode; label: string }[] = [
-  { id: 'learn', label: '🎓 Learn' },
-  { id: 'practice', label: '▶ Practice' },
-  { id: 'song', label: '♪ Song' },
-]
-
-const START_LABEL: Record<SessionMode, string> = {
-  learn: 'Start learning ▶',
-  practice: 'Start practicing ▶',
-  song: 'Start song ▶',
-}
+// The Continue card is about the *selected preset* — its unlock progress and
+// its in-play chords — which is what Learn, free practice and Song draw from.
+// Daily practice doesn't (§5.3: every preset's learned chords under a time
+// cap), so selecting it adds a line saying what it will deal instead; the
+// preset controls stay put, still configuring the other three.
 
 export function HomeView({
   onStart,
@@ -60,6 +51,8 @@ export function HomeView({
   const setChordAside = usePractice((s) => s.setChordAside)
   const openChordForPlay = usePractice((s) => s.openChordForPlay)
   const goalMinutes = useSettings((s) => s.settings.dailyGoalMinutes)
+  const dailyCapMinutes = useSettings((s) => s.settings.dailyCapMinutes)
+  const learnedChordCount = usePractice((s) => s.learnedChordCount)
   const customRules = useLibrary((s) => s.customRules)
   const [showLocked, setShowLocked] = useState(false)
   // The §5.2 by-hand pool controls. Behind a toggle rather than always on:
@@ -112,6 +105,15 @@ export function HomeView({
     // chordPassStatus is a stable store method; re-run on preset/progress/lib.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [presetId, progress, customRules])
+
+  // What daily practice would deal (§5.3), across every preset — read from
+  // the persisted records on the same triggers as the row above.
+  const learnedChords = useMemo(
+    () => learnedChordCount(),
+    // learnedChordCount is a stable store method; re-run on progress/library.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [presetId, progress, customRules],
+  )
 
   // 14-day mini calendar + this-week delta, read once per mount.
   const { calendar, week } = useMemo(() => {
@@ -292,17 +294,38 @@ export function HomeView({
             </div>
 
             <div className="mt-auto flex flex-wrap gap-2.5 pt-2">
-              {MODES.map((m) => (
-                <Chip
-                  key={m.id}
-                  selected={mode === m.id}
-                  onClick={() => setMode(m.id)}
-                  className="px-4 py-2.5 text-base"
-                >
-                  {m.label}
-                </Chip>
-              ))}
+              {MODE_ORDER.map((id) => {
+                // Daily has nothing to drill until something is learned
+                // (§5.3): it reads as locked, like a chord you haven't
+                // reached, rather than starting an empty session.
+                const locked = id === 'daily' && learnedChords === 0
+                return (
+                  <Chip
+                    key={id}
+                    selected={mode === id}
+                    tone={locked ? 'locked' : 'default'}
+                    title={
+                      locked
+                        ? 'Pass a chord first — daily practice drills the chords you have learned'
+                        : undefined
+                    }
+                    onClick={locked ? undefined : () => setMode(id)}
+                    className="px-4 py-2.5 text-base"
+                  >
+                    {MODE_LABELS[id]}
+                  </Chip>
+                )
+              })}
             </div>
+
+            {mode === 'daily' && (
+              <p className="text-[15px] text-ink-muted">
+                <b className="font-semibold text-ink-soft">
+                  {learnedChords} learned chord{learnedChords === 1 ? '' : 's'}
+                </b>{' '}
+                from every preset · {dailyCapMinutes} min cap
+              </p>
+            )}
 
             <RaisedButton
               variant="primary"
