@@ -49,7 +49,10 @@ interface Draft {
   mode: SessionMode
   sessionLength: SessionLength
   worstOnly: boolean
-  notPassedOnly: boolean
+  // The learn loop's chords (§5.4), as poolChordKeys. Re-derived from the
+  // drafted preset whenever that changes — the keys of one preset mean nothing
+  // in another.
+  learnSelection: readonly string[]
 }
 
 export function SessionSheet({
@@ -68,11 +71,24 @@ export function SessionSheet({
       mode: state.mode,
       sessionLength: state.sessionLength,
       worstOnly: state.worstOnly,
-      notPassedOnly: state.notPassedOnly,
+      learnSelection: state.learnSelection,
     }
   })
   const patch = (fields: Partial<Draft>) =>
     setDraft((current) => ({ ...current, ...fields }))
+  // Changing the drafted preset invalidates the learn set with it (§5.4): the
+  // keys name chords in a pool that is no longer the one being configured, so
+  // the picker reopens on the new preset's default.
+  const patchPreset = (fields: Partial<Draft>) =>
+    setDraft((current) => {
+      const next = { ...current, ...fields }
+      return {
+        ...next,
+        learnSelection: practiceStore
+          .getState()
+          .defaultLearnChoice(next.presetId, next.diatonicKey),
+      }
+    })
   const daily = draft.mode === 'daily'
   // What daily practice would deal right now (§5.3) — read once per open,
   // like the worst-only availability below: the sheet sits outside a session,
@@ -100,9 +116,13 @@ export function SessionSheet({
     store.setMode(draft.mode)
     store.setSessionLength(draft.sessionLength)
     store.setWorstOnly(draft.worstOnly)
-    store.setNotPassedOnly(draft.notPassedOnly)
+    store.setLearnSelection(draft.learnSelection)
     onStart()
   }
+
+  // The learn loop needs something to finish (§5.4); an empty set would end
+  // the session on its first rep.
+  const startable = draft.mode !== 'learn' || draft.learnSelection.length > 0
 
   const activePreset = presets.find((p) => p.id === draft.presetId)
 
@@ -143,7 +163,7 @@ export function SessionSheet({
           <div className="flex gap-2">
             <select
               value={draft.presetId}
-              onChange={(e) => patch({ presetId: e.target.value })}
+              onChange={(e) => patchPreset({ presetId: e.target.value })}
               aria-label="Preset"
               className={SELECT_CLASS}
             >
@@ -156,7 +176,9 @@ export function SessionSheet({
             {activePreset?.pool.kind === 'diatonic' && (
               <select
                 value={draft.diatonicKey}
-                onChange={(e) => patch({ diatonicKey: Number(e.target.value) })}
+                onChange={(e) =>
+                  patchPreset({ diatonicKey: Number(e.target.value) })
+                }
                 aria-label="Key"
                 className={SELECT_CLASS}
               >
@@ -197,9 +219,11 @@ export function SessionSheet({
             })}
           </div>
           {draft.mode === 'learn' && (
-            <NotPassedOnlyRow
-              value={draft.notPassedOnly}
-              onChange={(notPassedOnly) => patch({ notPassedOnly })}
+            <LearnSetPicker
+              presetId={draft.presetId}
+              diatonicKey={draft.diatonicKey}
+              selection={draft.learnSelection}
+              onChange={(learnSelection) => patch({ learnSelection })}
             />
           )}
           {daily && <DailySettings learnedChords={learnedChords} />}
@@ -214,9 +238,10 @@ export function SessionSheet({
           {draft.mode === 'song' && <SongSettings />}
         </div>
 
-        {/* Song runs until ended and daily runs to its own cap (§5.3), so the
-            length is Learn's and free practice's. */}
-        {(draft.mode === 'learn' || draft.mode === 'free') && (
+        {/* Song runs until ended, daily runs to its own cap (§5.3) and Learn
+            runs until its set is rehearsed (§5.4), so the length is free
+            practice's alone. */}
+        {draft.mode === 'free' && (
           <div className="flex flex-col gap-1.5">
             <SectionLabel>Length</SectionLabel>
             <div className="flex overflow-hidden rounded-[14px] border-2 border-card-border">
@@ -273,6 +298,7 @@ export function SessionSheet({
           variant="primary"
           size="lg"
           className="w-full"
+          disabled={!startable}
           onClick={start}
         >
           Start ▶
@@ -316,24 +342,84 @@ function DailySettings({ learnedChords }: { learnedChords: number }) {
   )
 }
 
-function NotPassedOnlyRow({
-  value,
+// The learn loop's chord set (§5.4). Every chord in play in the drafted preset
+// is offered; the ones not yet passed come pre-ticked, because "learn the new
+// ones" is what the mode is for and picking them by hand every time would be
+// busywork. Read of the *draft* preset, like WorstOnlyRow — the sheet's picks
+// don't reach the store until Start.
+//
+// A one- or two-chord set is fine to pick: the loop deals learned chords
+// alongside it to keep three in play (§5.4), and the line below says which,
+// so the pool is never a surprise on the Stage.
+function LearnSetPicker({
+  presetId,
+  diatonicKey,
+  selection,
   onChange,
 }: {
-  value: boolean
-  onChange: (next: boolean) => void
+  presetId: string
+  diatonicKey: PitchClass
+  selection: readonly string[]
+  onChange: (next: readonly string[]) => void
 }) {
-  const progress = usePractice((s) => s.progress)
-  const disabled = progress.unlocked === progress.passed && !value
+  const choices = useMemo(
+    () => practiceStore.getState().learnChoices(presetId, diatonicKey),
+    [presetId, diatonicKey],
+  )
+  const filler = useMemo(
+    () =>
+      practiceStore
+        .getState()
+        .learnFillerLabels(presetId, diatonicKey, selection),
+    [presetId, diatonicKey, selection],
+  )
+  const picked = new Set(selection)
+  // Kept in the pool's unlock order however they were ticked, so the set reads
+  // the same way the In play row does.
+  const toggle = (key: string) =>
+    onChange(
+      choices
+        .filter((c) => (c.key === key ? !picked.has(key) : picked.has(c.key)))
+        .map((c) => c.key),
+    )
+
   return (
-    <SettingRow label="Not passed only" disabled={disabled}>
-      <Toggle
-        checked={value}
-        onChange={onChange}
-        disabled={disabled}
-        aria-label="Not passed only"
-      />
-    </SettingRow>
+    <div className="mt-1 flex flex-col gap-2">
+      <SectionLabel>Chords to learn</SectionLabel>
+      <div className="flex flex-wrap gap-2">
+        {choices.map((choice) => (
+          <Chip
+            key={choice.key}
+            selected={picked.has(choice.key)}
+            onClick={() => toggle(choice.key)}
+            className="px-3 py-1.5 text-sm"
+          >
+            {choice.label}
+            {!choice.passed && (
+              <span className="text-[11px] font-bold uppercase tracking-wide text-info-light">
+                new
+              </span>
+            )}
+          </Chip>
+        ))}
+      </div>
+      <p className="text-[13px] text-ink-muted">
+        {selection.length === 0 ? (
+          'Pick at least one chord to learn.'
+        ) : (
+          <>
+            Runs until{' '}
+            <b className="font-semibold text-ink-soft">
+              {selection.length === 1
+                ? 'this chord'
+                : `all ${selection.length} chords`}
+            </b>{' '}
+            {selection.length === 1 ? 'reaches' : 'reach'} D this session
+            {filler.length > 0 && <> · dealt with {filler.join(', ')}</>}.
+          </>
+        )}
+      </p>
+    </div>
   )
 }
 

@@ -249,7 +249,7 @@ function StageView({
   const sessionLength = usePractice((s) => s.sessionLength)
   const sessionActiveMs = usePractice((s) => s.sessionActiveMs)
   const progress = usePractice((s) => s.progress)
-  const notPassedOnly = usePractice((s) => s.notPassedOnly)
+  const learnProgress = usePractice((s) => s.learnProgress)
   const song = usePractice((s) => s.song)
   const goal = usePractice((s) => s.goal)
   const tempo = useSettings((s) => s.settings.songTempoBpm)
@@ -264,22 +264,36 @@ function StageView({
       ? 'Learned chords'
       : (presets.find((p) => p.id === presetId)?.name ?? 'Practice')
   const modeLabel = MODE_LABELS[mode]
-  // The length applies to Learn as well as the practice modes (§7.2), so all
-  // of them get a readout: prompts count reps, minutes count active time
-  // (daily's cap is always minutes, §5.3). ∞ has no length to fill, so the bar
-  // tracks today's goal minutes instead — the one thing still on a clock in an
-  // endless session (§7.3).
+  // The length applies to the practice modes (§7.2): prompts count reps,
+  // minutes count active time (daily's cap is always minutes, §5.3). ∞ has no
+  // length to fill, so the bar tracks today's goal minutes instead — the one
+  // thing still on a clock in an endless session (§7.3). Learn has no length at
+  // all: its bar fills with the chords of its set that are rehearsed (§5.4),
+  // which is the thing that actually ends it.
+  const learning = mode === 'learn'
   const length: SessionLength =
     mode === 'daily'
       ? { unit: 'minutes', value: dailyCapMinutes }
       : sessionLength
-  const limit = length.value !== null && length.value > 0 ? length.value : null
-  const timed = length.unit === 'minutes'
+  const limit = learning
+    ? (learnProgress.total ?? 0) || null
+    : length.value !== null && length.value > 0
+      ? length.value
+      : null
+  const timed = !learning && length.unit === 'minutes'
   const bounded = limit !== null
   // Minutes read as whole minutes played; the bar keeps the sub-minute detail
   // so it still creeps forward inside one.
-  const elapsed = timed ? Math.floor(sessionActiveMs / 60_000) : done
-  const filled = timed ? sessionActiveMs / 60_000 : done
+  const elapsed = learning
+    ? learnProgress.rehearsed
+    : timed
+      ? Math.floor(sessionActiveMs / 60_000)
+      : done
+  const filled = learning
+    ? learnProgress.rehearsed
+    : timed
+      ? sessionActiveMs / 60_000
+      : done
   const pct =
     limit !== null
       ? Math.min(100, (100 * filled) / limit)
@@ -307,11 +321,13 @@ function StageView({
         )}
         {counted && (
           <span className="text-sm font-semibold tabular-nums text-ink-muted">
-            {bounded
-              ? timed
-                ? `⏱ ${elapsed} / ${limit} min`
-                : `${elapsed} / ${limit}`
-              : done}
+            {learning
+              ? `✓ ${elapsed} / ${limit ?? 0} rehearsed`
+              : bounded
+                ? timed
+                  ? `⏱ ${elapsed} / ${limit} min`
+                  : `${elapsed} / ${limit}`
+                : done}
           </span>
         )}
         {/* ∞ has no length to run out, so the streak does the pacing (§7.3):
@@ -325,13 +341,21 @@ function StageView({
               : `🔥 ${Math.floor(goal.todayMinutes)} / ${goalMinutes} min`}
           </span>
         )}
-        {mode === 'learn' && (
+        {learning && (
           <>
-            {notPassedOnly && (
-              <Chip selected className="px-3 py-1.5 text-[13px]">
-                not passed only ✓
+            {/* The set itself, so the loop's remaining work is legible without
+                counting reps: a rehearsed chord is ticked off (§5.4). Filler
+                chords aren't here — they're company, not the goal. */}
+            {learnProgress.chords.map((chord) => (
+              <Chip
+                key={chord.key}
+                selected={chord.rehearsed}
+                className="px-3 py-1.5 text-[13px]"
+              >
+                {chord.rehearsed && <span aria-hidden>✓</span>}
+                {chord.label}
               </Chip>
-            )}
+            ))}
             <span className="flex items-center gap-1.5 text-sm font-semibold text-ink-muted">
               🔓{' '}
               <b className="text-info-light">

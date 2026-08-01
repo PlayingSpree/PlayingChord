@@ -4,7 +4,7 @@ A web app for practicing piano chords with a MIDI keyboard. The app shows a rand
 from a chosen preset, the user plays it on their connected MIDI keyboard, and the app
 validates the input and moves on to the next chord.
 
-Spec version: **9.11.0** (2026-07-30) — session-based UI. Revision history lives in
+Spec version: **9.12.0** (2026-08-01) — session-based UI. Revision history lives in
 [CHANGELOG.md](CHANGELOG.md); this document describes only what the app *is* today.
 Both previously open questions are resolved (see [§9](#9-resolved-questions)). Build
 sequencing (what gets implemented first) is intentionally left outside this document.
@@ -27,8 +27,9 @@ sequencing (what gets implemented first) is intentionally left outside this docu
   (preset, mode, **length**: 10/20/40/∞ prompts or 5/10/15/∞ minutes) and always
   ends in a full-screen
   **Report** — session grade, trend deltas, passed/shaky chords (§7).
-- **Session modes**: **Learn** (example voicing shown from the start,
-  stats-neutral), two practice modes — **Daily** (every chord already learned,
+- **Session modes**: **Learn** (a *loop*: pick a few chords, drill them with the
+  example voicing shown until each grades D on the session's own reps; §5.4 —
+  stats-neutral, so it unlocks nothing), two practice modes — **Daily** (every chord already learned,
   across every preset, to a time cap; §5.3) and **Free** (default: a preset, its
   unlock gate and its narrows, to a chosen length) — and **Song**
   (a 2–4-chord progression from the active preset's pool looped to a metronome — the
@@ -309,7 +310,9 @@ or machines.
   was ever missed does it fall back to the whole unlocked pool.
 - Only practice-mode attempts are recorded — **daily and free alike** (§5.3, §7):
   Learn mode feeds neither the per-combo stats nor the weighting (§7), though its
-  active time still counts toward the daily goal.
+  active time still counts toward the daily goal. It does grade *itself*, over a
+  stat source that lives and dies with the session (§5.4) — nothing it grades
+  outlives the Report.
 - **Song mode** generates differently: it builds a whole *progression* up front rather
   than dealing from the weighted queue (§6.5). Its bar results do feed the per-combo
   stats, so Song-mode misses raise those combos' weights in Practice.
@@ -354,16 +357,11 @@ flashcard-style batches instead of the whole pool at once:
   upcoming-preview queue is rebuilt at the moment of an unlock (the pool changed,
   like any other pool change), so new chords can appear in the very next preview.
 - **Scope:** the gate applies to Learn and free-practice generation
-  (worst-chords-only, free-only, and not-passed-only, Learn-only, then each narrow
-  *within* the unlocked set — see the §7.2 session sheet). **Song mode is
+  (worst-chords-only, free-only, and the learn set, Learn-only — §5.4 — each
+  narrowing *within* the unlocked set; see the §7.2 session sheet). **Song mode is
   deliberately not gated** — it draws from the preset's full pool (§6.5); revisit if
   that proves confusing. **Daily practice** isn't gated by it either: it is drawn
   from what the gate has already let through, in every preset at once (§5.3).
-- **"Not passed only"** (a Learn-mode setting, §7, off by default, session-only like
-  its free-practice counterpart): narrows generation to unlocked chords not yet passed.
-  If every unlocked chord is already passed, generation falls back to the whole
-  unlocked pool rather than starving (mirrors "Worst chords only"'s empty-ranking
-  fallback).
 - **Persistence:** one record per preset id — the unlocked count plus the passed
   chords as *indices into the unlock order*, not chord identities, so the diatonic
   preset's progress means "scale degree N" and survives a key change. A custom
@@ -448,6 +446,55 @@ because it is today, not because you picked anything (`practice/daily.ts`).
   rather than starting an empty session. The Report's set-aside offer (§7.4) is
   likewise free-practice-only — an offer made after a cross-preset session
   would act on whichever preset happened to be selected.
+
+### 5.4 The learn loop (Learn mode)
+
+Free practice is where a chord is *proved*; daily practice is where it is *kept*.
+Learn is where it is first got under the fingers, and it is a **loop** rather than
+a browse: pick a few chords, drill them with the example voicing on screen from
+the first rep (§6.4), and the session ends when every one of them has come up to
+the pass bar (`practice/learnLoop.ts`).
+
+- **The set** is chosen in the session sheet (§7.2) from the chords **in play** —
+  unlocked and not set aside, so §5.2's bench holds here like everywhere else. It
+  opens pre-ticked with the in-play chords **not yet passed**: "learn the new
+  ones" is what the mode is for, and picking them by hand every time would be
+  busywork. When everything in play is already passed there is nothing waiting, so
+  it falls back to the three most recently reached chords rather than leaving the
+  mode unstartable. The set is session-only, like every other narrow, and Start is
+  unavailable with none picked — a loop with nothing to finish would end on its
+  first rep.
+- **At least three chords are dealt.** A short set is padded with chords already
+  **learned** (passed, §5.1), most recently learned first — the ones that sit
+  nearest to what is being learned now. The floor is §5.2's and it is the same
+  number for the same reason: a drill needs something to alternate between, and
+  the no-immediate-repeat exclusion is `min(3, pool − 1)`, so a one-chord set
+  would otherwise be the same prompt over and over. Only *passed* chords pad. An
+  unselected chord that is still being learned is one the player just declined to
+  work on, and dealing it anyway would make the selection a suggestion. A preset
+  with too few passed chords to reach the floor simply deals a narrower pool.
+- **A selected chord is `rehearsed`** once its grade reaches **D or better** — the
+  §5.1 bar, so "good enough to move on" means one thing across the app. The
+  session ends the moment every selected chord is rehearsed. Padding chords are
+  graded too (it costs nothing) but never counted: rehearsing the company proves
+  nothing about the work.
+- **The grade is the session's, not the record's.** Learn writes to a stat source
+  created at Start and discarded at the Report, so a chord's letter here reflects
+  only the reps just played — which is what makes "until you can play these three"
+  a coherent goal, and why a set rehearsed yesterday must be rehearsed again
+  today. Nothing reaches the persisted per-combo records, the weighting, or the
+  §7.5 grades.
+- **Rehearsed is not passed.** The loop moves no unlock queue, opens no batch and
+  adds nothing to the daily pool (§5.3) — it is the one mode where the answer is
+  on screen from the first rep, so a pass won here would be worth less than one
+  won in Practice, and letting it ratchet the pool open would quietly devalue
+  every unlock. The two words are kept apart wherever both could appear: the Stage
+  says `✓ rehearsed` where Practice says `★ learned` (§7.3), and the Report lists
+  *Rehearsed* where Practice lists *Chords passed*, with a line pointing at free
+  practice as where these chords actually unlock (§7.4).
+- **No length.** Learn's end condition is its set, so the §7.2 length picker
+  doesn't apply to it (as it doesn't to Song or daily practice); the End button is
+  the way out of a set that isn't going well.
 
 ---
 
@@ -702,9 +749,16 @@ session config, so they take effect as they're set.
 - **Preset**: hidden in Daily, which has no preset to pick (§5.3) — a picker
   there would look like it was choosing the pool.
 - **Mode**: Learn / Daily / Free / Song, segmented. Each mode's sub-settings
-  (§7.3) appear under the row while that mode is selected: Learn's *Not passed
-  only*, Daily's *Cap*, Free's *Worst chords only*, Song's *Tempo* / *Chords per
+  (§7.3) appear under the row while that mode is selected: Learn's *Chords to
+  learn*, Daily's *Cap*, Free's *Worst chords only*, Song's *Tempo* / *Chords per
   progression* / *Show example*. Daily is disabled until something is learned.
+- **Chords to learn** (Learn, §5.4): a chip per chord in play in the drafted
+  preset, the not-yet-passed ones pre-ticked, with a line saying what the loop
+  will deal — how many chords must reach D, and which learned chords come along
+  to make three. Read of the *drafted* preset like *Worst chords only*, and reset
+  to that preset's default when the preset or key changes: the keys name chords in
+  a pool that is no longer the one being configured. **Start** is unavailable with
+  none ticked.
 - **Length**: a **unit** — prompts or minutes — and a value: **10 / 20 / 40 / ∞
   prompts** (default 20) or **5 / 10 / 15 / ∞ minutes**; session-only, resets on
   reload. A unit switch rather than one long row of chips: the two answer
@@ -712,9 +766,10 @@ session config, so they take effect as they're set.
   reads as neither. Switching unit keeps ∞ but not a number — 20 prompts is not
   20 minutes. Minutes count **active** time (§7.6), so a session can't run out
   while nobody is playing, and a length is only ever checked between prompts, so
-  it never cuts a rep off mid-attempt. Applies to Learn and free practice — both
-  show the count on the Stage (§7.3) — and is hidden in Song, which runs until
-  ended, and in Daily, which runs to its own persisted cap (§5.3). The minute
+  it never cuts a rep off mid-attempt. Applies to free practice alone, which
+  shows the count on the Stage (§7.3); it is hidden in Song, which runs until
+  ended, in Daily, which runs to its own persisted cap (§5.3), and in Learn,
+  which runs until its set is rehearsed (§5.4). The minute
   option restores what the Draft-v5 timer offered, now beside the prompt count
   rather than instead of it.
 
@@ -752,13 +807,15 @@ counts a new progression in).
 - **Top bar, per mode**: the session label (preset + mode) opening the sheet —
   Daily has no preset, so it names its pool instead: `Learned chords · ☀ Daily` —
   an
-  **End** button, and in the center — Learn and the practice modes: a progress bar
+  **End** button, and in the center — the practice modes: a progress bar
   with `done / length`, or `⏱ 3 / 10 min` when the length is timed (always, in
   Daily); ∞ keeps the count but has no length to fill, so its bar and
   readout track **today's goal minutes** instead (`🔥 6 / 10 min`, then
   `🔥 Streak safe` — §7.6), the only thing still pacing an endless session. It
-  advances as active time flushes, so it moves only while playing. Learn adding the
-  *Not passed only* state and a compact `🔓 N/total` unlock count; Song: tempo
+  advances as active time flushes, so it moves only while playing. **Learn** fills
+  the same bar with its set instead (`✓ 1 / 3 rehearsed`, §5.4) — the thing that
+  actually ends it — beside a chip per selected chord, ticked as it comes up, and
+  a compact `🔓 N/total` unlock count; Song: tempo
   and loop chips (the length doesn't apply). The old
   always-visible unlock chip is gone — Home's In play row carries the per-chord
   breakdown — but the transient unlock **toast** ("🔓 New chords unlocked:
@@ -779,16 +836,22 @@ counts a new progression in).
   **once per session per combo**: a moving window means a combo hovering on a
   cut point re-crosses it every few reps, and B → A → B → A would announce the
   same A over and over. The repeat is silent; the next *new* letter (the S after
-  it) still fires. Practice only: Learn records nothing (§5) and Song's bar
-  chips already report themselves.
+  it) still fires. Practice only: Learn's letters are session-local (§5.4), so a
+  climb there would announce something no record will hold, and Song's bar
+  chips already report themselves. Learn has its own callout on the same line —
+  **`✓ rehearsed`**, when a rep takes a selected chord to the pass bar (§5.4) —
+  worded apart from `★ learned` because it is a different claim: nothing was
+  unlocked by it.
 - **Session modes**:
   - **Learn**: the prompt's `example` voicing is shown from the start — highlighted on
     the on-screen keyboard, and drawn on the grand staff when the staff setting is on
     (§3.4) — for the user to copy (any voicing satisfying the rule still counts).
     Attempts are excluded from stats and weighting (§5); active minutes still
-    count toward the daily goal. Learn-mode setting (in the session sheet, §7.2):
-    - **Not passed only**: narrows generation to the selected preset's unlocked
-      chords not yet passed (§5.1).
+    count toward the daily goal. It runs as a loop over a chosen set of chords
+    and ends when each has reached D on the session's own reps (§5.4), so it has
+    no length; its one setting (in the session sheet, §7.2) is that set:
+    - **Chords to learn**: which of the preset's in-play chords this loop is
+      for, defaulting to the ones not yet passed (§5.4).
   - **Daily**: free practice's screen exactly — voicing hidden, staff per its
     setting, stats recorded — over the cross-preset learned pool, run to its cap
     (§5.3). Its one setting (in the session sheet) is that cap; there is no
@@ -910,7 +973,13 @@ count as prompts, a hit being a first-try success (§6.5).
 - **Unlock banner**: when the session unlocked chords — names them and shows
   pool progress toward the next batch (§5.1).
 - **Chords passed** this session (§5.1 passes) and **Still shaky** — chords
-  missed this session, with miss counts.
+  missed this session, with miss counts. **Learn shows neither**: it passes
+  nothing and records no misses. In their place it lists **Rehearsed** and
+  **Still to go** (§5.4) — the second non-empty only when the loop was ended
+  part-way — under a line saying that rehearsing is not passing and pointing at
+  free practice as where these chords actually unlock. The headline follows the
+  same split: `Set rehearsed!` when the loop finished, `Learning paused` when it
+  was ended early, since a finished loop and an abandoned one are different news.
 - **Set-aside offer** (§5.2): a card in the flow — not a modal over it — when
   the session graded **F** *and* some chord it played is **currently** graded F
   too, naming the one missed most and offering to set it aside. Both halves
@@ -944,7 +1013,11 @@ all sessions:
   day's prompts, the time trend by its **timed** prompts (§8); a day with
   prompts but no time samples (Song only) is a gap in the time chart, not a zero.
 - **The grade (S–F)**, used here, on Home's In play row and in the session
-  report, is the §5 chord score in letters. Both of its axes are stated in the
+  report, is the §5 chord score in letters. The learn loop (§5.4) uses the same
+  math on its own session-local reps — same letters, same D-or-better bar,
+  different evidence — and the word for clearing it there is **rehearsed**, not
+  *passed* or *learned*: those two are earned on the persisted record, and only
+  they move the pool. Both of its axes are stated in the
   units the player reads and both step one letter at a time, so the letter is
   predictable rather than the output of a curve — **a second costs a letter, and
   so does a miss**:
@@ -1006,7 +1079,7 @@ all sessions:
   on/off, staff key signature on/off (chord root as key, §3.5), correct-chime on/off,
   piano sound on key press on/off (§9), judgment delay, auto-advance delay, daily
   goal minutes, circle-of-fifths unlock order on/off (§5.1). (Mode sub-settings —
-  worst-chords-only, not-passed-only, Song's tempo / chords-per-progression /
+  worst-chords-only, the learn set, Song's tempo / chords-per-progression /
   show-example — live in the session sheet, §7.2, not the settings panel; the
   session length lives there too.)
 
@@ -1036,7 +1109,9 @@ self-paced, so it defaults to that day's `prompts` and no migration is needed.
 Preset progress record (keyed by preset id,
 schema v2, §5.1): unlocked count + passed chord indices (still `masteredIndices` in the
 JSON, §5.1). Best combo streak (schema v2, §7): a single lifetime integer, raised
-whenever a session's live streak beats it.
+whenever a session's live streak beats it. The learn loop adds **nothing** here —
+its chord set and its grades are session-only by design (§5.4), so the schema is
+untouched by it.
 
 ---
 

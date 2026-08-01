@@ -53,6 +53,9 @@ export function HomeView({
   const goalMinutes = useSettings((s) => s.settings.dailyGoalMinutes)
   const dailyCapMinutes = useSettings((s) => s.settings.dailyCapMinutes)
   const learnedChordCount = usePractice((s) => s.learnedChordCount)
+  const diatonicKey = usePractice((s) => s.diatonicKey)
+  const learnSet = usePractice((s) => s.learnSelection)
+  const learnFillerLabels = usePractice((s) => s.learnFillerLabels)
   const customRules = useLibrary((s) => s.customRules)
   const [showLocked, setShowLocked] = useState(false)
   // The §5.2 by-hand pool controls. Behind a toggle rather than always on:
@@ -105,6 +108,16 @@ export function HomeView({
     // chordPassStatus is a stable store method; re-run on preset/progress/lib.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [presetId, progress, customRules])
+
+  // What the learn loop would deal (§5.4): the chords currently selected — the
+  // sheet's picks, which default to the ones still being learned — and the
+  // learned chords that would keep it at three.
+  const learnFiller = useMemo(
+    () => learnFillerLabels(presetId, diatonicKey, learnSet),
+    // learnFillerLabels is a stable store method.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [presetId, diatonicKey, learnSet, progress, customRules],
+  )
 
   // What daily practice would deal (§5.3), across every preset — read from
   // the persisted records on the same triggers as the row above.
@@ -317,6 +330,23 @@ export function HomeView({
                 )
               })}
             </div>
+
+            {/* Learn deals a chosen set plus enough learned chords to make
+                three (§5.4), and runs until the set is rehearsed rather than to
+                a length — so, like daily, it says what it will deal. The set
+                itself is picked in the sheet. */}
+            {mode === 'learn' && (
+              <p className="text-[15px] text-ink-muted">
+                <b className="font-semibold text-ink-soft">
+                  {learnSet.length} chord{learnSet.length === 1 ? '' : 's'} to
+                  learn
+                </b>
+                {learnFiller.length > 0 && (
+                  <> · with {learnFiller.join(', ')}</>
+                )}{' '}
+                · runs until all reach D
+              </p>
+            )}
 
             {mode === 'daily' && (
               <p className="text-[15px] text-ink-muted">

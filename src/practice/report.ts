@@ -54,6 +54,16 @@ export interface ReportGoal {
   streak: number
 }
 
+// The learn loop's outcome (§5.4), null outside Learn: the selected chords
+// brought up to the pass bar this session and the ones still short of it —
+// non-empty only when the session was ended by hand before the set was done.
+// Kept apart from `passedLabels` on purpose: a rehearsed chord is not a passed
+// chord (§5.1), and the Report must not let the two read as one thing.
+export interface ReportLearn {
+  rehearsed: string[]
+  remaining: string[]
+}
+
 export interface ShakyChord {
   label: string
   misses: number
@@ -143,6 +153,7 @@ export interface SessionReport {
   passedLabels: string[]
   shaky: ShakyChord[]
   unlocked: ReportUnlock | null
+  learn: ReportLearn | null
   suggestion: ReportSuggestion | null
   goal: ReportGoal
 }
@@ -157,6 +168,8 @@ export interface SessionReportInput {
   increment: { prompts: number; activeMinutes: number }
   passedLabels: readonly string[]
   unlocked: ReportUnlock | null
+  // Learn only (§5.4); ignored — and expected null — in every other mode.
+  learn?: ReportLearn | null
   // The session's chords and the preset's benched ones, for the §5.2 offer.
   chords: readonly ReportChord[]
   setAside: readonly { chordKey: string; label: string }[]
@@ -233,6 +246,7 @@ export function buildSessionReport(input: SessionReportInput): SessionReport {
     passedLabels: [...input.passedLabels],
     shaky,
     unlocked: input.unlocked,
+    learn: input.mode === 'learn' ? (input.learn ?? null) : null,
     suggestion: pickSuggestion(input.mode, grade, input.chords, input.setAside),
     goal: input.goal,
   }

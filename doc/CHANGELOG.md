@@ -15,6 +15,37 @@ artifact and are not recoverable.
 
 ---
 
+## 9.12.0 — 2026-08-01
+
+**Learn becomes a loop.** Learn mode stops being a free-form browse with a
+length and becomes a drill with a goal (§5.4, new): pick a few of the preset's
+in-play chords in the session sheet — the ones not yet passed come pre-ticked —
+and the session runs until every one of them grades D or better, then goes
+straight to the Report. A short set is dealt alongside chords already learned,
+most recently learned first, so at least three are in play: the §5.2 floor for
+the §5.2 reason, since the no-immediate-repeat exclusion is `min(3, pool − 1)`
+and a one-chord set would be the same prompt over and over. Only *passed* chords
+pad — an unselected chord still being learned is one the player just declined to
+work on, and dealing it anyway would make the selection a suggestion. The length
+picker is hidden here, as it already is for Song and daily practice; the End
+button is the way out of a set that isn't going well. The old *Not passed only*
+toggle is gone, its behavior now the picker's default.
+
+The grade behind that is the **session's own**. Learn writes to a stat source
+created at Start and thrown away at the Report, so it still records nothing
+persisted (§5) — no lifetime letters, no weighting, no unlock queue — and a
+chord's letter here reflects only the reps just played. Clearing the bar is
+therefore called **rehearsed**, never *passed* or *learned*: the answer is on
+screen from the first rep in this mode (§6.4), so a pass won here would be worth
+less than one won in Practice, and letting it ratchet the pool open would
+quietly devalue every unlock. The wording is kept apart wherever both could
+appear — `✓ rehearsed` against Practice's `★ learned` under the pill (§7.3), and
+a *Rehearsed* / *Still to go* pair against *Chords passed* / *Still shaky* on the
+Report (§7.4), under a line pointing at free practice as where these chords
+actually unlock. The Stage's progress bar fills with the set rather than a
+length (`✓ 1 / 3 rehearsed`), beside a chip per selected chord ticked as it
+comes up.
+
 ## 9.11.0 — 2026-07-30
 
 **Two ways to practice.** Practice splits into **Daily** and **Free** (§7.1,

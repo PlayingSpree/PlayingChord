@@ -147,6 +147,7 @@ function FeedbackPill() {
   const song = usePractice((s) => s.song)
   const mode = usePractice((s) => s.mode)
   const justLearned = usePractice((s) => s.justLearned)
+  const justRehearsed = usePractice((s) => s.justRehearsed)
   const gradeUp = usePractice((s) => s.gradeUp)
 
   const base =
@@ -232,6 +233,7 @@ function FeedbackPill() {
   const advancing = phase === 'advancing'
   const showGradeUp = gradeUp !== null && advancing
   const showLearned = justLearned && advancing
+  const showRehearsed = justRehearsed && advancing
 
   return (
     <div
@@ -241,7 +243,7 @@ function FeedbackPill() {
       {content}
       {/* Out of flow: the line keeps the feedback area a fixed height, so the
           keyboard below it doesn't hop every time a grade climbs. */}
-      {(showGradeUp || showLearned) && (
+      {(showGradeUp || showLearned || showRehearsed) && (
         <span className="absolute top-full mt-1 inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-primary-tint px-3.5 py-0.5 text-sm font-semibold text-primary-light">
           {showGradeUp && (
             <>
@@ -253,6 +255,10 @@ function FeedbackPill() {
           {/* The rep that took a chord still in learning to a passing grade
               (§5.1) — the one moment "learned" is news. */}
           {showLearned && <span className="font-extrabold">★ learned</span>}
+          {/* Learn's counterpart (§5.4): a selected chord just reached the pass
+              bar on this session's reps. A different word from `learned`
+              because it is a different claim — nothing was unlocked by it. */}
+          {showRehearsed && <span className="font-extrabold">✓ rehearsed</span>}
         </span>
       )}
     </div>

@@ -107,6 +107,36 @@ export function ReportView({
           <SuggestionCard suggestion={report.suggestion} />
         )}
 
+        {/* The learn loop's own outcome (§5.4). Deliberately *not* the "Chords
+            passed" column: these chords reached D on this session's reps
+            alone, which unlocks nothing and adds nothing to daily practice —
+            proving them for real is what free practice is for, and the line
+            below says so rather than leaving the difference to be inferred. */}
+        {learn && report.learn !== null && (
+          <div className="grid grid-cols-2 gap-3 text-[15px]">
+            <div>
+              <SectionLabel>Rehearsed</SectionLabel>
+              <div className="mt-1 font-semibold text-ink-soft">
+                {report.learn.rehearsed.length > 0
+                  ? report.learn.rehearsed.join(' · ')
+                  : '— none'}
+              </div>
+            </div>
+            <div>
+              <SectionLabel>Still to go</SectionLabel>
+              <div className="mt-1 font-semibold text-ink-soft">
+                {report.learn.remaining.length > 0
+                  ? report.learn.remaining.join(' · ')
+                  : '— none'}
+              </div>
+            </div>
+            <p className="col-span-2 text-[13px] text-ink-muted">
+              Rehearsing is not passing — play these in Free practice, with the
+              example hidden, to unlock the next chords.
+            </p>
+          </div>
+        )}
+
         {!learn && (
           <div className="grid grid-cols-2 gap-3 text-[15px]">
             <div>
@@ -305,7 +335,13 @@ const HEADLINE: Record<ComboGrade, string> = {
 }
 
 function headline(report: SessionReport): string {
-  if (report.mode === 'learn') return 'Learning done'
+  // The loop either finished its set or was ended part-way (§5.4) — the
+  // headline is the first thing read, so it shouldn't congratulate the latter.
+  if (report.mode === 'learn') {
+    return report.learn === null || report.learn.remaining.length === 0
+      ? 'Set rehearsed!'
+      : 'Learning paused'
+  }
   // No grade means nothing was graded (a Learn-shaped or empty session).
   return report.grade === null ? 'Session done' : HEADLINE[report.grade]
 }

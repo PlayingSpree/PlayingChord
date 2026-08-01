@@ -712,10 +712,13 @@ describe('practiceStore — unlock progress (§5)', () => {
   it('Learn mode never advances pass progress', () => {
     const s = setup({ presets: sixRoots })
     s.store.getState().setMode('learn')
-    for (let i = 0; i < 10; i++) {
+    // The loop ends once its set is rehearsed (§5.4), so this stops there —
+    // the point is that rehearsing every chord in it still unlocks nothing.
+    for (let i = 0; i < 10 && s.store.getState().report === null; i++) {
       playCorrectAndAdvance(s, s.store.getState().prompt!)
     }
     expect(s.store.getState().progress.unlocked).toBe(INITIAL_UNLOCK_COUNT)
+    expect(s.store.getState().progress.passed).toBe(0)
   })
 
   it('progress persists across store instances via the progress source', () => {
@@ -1254,7 +1257,7 @@ describe('practiceStore — worst chords only (§5/§7)', () => {
   })
 })
 
-describe('practiceStore — not passed only (§5.1/§7)', () => {
+describe('practiceStore — the learn loop (§5.4)', () => {
   const sixRoots = presetsOf({
     kind: 'product',
     roots: [0, 1, 2, 3, 4, 5],
@@ -1273,40 +1276,145 @@ describe('practiceStore — not passed only (§5.1/§7)', () => {
     return progress
   }
 
-  it('draws only from unlocked chords not yet passed', () => {
+  it('defaults its set to the in-play chords not yet passed', () => {
+    const s = setup({ presets: sixRoots, progress: partlyPassed() })
+    expect(s.store.getState().learnSelection).toEqual([
+      '1:maj',
+      '2:maj',
+      '4:maj',
+      '5:maj',
+    ])
+  })
+
+  it('deals only the selected chords when the set already makes three', () => {
     const s = setup({ presets: sixRoots, progress: partlyPassed() })
     s.store.getState().setMode('learn')
-    s.store.getState().setNotPassedOnly(true)
+    s.store.getState().setLearnSelection(['1:maj', '2:maj', '4:maj'])
     for (let i = 0; i < 20; i++) {
-      expect([1, 2, 4, 5]).toContain(s.store.getState().prompt!.chord.root)
+      expect([1, 2, 4]).toContain(s.store.getState().prompt!.chord.root)
       playSlowAndAdvance(s, s.store.getState().prompt!)
     }
   })
 
-  it('falls back to the whole pool once every unlocked chord is passed', () => {
-    const progress = new InMemoryPresetProgress()
-    progress.set('test', {
-      unlockedCount: 6,
-      masteredIndices: [0, 1, 2, 3, 4, 5],
-      setAsideIndices: [],
-    })
-    const s = setup({ presets: sixRoots, progress })
-    s.store.getState().setMode('learn')
-    s.store.getState().setNotPassedOnly(true)
-    expect(s.store.getState().prompt).not.toBeNull()
-    expect(s.store.getState().notPassedOnly).toBe(true)
-  })
-
-  it('Practice mode ignores the toggle', () => {
+  it('fills a one-chord set out to three with learned chords', () => {
     const s = setup({ presets: sixRoots, progress: partlyPassed() })
-    s.store.getState().setNotPassedOnly(true) // still in Practice (default)
-
+    s.store.getState().setMode('learn')
+    s.store.getState().setLearnSelection(['5:maj'])
     const seen = new Set<number>()
     for (let i = 0; i < 30; i++) {
       seen.add(s.store.getState().prompt!.chord.root)
       playSlowAndAdvance(s, s.store.getState().prompt!)
     }
-    expect(seen.size).toBeGreaterThan(4) // passed roots 0/3 still appear
+    // The selected chord plus the two most recently passed ones (roots 3, 0);
+    // the chords still being learned that weren't picked stay out.
+    expect([...seen].sort()).toEqual([0, 3, 5])
+  })
+
+  it('records nothing persisted — no stats, no unlock progress', () => {
+    const stats = new InMemoryComboStats()
+    const progress = partlyPassed()
+    const s = setup({ presets: sixRoots, progress, stats })
+    s.store.getState().setMode('learn')
+    s.store.getState().setLearnSelection(['1:maj', '2:maj', '4:maj'])
+    for (let i = 0; i < 12; i++) {
+      playCorrectAndAdvance(s, s.store.getState().prompt!)
+      if (s.store.getState().report !== null) break
+    }
+    expect(
+      stats.get(comboKey({ root: 1, typeId: 'maj', voicingId: 'any' })),
+    ).toBeNull()
+    expect(progress.get('test')).toEqual({
+      unlockedCount: 6,
+      masteredIndices: [0, 3],
+      setAsideIndices: [],
+    })
+  })
+
+  it('ends the session once every selected chord reaches D', () => {
+    const s = setup({ presets: sixRoots, progress: partlyPassed() })
+    s.store.getState().setMode('learn')
+    s.store.getState().setLearnSelection(['1:maj', '2:maj', '4:maj'])
+    // Fast, clean reps: each chord passes on about its second (§5.1 evidence
+    // floor), so the set is done well inside this bound.
+    for (let i = 0; i < 40 && s.store.getState().report === null; i++) {
+      playCorrectAndAdvance(s, s.store.getState().prompt!)
+    }
+    const report = s.store.getState().report
+    expect(report).not.toBeNull()
+    expect(report!.learn?.remaining).toEqual([])
+    expect(report!.learn?.rehearsed).toHaveLength(3)
+    // Rehearsed is not passed (§5.4) — the Report's pass list stays empty.
+    expect(report!.passedLabels).toEqual([])
+    expect(report!.grade).toBeNull() // Learn is still ungraded (§7.4)
+  })
+
+  it('is not ended by a filler chord reaching the bar', () => {
+    const s = setup({ presets: sixRoots, progress: partlyPassed() })
+    s.store.getState().setMode('learn')
+    s.store.getState().setLearnSelection(['5:maj'])
+    // Answer only the filler chords cleanly; the selected one is played slowly
+    // enough to grade F, so it never rehearses and the loop can't finish.
+    for (let i = 0; i < 30; i++) {
+      const prompt = s.store.getState().prompt!
+      if (prompt.chord.root === 5) playSlowAndAdvance(s, prompt)
+      else playCorrectAndAdvance(s, prompt)
+    }
+    expect(s.store.getState().report).toBeNull()
+    expect(s.store.getState().learnProgress.rehearsed).toBe(0)
+  })
+
+  it('grades from this session alone — a fresh session starts over', () => {
+    const s = setup({ presets: sixRoots, progress: partlyPassed() })
+    s.store.getState().setMode('learn')
+    s.store.getState().setLearnSelection(['1:maj', '2:maj', '4:maj'])
+    for (let i = 0; i < 40 && s.store.getState().report === null; i++) {
+      playCorrectAndAdvance(s, s.store.getState().prompt!)
+    }
+    expect(s.store.getState().learnProgress.rehearsed).toBe(3)
+
+    s.store.getState().dismissReport()
+    s.store.getState().discardSession()
+    enterStage(s)
+    expect(s.store.getState().learnProgress.rehearsed).toBe(0)
+  })
+
+  it('drops a chord from the set when it is put aside (§5.2)', () => {
+    const s = setup({ presets: sixRoots, progress: partlyPassed() }, false)
+    s.store.getState().setLearnSelection(['1:maj', '2:maj', '4:maj'])
+    s.store.getState().setChordAside('2:maj')
+    expect(s.store.getState().learnSelection).toEqual(['1:maj', '4:maj'])
+  })
+
+  it('re-derives the set when the preset changes under it', () => {
+    const twoPresets = (): readonly Preset[] => [
+      {
+        id: 'test',
+        name: 'Test',
+        pool: sixRoots()[0]!.pool,
+        voicingIds: ['any'],
+      },
+      {
+        id: 'other',
+        name: 'Other',
+        pool: { kind: 'explicit', chords: [{ root: 7, typeId: 'min' }] },
+        voicingIds: ['any'],
+      },
+    ]
+    const s = setup({ presets: twoPresets, progress: partlyPassed() }, false)
+    s.store.getState().setLearnSelection(['1:maj'])
+    s.store.getState().setPreset('other')
+    expect(s.store.getState().learnSelection).toEqual(['7:min'])
+  })
+
+  it('leaves the practice modes alone', () => {
+    const s = setup({ presets: sixRoots, progress: partlyPassed() })
+    s.store.getState().setLearnSelection(['1:maj']) // still in Practice
+    const seen = new Set<number>()
+    for (let i = 0; i < 30; i++) {
+      seen.add(s.store.getState().prompt!.chord.root)
+      playSlowAndAdvance(s, s.store.getState().prompt!)
+    }
+    expect(seen.size).toBeGreaterThan(3)
   })
 })
 
@@ -1354,20 +1462,18 @@ describe('practiceStore — session length & report (§7.2/§7.4)', () => {
     expect(s.store.getState().progress.setAside).toBe(1)
   })
 
-  it('a Learn prompt consumes a length slot without being recorded', () => {
+  it('a Learn session ignores the length — it ends on its set (§5.4)', () => {
     const s = setup({ presets: onePreset })
     s.store.getState().setMode('learn')
     s.store.getState().setSessionLength({ unit: 'prompts', value: 2 })
-    playCorrectAndAdvance(s, s.store.getState().prompt!) // slot 1
+    // Slow reps grade F, so the one selected chord never rehearses and the
+    // only thing that could end this session is the length — which doesn't
+    // apply.
+    for (let i = 0; i < 6; i++) {
+      playSlowAndAdvance(s, s.store.getState().prompt!)
+    }
     expect(s.store.getState().report).toBeNull()
-    expect(s.store.getState().done).toBe(1)
-
-    playCorrectAndAdvance(s, s.store.getState().prompt!) // slot 2 — the length
-    const report = s.store.getState().report
-    expect(report).not.toBeNull()
-    expect(report!.promptsPlayed).toBe(2)
-    expect(report!.recordedPrompts).toBe(0) // Learn records nothing (§5)
-    expect(report!.accuracy).toBeNull()
+    expect(s.store.getState().done).toBe(6)
   })
 
   it('∞ length never auto-ends', () => {
@@ -1437,15 +1543,14 @@ describe('practiceStore — session length & report (§7.2/§7.4)', () => {
   it('a Learn session reports prompts played but no grade (§7.4)', () => {
     const s = setup({ presets: onePreset })
     s.store.getState().setMode('learn')
-    s.store.getState().setSessionLength({ unit: 'prompts', value: 2 })
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < 10 && s.store.getState().report === null; i++) {
       playCorrectAndAdvance(s, s.store.getState().prompt!)
     }
     const report = s.store.getState().report
     expect(report).not.toBeNull()
     expect(report!.mode).toBe('learn')
     expect(report!.grade).toBeNull()
-    expect(report!.promptsPlayed).toBe(2)
+    expect(report!.promptsPlayed).toBeGreaterThan(0)
     expect(report!.recordedPrompts).toBe(0) // Learn is stats-neutral (§5)
   })
 
@@ -1829,7 +1934,7 @@ describe('practiceStore — session lifecycle (§7.2)', () => {
     expect(s.store.getState().prompt).toBeNull()
 
     s.store.getState().setMode('learn')
-    s.store.getState().setNotPassedOnly(true)
+    s.store.getState().setLearnSelection(['0:maj'])
     s.store.getState().setSessionLength({ unit: 'prompts', value: 10 })
 
     expect(s.store.getState().prompt).toBeNull()
