@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { usePractice } from '../store/practiceStore'
+import { resolveAppPool, usePractice } from '../store/practiceStore'
 import { useSettings } from '../store/settingsStore'
 import { useLibrary } from '../store/libraryStore'
 import {
@@ -55,7 +55,6 @@ export function HomeView({
   const learnedChordCount = usePractice((s) => s.learnedChordCount)
   const diatonicKey = usePractice((s) => s.diatonicKey)
   const learnSet = usePractice((s) => s.learnSelection)
-  const learnFillerLabels = usePractice((s) => s.learnFillerLabels)
   const customRules = useLibrary((s) => s.customRules)
   const [showLocked, setShowLocked] = useState(false)
   // The §5.2 by-hand pool controls. Behind a toggle rather than always on:
@@ -113,8 +112,8 @@ export function HomeView({
   // sheet's picks, which default to the ones still being learned — and the
   // learned chords that would keep it at three.
   const learnFiller = useMemo(
-    () => learnFillerLabels(presetId, diatonicKey, learnSet),
-    // learnFillerLabels is a stable store method.
+    () => resolveAppPool(presetId, diatonicKey).fillerLabels(learnSet),
+    // The pool is resolved fresh, so re-run on anything that moves it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [presetId, diatonicKey, learnSet, progress, customRules],
   )

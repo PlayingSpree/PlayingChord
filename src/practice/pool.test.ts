@@ -240,6 +240,56 @@ describe('pool narrowings (§5/§5.4)', () => {
     expect(done.worstOnly()).toEqual([])
   })
 
+  it('counts a not-yet-passed chord as worth drilling (§5.1)', () => {
+    // A clean sheet is not the same as a proven one — most likely the chord
+    // has barely been played, and leaving it out would mean the toggle could
+    // only revisit old mistakes and never the gaps.
+    expect(setup().resolve('triads', 0).worstOnly()).not.toEqual([])
+  })
+
+  it('reads worst-only from the records, not from a session (§7.2)', () => {
+    // The sheet asks this from Home, before any prompt exists — so what
+    // answers is yesterday's persisted misses, not what this page load dealt.
+    const { resolve, stats } = setup()
+    stats.record('0:maj:any', 'missed', 9000)
+    stats.record('0:maj:any', 'first-try', 1000)
+    const pool = resolve('triads', 0)
+    const passed = pool.withProgress({
+      ...opened(pool.progressRecord),
+      masteredIndices: [0, 1, 2, 3, 4, 5],
+    })
+    expect(passed.worstOnly().map(poolChordKey)).toEqual(['0:maj'])
+  })
+
+  it('answers for the preset asked about, not the active one (§7.2)', () => {
+    // The session sheet's picks are a draft: it asks about the preset the
+    // player just selected in it, which the store hasn't switched to.
+    const other: Preset = {
+      id: 'other',
+      name: 'Other',
+      pool: { kind: 'explicit', chords: [{ root: 5, typeId: 'min' }] },
+      voicingIds: ['any'],
+    }
+    const stats = new InMemoryComboStats()
+    stats.record('5:min:any', 'missed', 9000)
+    const resolve = createPoolResolver({
+      presets: () => [TRIADS, other],
+      voicings: () => BUILT_IN_VOICING_LIBRARY,
+      storedProgress: (id) =>
+        id === 'triads'
+          ? {
+              unlockedCount: 6,
+              masteredIndices: [0, 1, 2, 3, 4, 5],
+              setAsideIndices: [],
+            }
+          : null,
+      unlockByFifths: () => false,
+      stats,
+    })
+    expect(resolve('triads', 0).worstOnly()).toEqual([])
+    expect(resolve('other', 0).worstOnly()).not.toEqual([])
+  })
+
   it('the learn set is the selection plus its filler (§5.4)', () => {
     const pool = setup().resolve('triads', 0)
     const open = pool.withProgress({

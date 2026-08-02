@@ -295,26 +295,6 @@ export interface PracticeStoreState {
   // Set the learn loop's chords (§5.4). Sanitized against what is actually in
   // play, so a stale key from the sheet's draft can never reach generation.
   setLearnSelection(chordKeys: readonly string[]): void
-  // The chords the learn-loop picker may offer for a preset — unlocked, not set
-  // aside, with their labels and current pass state. Takes the preset because
-  // the session sheet asks about its *draft* (§7.2), like canDrillWorstOnly.
-  learnChoices(
-    presetId: string,
-    diatonicKey: PitchClass,
-  ): readonly ChordPassDisplayEntry[]
-  // What the picker opens with for a preset (§5.4): the in-play chords not yet
-  // passed, or the most recently reached ones when there is nothing waiting.
-  defaultLearnChoice(
-    presetId: string,
-    diatonicKey: PitchClass,
-  ): readonly string[]
-  // The learned chords that would be dealt alongside a drafted selection to
-  // keep the pool at three (§5.4) — labels, for the sheet's summary line.
-  learnFillerLabels(
-    presetId: string,
-    diatonicKey: PitchClass,
-    selection: readonly string[],
-  ): readonly string[]
   setSessionLength(length: SessionLength): void
   // End the session now (§7.2 End button, or auto at the length): build the
   // Report and freeze practice. A zero-prompt session ends with report = null
@@ -352,16 +332,12 @@ export interface PracticeStoreState {
   // How many chords ahead of a locked one openChordForPlay would open with it
   // — the unlock frontier is a prefix (§5.1), so the control says so.
   chordsOpenedWith(chordKey: string): number
-  // Would "worst chords only" (§5) have anything to drill in this preset —
-  // i.e. does its narrowed pool come out non-empty? Takes the preset rather
-  // than reading the active one because the session sheet asks about its
-  // *draft* (§7.2), before any of it reaches the store. Computed on demand
-  // from the persisted records, so it never goes stale between sessions.
-  canDrillWorstOnly(presetId: string, diatonicKey: PitchClass): boolean
   // How many chords daily practice (§5.3) would draw from right now — the
   // learned chords of every preset, deduplicated. Zero means the mode has
   // nothing to drill and Home / the sheet offer it disabled. Computed on
-  // demand from the persisted records, like canDrillWorstOnly.
+  // demand from the persisted records, so it never goes stale between
+  // sessions. Unlike the pool questions, this one spans every preset, so it
+  // stays here rather than on any single Pool.
   learnedChordCount(): number
 }
 
@@ -1318,22 +1294,6 @@ export function createPracticeStore({
         if (sessionLive && MODE_POLICY[get().mode].hasLearnLoop) dealOrGate()
       },
 
-      learnChoices(presetId: string, diatonicKey: PitchClass) {
-        return resolvePool(presetId, diatonicKey).learnChoices()
-      },
-
-      defaultLearnChoice(presetId: string, diatonicKey: PitchClass) {
-        return resolvePool(presetId, diatonicKey).defaultLearnSet()
-      },
-
-      learnFillerLabels(
-        presetId: string,
-        diatonicKey: PitchClass,
-        selection: readonly string[],
-      ) {
-        return resolvePool(presetId, diatonicKey).fillerLabels(selection)
-      },
-
       setSessionLength(length: SessionLength) {
         set({ sessionLength: sanitizeSessionLength(length) })
       },
@@ -1498,10 +1458,6 @@ export function createPracticeStore({
         return pool.openedWith(chordKey)
       },
 
-      canDrillWorstOnly(presetId: string, diatonicKey: PitchClass) {
-        return resolvePool(presetId, diatonicKey).worstOnly().length > 0
-      },
-
       learnedChordCount() {
         return dailyChordCount(currentDailyPool())
       },
@@ -1512,12 +1468,32 @@ export function createPracticeStore({
 // The app singleton folds the Phase 9 custom library into generation; the
 // factory defaults stay built-ins-only so tests are isolated from the
 // shared appStorage singleton.
+const appPresets = (diatonicKey: PitchClass): readonly Preset[] => [
+  ...builtInPresets(diatonicKey),
+  ...libraryStore.getState().customPresets,
+]
+const appVoicings = (): VoicingLibrary =>
+  voicingLibrary(libraryStore.getState().customRules)
+
 export const practiceStore = createPracticeStore({
-  presets: (diatonicKey) => [
-    ...builtInPresets(diatonicKey),
-    ...libraryStore.getState().customPresets,
-  ],
-  voicings: () => voicingLibrary(libraryStore.getState().customRules),
+  presets: appPresets,
+  voicings: appVoicings,
+})
+
+// Resolving a pool the app hasn't switched to (§7.2): what the session sheet
+// asks about the preset it has *drafted*, and what Home asks about the active
+// one when the answer isn't already reactive state. Bound to the same sources
+// as the store, so a draft sees the custom library too. Questions about the
+// *live* pool go through the store instead — its `progress` is what tells the
+// screens when to ask again.
+const appProgress = new PersistedPresetProgress(appStorage)
+
+export const resolveAppPool = createPoolResolver({
+  presets: appPresets,
+  voicings: appVoicings,
+  storedProgress: (presetId) => appProgress.get(presetId),
+  unlockByFifths: () => settingsStore.getState().settings.unlockByFifths,
+  stats: new PersistedComboStats(appStorage),
 })
 
 // Library edits (create/edit/delete/import) re-resolve immediately.

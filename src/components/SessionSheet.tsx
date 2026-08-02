@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { practiceStore, usePractice } from '../store/practiceStore'
+import {
+  practiceStore,
+  resolveAppPool,
+  usePractice,
+} from '../store/practiceStore'
 import { settingsStore, useSettings } from '../store/settingsStore'
 import {
   DAILY_CAP_MINUTES,
@@ -85,9 +89,10 @@ export function SessionSheet({
       const next = { ...current, ...fields }
       return {
         ...next,
-        learnSelection: practiceStore
-          .getState()
-          .defaultLearnChoice(next.presetId, next.diatonicKey),
+        learnSelection: resolveAppPool(
+          next.presetId,
+          next.diatonicKey,
+        ).defaultLearnSet(),
       }
     })
   const daily = draft.mode === 'daily'
@@ -365,14 +370,11 @@ function LearnSetPicker({
   onChange: (next: readonly string[]) => void
 }) {
   const choices = useMemo(
-    () => practiceStore.getState().learnChoices(presetId, diatonicKey),
+    () => resolveAppPool(presetId, diatonicKey).learnChoices(),
     [presetId, diatonicKey],
   )
   const filler = useMemo(
-    () =>
-      practiceStore
-        .getState()
-        .learnFillerLabels(presetId, diatonicKey, selection),
+    () => resolveAppPool(presetId, diatonicKey).fillerLabels(selection),
     [presetId, diatonicKey, selection],
   )
   const picked = new Set(selection)
@@ -441,8 +443,10 @@ function WorstOnlyRow({
   value: boolean
   onChange: (next: boolean) => void
 }) {
+  // Would the toggle have anything to narrow to (§5)? Asked of the *drafted*
+  // preset, and read once per open like the learned count above.
   const canDrill = useMemo(
-    () => practiceStore.getState().canDrillWorstOnly(presetId, diatonicKey),
+    () => resolveAppPool(presetId, diatonicKey).worstOnly().length > 0,
     [presetId, diatonicKey],
   )
   const disabled = !canDrill && !value
