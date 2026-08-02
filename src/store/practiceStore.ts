@@ -5,65 +5,45 @@ import {
   applyOutcome,
   AttemptLifecycle,
   builtInPresets,
-  canSetAside,
-  chordOrderOf,
-  chordPassList,
-  chordsOpenedBefore,
+  createPoolResolver,
+  songChordLabel,
   comboKey,
-  comboLabel,
   comboMetrics,
-  createPrompt,
   dailyChordCount,
   dailyPool,
   DEFAULT_DIATONIC_KEY,
   effectiveLength,
-  expandPreset,
   fillQueue,
-  filterUnlockedCombos,
   gradeRank,
   IMPROVED_MIN_ATTEMPTS,
-  initialProgress,
   InMemoryComboStats,
   isChordInLearning,
   isLearnSetComplete,
   isPassingGrade,
   MODE_POLICY,
-  defaultLearnSelection,
-  learnFillerChords,
-  learnPoolChordKeys,
   rehearsedChords,
   sanitizeLearnSelection,
-  selectableLearnChords,
   sessionLengthReached,
   MAX_TIME_TO_CORRECT_MS,
-  notPassedChordKeys,
   poolChordKey,
-  rankWorstCombos,
   RECENT_WINDOW,
-  reconcileProgress,
   recordChordAttempt,
   romanNumeral,
-  worstChordGrade,
-  worstChordDisplayGrade,
   openChord,
   setAsideChord,
   sanitizeSessionLength,
   DEFAULT_SESSION_LENGTH,
   SessionRun,
-  songChordLabel,
   SongEngine,
   UPCOMING_COUNT,
-  unlockedChordKeys,
   wrongHeldKeys,
   type AttemptPhase,
   type ChordPassEntry,
   type Combo,
+  type ComboStatsSource,
   type ComboGrade,
   type ComboStatRecord,
-  type DisplayGrade,
-  type ReportChord,
   type LifecycleState,
-  type ComboStatsSource,
   type Hint,
   type PracticeSettings,
   type Preset,
@@ -81,7 +61,6 @@ import {
 } from '../practice'
 import {
   BUILT_IN_VOICING_LIBRARY,
-  spellRoot,
   voicingLibrary,
   type PitchClass,
   type VoicingLibrary,
@@ -461,59 +440,32 @@ export function createPracticeStore({
   })
 
   return createStore<PracticeStoreState>()((set, get) => {
-    const resolve = (presetId: string, diatonicKey: PitchClass) => {
-      const list = presets(diatonicKey)
-      const first = list[0]
-      if (!first) throw new Error('No presets defined')
-      let preset = list.find((p) => p.id === presetId) ?? first
-      let expansion = expandPreset(preset, voicings())
-      // A custom preset can expand to nothing (its rules were edited under
-      // it, or persisted junk); fall back to the first preset — built-ins
-      // always have satisfiable combos.
-      if (expansion.combos.length === 0 && preset !== first) {
-        preset = first
-        expansion = expandPreset(preset, voicings())
-      }
-      return { list, preset, expansion }
-    }
+    const resolvePool = createPoolResolver({
+      presets,
+      voicings,
+      storedProgress: (id: string) => progressStore.get(id),
+      unlockByFifths: () => settings().unlockByFifths,
+      stats,
+    })
 
-    // The resolved active preset and its expansion, kept in lockstep by
-    // applySelection/refreshLibrary — Song draws its pool from the preset,
-    // everything else generates from the expansion.
-    let { preset: activePreset, expansion } = resolve(initialId, initialKey)
+    // The pool the session draws from (§4/§5): the resolved preset with its
+    // expansion, chord order and §5.1 progress record. Immutable — every path
+    // that moves the progress or the library assigns a new one, so nothing
+    // derived from it can be left behind.
+    let pool = resolvePool(initialId, initialKey)
 
-    // The §5 unlock state for the active preset, kept in lockstep with the
-    // expansion by reloadProgress(): the pool's chord order, the persisted
-    // record (reconciled against the real pool size — a custom pool can
-    // shrink under its saved progress), and the unlocked chord-key set the
-    // generator filters by.
-    let chordOrder: string[] = []
-    let progressRecord: PresetProgressRecord = initialProgress(1)
-    let unlocked: ReadonlySet<string> = new Set()
     let justUnlockedTimer: ReturnType<typeof setTimeout> | null = null
 
-    // A preset's chord order and its reconciled unlock record (§5.1), read
-    // without touching the store's own. Split out of reloadProgress so
-    // canDrillWorstOnly can ask about a preset the store hasn't switched to.
-    const derivedProgress = (preset: Preset, combos: readonly Combo[]) => {
-      // Circle-of-fifths unlock order (§5.1) applies only to root-ordered
-      // (product) pools — diatonic/explicit orders are deliberate as-is.
-      const order = chordOrderOf(
-        combos,
-        settings().unlockByFifths && preset.pool.kind === 'product'
-          ? 'fifths'
-          : 'pool',
-      )
-      const stored = progressStore.get(preset.id)
-      const record = reconcileProgress(
-        stored ?? initialProgress(order.length),
-        order.length,
-      )
-      return { order, stored, record }
+    // Persist a reconciliation that changed a stored record, so the self-heal
+    // happens once instead of on every load. Only for the pool actually
+    // switched to — resolving a draft (§7.2) never writes.
+    const persistReconciliation = () => {
+      if (pool.reconciled) progressStore.set(pool.presetId, pool.progressRecord)
     }
+    persistReconciliation()
 
     // The §5.3 daily pool: every preset's learned chords, folded together.
-    // Cached because it expands *every* preset (built-ins plus custom) and is
+    // Cached because it resolves *every* preset (built-ins plus custom) and is
     // asked for on each prompt; `dailyCombos = null` marks it stale, which
     // every path that can change a preset's pool or its progress does.
     let dailyCombos: Combo[] | null = null
@@ -521,45 +473,24 @@ export function createPracticeStore({
       dailyCombos = null
     }
 
-    const buildDailyPool = (): Combo[] =>
-      dailyPool(
-        presets(get().diatonicKey).map((preset) => {
-          const combos = expandPreset(preset, voicings()).combos
-          const { order, record } = derivedProgress(preset, combos)
-          return { combos, chordOrder: order, record }
+    const buildDailyPool = (): Combo[] => {
+      const key = get().diatonicKey
+      return dailyPool(
+        presets(key).map((preset) => {
+          const p = resolvePool(preset.id, key)
+          return {
+            combos: p.combos,
+            chordOrder: p.chordOrder,
+            record: p.progressRecord,
+          }
         }),
       )
+    }
 
     const currentDailyPool = (): Combo[] => {
       if (dailyCombos === null) dailyCombos = buildDailyPool()
       return dailyCombos
     }
-
-    const reloadProgress = () => {
-      const { order, stored, record } = derivedProgress(
-        activePreset,
-        expansion.combos,
-      )
-      chordOrder = order
-      progressRecord = record
-      // Persist a reconciliation that changed a stored record, so the
-      // self-heal happens once instead of on every load.
-      if (
-        stored !== null &&
-        JSON.stringify(stored) !== JSON.stringify(progressRecord)
-      ) {
-        progressStore.set(activePreset.id, progressRecord)
-      }
-      unlocked = unlockedChordKeys(chordOrder, progressRecord)
-    }
-    reloadProgress()
-
-    const progressSnapshot = (): UnlockProgress => ({
-      unlocked: progressRecord.unlockedCount,
-      passed: progressRecord.masteredIndices.length,
-      total: chordOrder.length,
-      setAside: progressRecord.setAsideIndices.length,
-    })
 
     const clearUnlockFlash = () => {
       if (justUnlockedTimer !== null) {
@@ -583,79 +514,15 @@ export function createPracticeStore({
       if (get().gradeUp !== null) set({ gradeUp: null })
     }
 
-    // Compact "Am"-style label for a chord-order key, for the unlock toast:
-    // resolved through the expansion so the diatonic pool's key spellings
-    // apply, same as the Song chips.
-    // Takes the expansion so the session sheet can label the preset it has
-    // *drafted* (§7.2), which is not necessarily the active one.
-    const draftChordLabel = (
-      from: ReturnType<typeof expandPreset>,
-      key: string,
-    ): string => {
-      const combo = from.combos.find((c) => poolChordKey(c) === key)
-      if (combo === undefined) return key
-      return songChordLabel(
-        from.rootSpellings.get(combo.root) ?? spellRoot(combo.root),
-        combo.typeId,
-      )
-    }
-
-    const chordKeyLabel = (key: string): string =>
-      draftChordLabel(expansion, key)
-
-    // The §5.1 pass grade of a whole chord: the worst of its combos in the
-    // current pool, from the persisted records — the same figure Home's In play
-    // row shows (§7.1), so a chord can't read red there and pass here. Combos of
-    // the chord with no history yet don't count against it (worstChordGrade
-    // takes only the records that exist); with none at all it has no grade.
-    // `projected` swaps in a record that hasn't been written yet, which is how
-    // the pill calls the pass during the advance window (see judgeLearned).
-    // `source` is the persisted records everywhere except the learn loop, which
-    // grades its own session in isolation (§5.4) — same fold, same pass bar,
-    // different evidence.
-    const chordGradeFrom = (
-      source: ComboStatsSource,
-      chordKey: string,
-      projected?: { key: string; record: ComboStatRecord },
-    ): ComboGrade | null => {
-      const records: ComboStatRecord[] = []
-      for (const combo of expansion.combos) {
-        if (poolChordKey(combo) !== chordKey) continue
-        const key = comboKey(combo)
-        const record =
-          projected !== undefined && projected.key === key
-            ? projected.record
-            : source.get(key)
-        if (record !== null) records.push(record)
-      }
-      return worstChordGrade(records)
-    }
-
-    const chordGrade = (
-      chordKey: string,
-      projected?: { key: string; record: ComboStatRecord },
-    ): ComboGrade | null => chordGradeFrom(stats, chordKey, projected)
-
-    // The same fold as chordGrade, but through the display rule (§7.5) — an
-    // unproven combo reads `new`, not F. What the §5.2 suggestion judges on:
-    // a chord that has barely been played needs reps, not a bench.
-    const chordDisplayGrade = (chordKey: string): DisplayGrade | null => {
-      const records: ComboStatRecord[] = []
-      for (const combo of expansion.combos) {
-        if (poolChordKey(combo) !== chordKey) continue
-        const record = stats.get(comboKey(combo))
-        if (record !== null) records.push(record)
-      }
-      return worstChordDisplayGrade(records)
-    }
-
-    // A selected chord's grade on this session's reps alone (§5.4). `projected`
-    // swaps in the rep that hasn't been written yet, the same trick the ✔ pill
-    // plays for the practice callouts.
+    // A selected chord's grade on this session's reps alone (§5.4) — the same
+    // fold and the same pass bar as the pool's own grade, over different
+    // evidence. `projected` swaps in the rep that hasn't been written yet, the
+    // trick the ✔ pill plays for the practice callouts.
     const learnChordGrade = (
       chordKey: string,
       projected?: { key: string; record: ComboStatRecord },
-    ): ComboGrade | null => chordGradeFrom(learnStats, chordKey, projected)
+    ): ComboGrade | null =>
+      pool.chordGrade(chordKey, { source: learnStats, projected })
 
     // Re-derive which selected chords are rehearsed and publish the loop's
     // state (§5.4). Called after each learn rep and wherever the selection or
@@ -671,7 +538,7 @@ export function createPracticeStore({
       learnRehearsed = rehearsedChords(selection, learnChordGrade)
       const chords = selection.map((key) => ({
         key,
-        label: chordKeyLabel(key),
+        label: pool.label(key),
         grade: learnChordGrade(key),
         rehearsed: learnRehearsed.has(key),
       }))
@@ -681,9 +548,7 @@ export function createPracticeStore({
       set({
         learnProgress: {
           chords,
-          filler: learnFillerChords(chordOrder, progressRecord, selection).map(
-            chordKeyLabel,
-          ),
+          filler: pool.fillerLabels(selection),
           rehearsed: learnRehearsed.size,
           total: selection.length,
         },
@@ -696,68 +561,29 @@ export function createPracticeStore({
     // default rather than leaving the loop with nothing to finish.
     const syncLearnSelection = () => {
       const sanitized = sanitizeLearnSelection(
-        chordOrder,
-        progressRecord,
+        pool.chordOrder,
+        pool.progressRecord,
         get().learnSelection,
       )
       const selection =
-        sanitized.length > 0
-          ? sanitized
-          : defaultLearnSelection(chordOrder, progressRecord)
+        sanitized.length > 0 ? sanitized : pool.defaultLearnSet()
       set({ learnSelection: selection })
       publishLearnProgress()
     }
 
-    // The preset's benched chords in unlock order (§5.2), for the Report's
-    // bring-back offer.
-    const setAsideChords = (): { chordKey: string; label: string }[] =>
-      chordPassList(chordOrder, progressRecord)
-        .filter((entry) => entry.setAside)
-        .map((entry) => ({
-          chordKey: entry.key,
-          label: chordKeyLabel(entry.key),
-        }))
-
-    // The chords this session actually played, folded from its per-combo
-    // events, with what the §5.2 suggestion rule needs to judge them.
-    const reportChords = (): ReportChord[] => {
-      const chordOf = new Map<string, string>()
-      for (const combo of expansion.combos) {
-        chordOf.set(comboKey(combo), poolChordKey(combo))
-      }
-      const misses = new Map<string, number>()
-      const played: string[] = []
-      for (const event of run.events) {
-        const chordKey = chordOf.get(event.key)
-        if (chordKey === undefined) continue
-        if (!played.includes(chordKey)) played.push(chordKey)
-        if (event.outcome === 'missed') {
-          misses.set(chordKey, (misses.get(chordKey) ?? 0) + 1)
-        }
-      }
-      return played.map((chordKey) => ({
-        chordKey,
-        label: chordKeyLabel(chordKey),
-        grade: chordDisplayGrade(chordKey),
-        misses: misses.get(chordKey) ?? 0,
-        canSetAside: canSetAside(chordOrder, progressRecord, chordKey),
-      }))
-    }
-
-    // Writes a by-hand progress change (§5.2) through: persist, re-derive the
-    // in-play set, drop the preview queue (the pool changed, like any other
+    // Writes a by-hand progress change (§5.2) through: persist, swap in the
+    // moved pool, drop the preview queue (the pool changed, like any other
     // pool change) and redeal a live prompt so a chord just set aside isn't
     // left on screen. These are Home/Report controls, so a live prompt is the
     // paused-with-settings-open case rather than the usual one.
     const applyManualProgress = (next: PresetProgressRecord) => {
-      if (next === progressRecord) return
-      progressRecord = next
-      unlocked = unlockedChordKeys(chordOrder, progressRecord)
-      progressStore.set(activePreset.id, progressRecord)
+      if (next === pool.progressRecord) return
+      pool = pool.withProgress(next)
+      progressStore.set(pool.presetId, next)
       queue = []
       recentKeys = []
       invalidateDaily() // a benched chord leaves the daily pool too (§5.3)
-      set({ progress: progressSnapshot() })
+      set({ progress: pool.progress })
       // A benched chord leaves the learn set with everything else (§5.4).
       syncLearnSelection()
       if (get().mode !== 'song' && get().prompt !== null) nextPrompt()
@@ -775,52 +601,27 @@ export function createPracticeStore({
     // for it to pass.
     const applyProgress = (combo: Combo) => {
       const update = recordChordAttempt(
-        chordOrder,
-        progressRecord,
+        pool.chordOrder,
+        pool.progressRecord,
         poolChordKey(combo),
-        chordGrade(poolChordKey(combo)),
+        pool.chordGrade(poolChordKey(combo)),
       )
       if (!update.changed) return
       // The chord just passed this attempt (§5.1) — collect it for the Report.
-      run.notePassed(chordKeyLabel(poolChordKey(combo)))
-      const previousCount = progressRecord.unlockedCount
-      progressRecord = update.record
-      unlocked = unlockedChordKeys(chordOrder, progressRecord)
-      progressStore.set(activePreset.id, progressRecord)
+      run.notePassed(pool.label(poolChordKey(combo)))
+      const previousCount = pool.progressRecord.unlockedCount
+      pool = pool.withProgress(update.record)
+      progressStore.set(pool.presetId, pool.progressRecord)
       invalidateDaily() // a chord just passed — it joins the daily pool (§5.3)
-      set({ progress: progressSnapshot() })
+      set({ progress: pool.progress })
       if (update.justUnlocked) {
         queue = []
-        const newLabels = chordOrder
-          .slice(previousCount, progressRecord.unlockedCount)
-          .map(chordKeyLabel)
+        const newLabels = pool.chordOrder
+          .slice(previousCount, pool.progressRecord.unlockedCount)
+          .map((key: string) => pool.label(key))
         run.noteUnlocked(newLabels)
         flashJustUnlocked(newLabels)
       }
-    }
-
-    // The §5/§7 "worst chords only" pool, drawn from the persisted records:
-    // "worst" is chords with a miss on the record — plus the chords still
-    // being learned (§5.1: unlocked, not yet passed). A chord you've never
-    // passed belongs in a weak-spots drill even with a clean sheet: most
-    // likely you've barely played it, and leaving it out means the toggle can
-    // only revisit old mistakes and never the gaps. Worst first, so the
-    // ranking still leads the weighted draw. Empty means the toggle has
-    // nothing to narrow to — which is both what makes generation fall back to
-    // the full pool and what disables the toggle in the sheet.
-    const worstOnlyPool = (
-      available: readonly Combo[],
-      order: readonly string[],
-      record: PresetProgressRecord,
-    ): Combo[] => {
-      const worst = rankWorstCombos(available, stats, available.length)
-      const worstKeys = new Set(worst.map(({ combo }) => comboKey(combo)))
-      const notPassed = notPassedChordKeys(order, record)
-      const learning = available.filter(
-        (combo) =>
-          notPassed.has(poolChordKey(combo)) && !worstKeys.has(comboKey(combo)),
-      )
-      return [...worst.map(({ combo }) => combo), ...learning]
     }
 
     // Learn and free practice generate only from the selected preset's
@@ -833,35 +634,28 @@ export function createPracticeStore({
     // the whole unlocked pool.
     const pickPool = (): readonly Combo[] => {
       const state = get()
-      const available = filterUnlockedCombos(expansion.combos, unlocked)
+      const available = pool.inPlay
       if (state.mode === 'daily') {
         // Defensive: the mode is offered only when something is learned
         // (learnedChordCount), but nextPrompt needs a non-empty pool (§5).
-        const pool = currentDailyPool()
-        return pool.length > 0 ? pool : available
+        const daily = currentDailyPool()
+        return daily.length > 0 ? daily : available
       }
       if (MODE_POLICY[state.mode].supportsWorstOnly && state.worstOnly) {
-        const pool = worstOnlyPool(available, chordOrder, progressRecord)
-        if (pool.length > 0) return pool
+        const worst = pool.worstOnly()
+        if (worst.length > 0) return worst
       }
       if (state.mode === 'learn') {
-        const learnPool = learnPoolChordKeys(
-          chordOrder,
-          progressRecord,
-          state.learnSelection,
-        )
-        const filtered = available.filter((combo) =>
-          learnPool.has(poolChordKey(combo)),
-        )
-        if (filtered.length > 0) return filtered
+        const learning = pool.learnSet(state.learnSelection)
+        if (learning.length > 0) return learning
       }
       return available
     }
 
     const nextPrompt = () => {
-      const pool = pickPool()
+      const source = pickPool()
       if (queue.length === 0) {
-        queue = fillQueue([], 1, pool, recentKeys, stats, rng)
+        queue = fillQueue([], 1, source, recentKeys, stats, rng)
       }
       const combo = queue.shift()
       // Unreachable: fillQueue(_, 1, ...) always returns exactly one combo
@@ -870,18 +664,14 @@ export function createPracticeStore({
       currentCombo = combo
       recentKeys.push(comboKey(combo))
       if (recentKeys.length > RECENT_WINDOW) recentKeys.shift()
-      queue = fillQueue(queue, UPCOMING_COUNT, pool, recentKeys, stats, rng)
-      const prompt = createPrompt(
-        combo,
-        expansion.rootSpellings.get(combo.root),
-        voicings(),
-      )
+      queue = fillQueue(queue, UPCOMING_COUNT, source, recentKeys, stats, rng)
+      const prompt = pool.promptFor(combo)
       set({
         prompt,
         justLearned: false,
         upcoming: queue.map((c) => ({
           key: comboKey(c),
-          label: comboLabel(c, expansion.rootSpellings.get(c.root), voicings()),
+          label: pool.comboLabel(c),
         })),
       })
       machine.promptShown(prompt)
@@ -954,11 +744,7 @@ export function createPracticeStore({
         MAX_TIME_TO_CORRECT_MS,
       )
       const key = comboKey(currentCombo)
-      const label = comboLabel(
-        currentCombo,
-        expansion.rootSpellings.get(currentCombo.root),
-        voicings(),
-      )
+      const label = pool.comboLabel(currentCombo)
       stats.record(key, outcome, timeToCorrectMs)
       // Only free practice moves the unlock queue (§5.1): daily draws from
       // every preset at once and has nothing left to pass (§5.3).
@@ -1042,8 +828,11 @@ export function createPracticeStore({
     const judgeLearned = ({ key, combo, record }: ProjectedRep): boolean => {
       if (!MODE_POLICY[get().mode].announcesLearned) return false
       const chordKey = poolChordKey(combo)
-      if (!isChordInLearning(chordOrder, progressRecord, chordKey)) return false
-      return isPassingGrade(chordGrade(chordKey, { key, record }))
+      if (!isChordInLearning(pool.chordOrder, pool.progressRecord, chordKey))
+        return false
+      return isPassingGrade(
+        pool.chordGrade(chordKey, { projected: { key, record } }),
+      )
     }
 
     // The §7.3 grade-up chip. Both grades must rest on at least the
@@ -1067,11 +856,7 @@ export function createPracticeStore({
       const to = comboMetrics(record).grade
       if (gradeRank(to) <= gradeRank(from)) return null
       if (!run.announceGradeUp(key, to)) return null
-      const label = comboLabel(
-        combo,
-        expansion.rootSpellings.get(combo.root),
-        voicings(),
-      )
+      const label = pool.comboLabel(combo)
       return { label, from, to }
     }
 
@@ -1148,13 +933,10 @@ export function createPracticeStore({
     const songComboKey = (chord: SongChord): string =>
       comboKey({ root: chord.root, typeId: chord.typeId, voicingId: 'any' })
 
-    // Chip/summary label: spelled from the expansion like every other
-    // label — the diatonic pool's key spellings included.
+    // Chip/summary label: spelled through the pool like every other label —
+    // the diatonic pool's key spellings included.
     const songLabel = (chord: SongChord): string =>
-      songChordLabel(
-        expansion.rootSpellings.get(chord.root) ?? spellRoot(chord.root),
-        chord.typeId,
-      )
+      songChordLabel(pool.rootSpelling(chord.root), chord.typeId)
 
     // Song's §6.4-style wrong-key marking, without the hint machinery: a
     // foreign held key is marked while held, never escalating. Recomputed on
@@ -1176,11 +958,11 @@ export function createPracticeStore({
         if (state.progression !== songProgression) {
           songProgression = state.progression
           songPrompts = state.progression.map((chord) =>
-            createPrompt(
-              { root: chord.root, typeId: chord.typeId, voicingId: 'any' },
-              expansion.rootSpellings.get(chord.root),
-              voicings(),
-            ),
+            pool.promptFor({
+              root: chord.root,
+              typeId: chord.typeId,
+              voicingId: 'any',
+            }),
           )
           set({
             songChords: state.progression.map((chord) => ({
@@ -1294,12 +1076,12 @@ export function createPracticeStore({
           activeMinutes: lifetimeActiveMinutes,
         },
         goal: currentGoal(),
-        chords: reportChords(),
-        setAside: setAsideChords(),
+        chords: pool.reportChords(run.events),
+        setAside: pool.setAsideChords(),
         unlockedTotals: {
-          unlocked: progressRecord.unlockedCount,
-          passed: progressRecord.masteredIndices.length,
-          total: chordOrder.length,
+          unlocked: pool.progressRecord.unlockedCount,
+          passed: pool.progressRecord.masteredIndices.length,
+          total: pool.chordOrder.length,
         },
         learnRemaining: get()
           .learnProgress.chords.filter((chord) => !chord.rehearsed)
@@ -1337,23 +1119,21 @@ export function createPracticeStore({
       // A correct prompt still waiting out its advance timer counts; the
       // timer itself dies with the next promptShown().
       recordOutcome()
-      const { list, preset, expansion: next } = resolve(presetId, diatonicKey)
-      activePreset = preset
-      expansion = next
+      pool = resolvePool(presetId, diatonicKey)
+      persistReconciliation()
       recentKeys = []
       queue = []
-      reloadProgress()
       // The diatonic preset's pool follows its key, so the learned set can
       // move under a selection change as well as a progress one (§5.3).
       invalidateDaily()
       clearUnlockFlash()
       clearGradeFlash()
-      memory.save({ presetId: preset.id, diatonicKey })
+      memory.save({ presetId: pool.presetId, diatonicKey })
       set({
-        presets: list,
-        presetId: preset.id,
+        presets: presets(diatonicKey),
+        presetId: pool.presetId,
         diatonicKey,
-        progress: progressSnapshot(),
+        progress: pool.progress,
         justUnlocked: false,
         justUnlockedLabels: [],
       })
@@ -1366,7 +1146,7 @@ export function createPracticeStore({
       // A live song rebuilds from the new pool with a fresh count-in; a
       // paused one (no clock) picks the pool up on the next start().
       if (get().mode === 'song') {
-        songEngine.setPool(preset.pool)
+        songEngine.setPool(pool.preset.pool)
         return
       }
       dealOrGate()
@@ -1388,7 +1168,7 @@ export function createPracticeStore({
       songChords: [],
       songSummary: null,
       worstOnly: false,
-      learnSelection: defaultLearnSelection(chordOrder, progressRecord),
+      learnSelection: pool.defaultLearnSet(),
       learnProgress: EMPTY_LEARN_PROGRESS,
       justRehearsed: false,
       sessionLength: DEFAULT_SESSION_LENGTH,
@@ -1399,7 +1179,7 @@ export function createPracticeStore({
       firstTryStreak: 0,
       upcoming: [],
       goal: currentGoal(),
-      progress: progressSnapshot(),
+      progress: pool.progress,
       justUnlocked: false,
       justUnlockedLabels: [],
       gradeUp: null,
@@ -1420,7 +1200,7 @@ export function createPracticeStore({
           sessionLive = true
         }
         if (get().mode === 'song') {
-          songEngine.start(activePreset.pool)
+          songEngine.start(pool.preset.pool)
           return
         }
         // Practice waits for the player before the clock starts (§7.3). Learn
@@ -1497,7 +1277,7 @@ export function createPracticeStore({
           machine.stop() // clears phase/hint/reactionMs via onState
           set({ mode, upcoming: [] })
           publishLearnProgress()
-          songEngine.start(activePreset.pool)
+          songEngine.start(pool.preset.pool)
           return
         }
         set({ mode })
@@ -1520,8 +1300,8 @@ export function createPracticeStore({
 
       setLearnSelection(chordKeys: readonly string[]) {
         const selection = sanitizeLearnSelection(
-          chordOrder,
-          progressRecord,
+          pool.chordOrder,
+          pool.progressRecord,
           chordKeys,
         )
         const current = get().learnSelection
@@ -1539,18 +1319,11 @@ export function createPracticeStore({
       },
 
       learnChoices(presetId: string, diatonicKey: PitchClass) {
-        const { preset, expansion: draft } = resolve(presetId, diatonicKey)
-        const { order, record } = derivedProgress(preset, draft.combos)
-        return selectableLearnChords(order, record).map((entry) => ({
-          ...entry,
-          label: draftChordLabel(draft, entry.key),
-        }))
+        return resolvePool(presetId, diatonicKey).learnChoices()
       },
 
       defaultLearnChoice(presetId: string, diatonicKey: PitchClass) {
-        const { preset, expansion: draft } = resolve(presetId, diatonicKey)
-        const { order, record } = derivedProgress(preset, draft.combos)
-        return defaultLearnSelection(order, record)
+        return resolvePool(presetId, diatonicKey).defaultLearnSet()
       },
 
       learnFillerLabels(
@@ -1558,11 +1331,7 @@ export function createPracticeStore({
         diatonicKey: PitchClass,
         selection: readonly string[],
       ) {
-        const { preset, expansion: draft } = resolve(presetId, diatonicKey)
-        const { order, record } = derivedProgress(preset, draft.combos)
-        return learnFillerChords(order, record, selection).map((key) =>
-          draftChordLabel(draft, key),
-        )
+        return resolvePool(presetId, diatonicKey).fillerLabels(selection)
       },
 
       setSessionLength(length: SessionLength) {
@@ -1611,31 +1380,29 @@ export function createPracticeStore({
 
       refreshLibrary() {
         const current = get()
-        const {
-          list,
-          preset,
-          expansion: next,
-        } = resolve(current.presetId, current.diatonicKey)
-        activePreset = preset
-        expansion = next
-        // The queue's combos are only guaranteed valid against the
-        // expansion they were drawn from; a library edit can change rules
-        // or spellings even when the preset itself is unchanged.
+        // Re-resolving picks up the edit whole: new rules and spellings, a
+        // pool grown or shrunk under its saved unlock progress (reconciled
+        // §5), or a fallback if the active preset vanished.
+        pool = resolvePool(current.presetId, current.diatonicKey)
+        persistReconciliation()
+        // The queue's combos are only guaranteed valid against the expansion
+        // they were drawn from; a library edit can change rules or spellings
+        // even when the preset itself is unchanged.
         queue = []
-        // An edit can also grow/shrink the pool under its saved unlock
-        // progress — re-derive and reconcile (§5).
-        reloadProgress()
         invalidateDaily() // a custom preset's learned chords can move with it
-        if (preset.id !== current.presetId) {
+        if (pool.presetId !== current.presetId) {
           // The active preset vanished (deleted, or now empty) — the
           // resolver fell back; remember the fallback like any selection.
           recentKeys = []
-          memory.save({ presetId: preset.id, diatonicKey: current.diatonicKey })
+          memory.save({
+            presetId: pool.presetId,
+            diatonicKey: current.diatonicKey,
+          })
         }
         set({
-          presets: list,
-          presetId: preset.id,
-          progress: progressSnapshot(),
+          presets: presets(current.diatonicKey),
+          presetId: pool.presetId,
+          progress: pool.progress,
         })
         syncLearnSelection() // an edit can take a selected chord out of the pool
         // Paused (settings/Progress open) or outside a session means no
@@ -1643,7 +1410,7 @@ export function createPracticeStore({
         // reference deleted content.
         if (!sessionLive) return
         if (get().mode === 'song') {
-          songEngine.setPool(preset.pool) // no-ops while paused
+          songEngine.setPool(pool.preset.pool) // no-ops while paused
         } else if (get().prompt !== null) {
           recordOutcome()
           nextPrompt()
@@ -1653,17 +1420,18 @@ export function createPracticeStore({
       resetPresetProgress(presetId: string) {
         // A pending ✔ on the active preset counts (and may master a chord)
         // before the wipe, like every other pool change.
-        if (presetId === activePreset.id) recordOutcome()
+        if (presetId === pool.presetId) recordOutcome()
         progressStore.reset(presetId)
         invalidateDaily() // any preset's wipe empties its share of §5.3
-        if (presetId !== activePreset.id) return
-        reloadProgress()
+        if (presetId !== pool.presetId) return
+        pool = resolvePool(get().presetId, get().diatonicKey)
+        persistReconciliation()
         clearUnlockFlash()
         clearGradeFlash()
         queue = []
         recentKeys = []
         set({
-          progress: progressSnapshot(),
+          progress: pool.progress,
           justUnlocked: false,
           justUnlockedLabels: [],
         })
@@ -1679,7 +1447,9 @@ export function createPracticeStore({
         // A pending ✔ counts (and may master) under the outgoing order,
         // like every other pool change.
         recordOutcome()
-        reloadProgress()
+        // The order setting feeds resolution, so re-resolving picks it up.
+        pool = resolvePool(get().presetId, get().diatonicKey)
+        persistReconciliation()
         // Passed *indices* carry onto the new order (§5.1), so which chords
         // count as learned moves with it — the daily pool with them.
         invalidateDaily()
@@ -1688,7 +1458,7 @@ export function createPracticeStore({
         queue = []
         recentKeys = []
         set({
-          progress: progressSnapshot(),
+          progress: pool.progress,
           justUnlocked: false,
           justUnlockedLabels: [],
         })
@@ -1701,40 +1471,35 @@ export function createPracticeStore({
       },
 
       chordPassStatus() {
-        return chordPassList(chordOrder, progressRecord).map((entry) => ({
-          ...entry,
-          label: chordKeyLabel(entry.key),
-        }))
+        return pool.passList()
       },
 
       setChordAside(chordKey: string) {
         // A pending ✔ counts (and may pass its chord) under the outgoing
         // pool, like every other pool change.
         recordOutcome()
-        applyManualProgress(setAsideChord(chordOrder, progressRecord, chordKey))
+        applyManualProgress(
+          setAsideChord(pool.chordOrder, pool.progressRecord, chordKey),
+        )
       },
 
       openChordForPlay(chordKey: string) {
         recordOutcome()
-        applyManualProgress(openChord(chordOrder, progressRecord, chordKey))
+        applyManualProgress(
+          openChord(pool.chordOrder, pool.progressRecord, chordKey),
+        )
       },
 
       canSetChordAside(chordKey: string) {
-        return canSetAside(chordOrder, progressRecord, chordKey)
+        return pool.canSetAside(chordKey)
       },
 
       chordsOpenedWith(chordKey: string) {
-        return chordsOpenedBefore(chordOrder, progressRecord, chordKey)
+        return pool.openedWith(chordKey)
       },
 
       canDrillWorstOnly(presetId: string, diatonicKey: PitchClass) {
-        const { preset, expansion: draft } = resolve(presetId, diatonicKey)
-        const { order, record } = derivedProgress(preset, draft.combos)
-        const available = filterUnlockedCombos(
-          draft.combos,
-          unlockedChordKeys(order, record),
-        )
-        return worstOnlyPool(available, order, record).length > 0
+        return resolvePool(presetId, diatonicKey).worstOnly().length > 0
       },
 
       learnedChordCount() {
