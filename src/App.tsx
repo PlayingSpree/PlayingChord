@@ -16,7 +16,7 @@ import { ChordStatsView } from './components/ChordStatsView'
 import { Chip, RaisedButton } from './components/ui'
 import { MODE_LABELS } from './components/modes'
 import { cx } from './components/cx'
-import type { SessionLength } from './practice'
+import { effectiveLength, MODE_POLICY } from './practice'
 import {
   SimulatedMidiSource,
   WebMidiSource,
@@ -269,12 +269,10 @@ function StageView({
   // length to fill, so the bar tracks today's goal minutes instead — the one
   // thing still on a clock in an endless session (§7.3). Learn has no length at
   // all: its bar fills with the chords of its set that are rehearsed (§5.4),
-  // which is the thing that actually ends it.
-  const learning = mode === 'learn'
-  const length: SessionLength =
-    mode === 'daily'
-      ? { unit: 'minutes', value: dailyCapMinutes }
-      : sessionLength
+  // which is the thing that actually ends it. Which length is in force is the
+  // store's rule too, so both read the one function rather than each deciding.
+  const learning = MODE_POLICY[mode].hasLearnLoop
+  const length = effectiveLength(mode, sessionLength, dailyCapMinutes)
   const limit = learning
     ? (learnProgress.total ?? 0) || null
     : length.value !== null && length.value > 0
@@ -298,7 +296,8 @@ function StageView({
     limit !== null
       ? Math.min(100, (100 * filled) / limit)
       : Math.min(100, (100 * goal.todayMinutes) / Math.max(1, goalMinutes))
-  const counted = mode !== 'song'
+  // A clock-paced session has no rep count or length to report (§6.5).
+  const counted = !MODE_POLICY[mode].clockPaced
   const goalMet = goal.todayMinutes >= goalMinutes
 
   return (

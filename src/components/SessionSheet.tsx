@@ -5,6 +5,7 @@ import {
   DAILY_CAP_MINUTES,
   MAX_SONG_TEMPO_BPM,
   MIN_SONG_TEMPO_BPM,
+  MODE_POLICY,
   SESSION_MINUTE_LENGTHS,
   SESSION_PROMPT_LENGTHS,
   SONG_CHORD_COUNTS,
@@ -122,7 +123,8 @@ export function SessionSheet({
 
   // The learn loop needs something to finish (§5.4); an empty set would end
   // the session on its first rep.
-  const startable = draft.mode !== 'learn' || draft.learnSelection.length > 0
+  const startable =
+    !MODE_POLICY[draft.mode].hasLearnLoop || draft.learnSelection.length > 0
 
   const activePreset = presets.find((p) => p.id === draft.presetId)
 
@@ -218,7 +220,7 @@ export function SessionSheet({
               )
             })}
           </div>
-          {draft.mode === 'learn' && (
+          {MODE_POLICY[draft.mode].hasLearnLoop && (
             <LearnSetPicker
               presetId={draft.presetId}
               diatonicKey={draft.diatonicKey}
@@ -227,7 +229,7 @@ export function SessionSheet({
             />
           )}
           {daily && <DailySettings learnedChords={learnedChords} />}
-          {draft.mode === 'free' && (
+          {MODE_POLICY[draft.mode].supportsWorstOnly && (
             <WorstOnlyRow
               presetId={draft.presetId}
               diatonicKey={draft.diatonicKey}
@@ -240,8 +242,8 @@ export function SessionSheet({
 
         {/* Song runs until ended, daily runs to its own cap (§5.3) and Learn
             runs until its set is rehearsed (§5.4), so the length is free
-            practice's alone. */}
-        {draft.mode === 'free' && (
+            practice's alone — the modes that draft one, per the policy. */}
+        {MODE_POLICY[draft.mode].length === 'drafted' && (
           <div className="flex flex-col gap-1.5">
             <SectionLabel>Length</SectionLabel>
             <div className="flex overflow-hidden rounded-[14px] border-2 border-card-border">

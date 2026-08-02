@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { usePractice } from '../store/practiceStore'
 import { useSettings } from '../store/settingsStore'
-import type { ComboGrade, SessionReport } from '../practice'
+import { MODE_POLICY, type ComboGrade, type SessionReport } from '../practice'
 import { Card, RaisedButton, SectionLabel } from './ui'
 import { cx } from './cx'
 import { gradeRing } from './grades'
@@ -32,7 +32,7 @@ export function ReportView({
   }, [onHome])
 
   if (report === null) return null
-  const learn = report.mode === 'learn'
+  const learn = MODE_POLICY[report.mode].hasLearnLoop
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-surface p-8 text-ink">
@@ -337,7 +337,7 @@ const HEADLINE: Record<ComboGrade, string> = {
 function headline(report: SessionReport): string {
   // The loop either finished its set or was ended part-way (§5.4) — the
   // headline is the first thing read, so it shouldn't congratulate the latter.
-  if (report.mode === 'learn') {
+  if (MODE_POLICY[report.mode].hasLearnLoop) {
     return report.learn === null || report.learn.remaining.length === 0
       ? 'Set rehearsed!'
       : 'Learning paused'

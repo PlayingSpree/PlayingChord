@@ -15,6 +15,18 @@ artifact and are not recoverable.
 
 ---
 
+## 9.12.1 — 2026-08-02
+
+**Mode differences become a table.** No behavior change: §7 now says that what
+each mode does is carried as one row per mode in `MODE_POLICY`
+(`src/practice/session.ts`) and read from there, instead of being spelled out as
+a `mode === …` condition at each of the ~30 points that turned on it. The
+session length rule (§7.2) had been written twice — once to end the session,
+once to draw the Stage's progress bar — and is now one function both call. What
+counts as a "practice mode" was one predicate standing in for four different
+questions (does it gate on ready, does it grade on pace, does it announce a
+grade-up, where do its reps land); each now asks its own.
+
 ## 9.12.0 — 2026-08-01
 
 **Learn becomes a loop.** Learn mode stops being a free-form browse with a

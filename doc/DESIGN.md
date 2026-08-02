@@ -683,6 +683,15 @@ Home ──(Start / session sheet §7.2)──▶ Stage ──(length reached or
  └──▶ Settings
 ```
 
+The four modes differ at a couple of dozen small decision points — whether a rep
+moves the unlock queue (§5.1), which stats it lands in, whether the ✔ pill may
+announce a pass (§7.3). Those differences are carried as **data**: one row per
+mode in `MODE_POLICY` (`src/practice/session.ts`), read by both the store and the
+screens, rather than restated as a condition at each point. Choosing which engine
+drives a session — Song's clock (§6.5) beside the self-paced attempt machine
+(§6.2) — is not among them; that is a fork, not a trait, and it names Song
+outright.
+
 **Visual language** (reference mock: `doc/Prototype.dc.html`): dark navy surface,
 green primary action color, cards and buttons as chunky 2px-bordered rounded
 panels with a hard offset shadow, display typeface Bricolage Grotesque —

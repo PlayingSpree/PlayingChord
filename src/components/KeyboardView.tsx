@@ -1,6 +1,7 @@
 import { useMidi } from '../store/midiStore'
 import { usePractice } from '../store/practiceStore'
 import { useSettings } from '../store/settingsStore'
+import { MODE_POLICY } from '../practice'
 import { pitchClass } from '../theory'
 
 // On-screen keyboard (~3 octaves, DESIGN.md §7) showing currently held notes
@@ -83,7 +84,8 @@ export function KeyboardView() {
     hint?.kind === 'reveal'
       ? hint.notes
       : prompt !== null &&
-          (mode === 'learn' || (mode === 'song' && songShowExample))
+          (MODE_POLICY[mode].revealsAnswer ||
+            (mode === 'song' && songShowExample))
         ? prompt.example
         : null
   const expected =

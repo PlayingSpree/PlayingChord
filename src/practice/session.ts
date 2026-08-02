@@ -10,11 +10,119 @@ import type { PromptOutcome } from './stats'
 // clock-paced: a looped diatonic progression judged per bar.
 export type SessionMode = 'learn' | 'daily' | 'free' | 'song'
 
-// The self-paced modes that record outcomes (§5): both practice modes, and
-// neither Learn (stats-neutral) nor Song (clock-paced, judged per bar). What
-// the ready gate, the per-combo records and the ✔ callouts all key off.
-export function isPracticeMode(mode: SessionMode): boolean {
-  return mode === 'daily' || mode === 'free'
+// What each mode *does*, as data (§7). The modes differ at a couple of dozen
+// decision points — whether a rep moves the unlock queue, which stats it lands
+// in, whether the ✔ pill may announce a pass — and those differences used to
+// be spelled as `mode === '…'` at each point, so what a mode is could only be
+// read by finding all of them, and adding one meant finding them again.
+//
+// Deliberately *not* here: the branches that pick which engine to drive
+// (Song's clock beside the self-paced attempt machine) and which pool to
+// generate from. Those have a different body per mode rather than a shared
+// body under a trait test, so a field would rename the condition and remove
+// nothing — they still name Song and daily and Learn outright.
+export interface ModePolicy {
+  // Which length ends the session (§7.2), resolved by effectiveLength below:
+  // the length drafted in the session sheet, the persisted daily cap (§5.3),
+  // or none at all — Learn ends on its set (§5.4) and Song on the End button.
+  length: 'drafted' | 'dailyCap' | 'none'
+  // Where a completed self-paced rep lands: the persisted per-combo records,
+  // or the learn loop's session-local ones (§5.4). `null` is Song, which has
+  // no self-paced reps to place — its bars are judged on the clock and
+  // recorded through their own path (§6.5).
+  statsSource: 'persisted' | 'session' | null
+  // Does the first prompt wait for the player (§7.3)? Only worth a gate where
+  // a time-to-correct is being recorded against the walk-up to the keyboard.
+  gatesOnReady: boolean
+  // Does a first-try ✔ carry the combo streak (§7.3)?
+  streaks: boolean
+  // Is a rep judged on pace — the ✔ pill's slow/fast chips (§7.3)?
+  graded: boolean
+  // Is the example voicing shown from the start (§7), rather than earned at
+  // the miss-3 reveal (§6.4)?
+  revealsAnswer: boolean
+  // Does a completed rep move the §5 unlock queue — and, with it, does the
+  // mode govern the selected preset's pool at all (the §5.2 set-aside offer)?
+  // Only free practice: daily draws from every preset at once and has nothing
+  // left to pass (§5.3).
+  movesUnlockProgress: boolean
+  // May the ✔ pill announce a chord reaching the pass bar (§7.3)?
+  announcesLearned: boolean
+  // May it announce a combo climbing a grade (§7.3)?
+  announcesGradeUp: boolean
+  // May it announce a selected chord reaching the loop's bar (§5.4)?
+  announcesRehearsed: boolean
+  // Does the mode offer "worst chords only" (§5/§7)?
+  supportsWorstOnly: boolean
+  // Does the mode run the learn loop (§5.4): a chosen chord set, graded on the
+  // session's own reps, that ends the session once it is rehearsed?
+  hasLearnLoop: boolean
+  // Is the mode clock-paced (§6.5)? Read where presentation turns on it — the
+  // Stage's counters, the unlock toast — never to pick an engine.
+  clockPaced: boolean
+}
+
+export const MODE_POLICY: Record<SessionMode, ModePolicy> = {
+  learn: {
+    length: 'none',
+    statsSource: 'session',
+    gatesOnReady: false,
+    streaks: false,
+    graded: false,
+    revealsAnswer: true,
+    movesUnlockProgress: false,
+    announcesLearned: false,
+    announcesGradeUp: false,
+    announcesRehearsed: true,
+    supportsWorstOnly: false,
+    hasLearnLoop: true,
+    clockPaced: false,
+  },
+  daily: {
+    length: 'dailyCap',
+    statsSource: 'persisted',
+    gatesOnReady: true,
+    streaks: true,
+    graded: true,
+    revealsAnswer: false,
+    movesUnlockProgress: false,
+    announcesLearned: false,
+    announcesGradeUp: true,
+    announcesRehearsed: false,
+    supportsWorstOnly: false,
+    hasLearnLoop: false,
+    clockPaced: false,
+  },
+  free: {
+    length: 'drafted',
+    statsSource: 'persisted',
+    gatesOnReady: true,
+    streaks: true,
+    graded: true,
+    revealsAnswer: false,
+    movesUnlockProgress: true,
+    announcesLearned: true,
+    announcesGradeUp: true,
+    announcesRehearsed: false,
+    supportsWorstOnly: true,
+    hasLearnLoop: false,
+    clockPaced: false,
+  },
+  song: {
+    length: 'none',
+    statsSource: null,
+    gatesOnReady: false,
+    streaks: false,
+    graded: false,
+    revealsAnswer: false,
+    movesUnlockProgress: false,
+    announcesLearned: false,
+    announcesGradeUp: false,
+    announcesRehearsed: false,
+    supportsWorstOnly: false,
+    hasLearnLoop: false,
+    clockPaced: true,
+  },
 }
 
 // Session length (§7.2) is a count of **prompts** or of **active minutes** —
@@ -66,6 +174,30 @@ export function sessionLengthReached(
   return length.unit === 'prompts'
     ? done >= length.value
     : activeMs >= length.value * 60_000
+}
+
+// A length that never runs out: what the modes ending on something other than
+// a length (§7.2) resolve to, so the length check can be asked unconditionally.
+export const UNLIMITED_LENGTH: SessionLength = { unit: 'prompts', value: null }
+
+// What actually ends a session (§7.2), for a mode and the length drafted for
+// it: daily practice runs to its persisted cap in active minutes (§5.3), Learn
+// to its chord set (§5.4) and Song to the End button, so only free practice
+// takes the drafted length. Shared by the store's between-prompts check and the
+// Stage's progress readout, which would otherwise each carry the rule.
+export function effectiveLength(
+  mode: SessionMode,
+  drafted: SessionLength,
+  dailyCapMinutes: number,
+): SessionLength {
+  switch (MODE_POLICY[mode].length) {
+    case 'dailyCap':
+      return { unit: 'minutes', value: dailyCapMinutes }
+    case 'none':
+      return UNLIMITED_LENGTH
+    case 'drafted':
+      return drafted
+  }
 }
 
 // How long a first-try streak must run before the ✔ flash mentions it (§7.3)

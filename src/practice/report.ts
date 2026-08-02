@@ -14,6 +14,7 @@ import {
   type DisplayGrade,
 } from './stats'
 import {
+  MODE_POLICY,
   summarizeSession,
   type SessionEvent,
   type SessionMode,
@@ -115,7 +116,9 @@ export function pickSuggestion(
   chords: readonly ReportChord[],
   setAside: readonly { chordKey: string; label: string }[],
 ): ReportSuggestion | null {
-  if (mode !== 'free' || grade === null) return null
+  // Only a mode that governs the selected preset's pool can offer to bench a
+  // chord in it (§5.2) — the same trait that lets a rep move the unlock queue.
+  if (!MODE_POLICY[mode].movesUnlockProgress || grade === null) return null
   if (grade === 'F') {
     const candidate = chords
       .filter((chord) => chord.grade === 'F' && chord.canSetAside)
@@ -218,7 +221,7 @@ export function buildSessionReport(input: SessionReportInput): SessionReport {
   // Learn is stats-neutral (§5): no grade. Otherwise the §5 chord-score math
   // — a null avgTime (Song) gets full speed credit inside sessionScore.
   const grade =
-    input.mode === 'learn' || accuracy === null
+    MODE_POLICY[input.mode].hasLearnLoop || accuracy === null
       ? null
       : comboGrade(sessionScore(accuracy, avgTimeMs))
 
@@ -246,7 +249,7 @@ export function buildSessionReport(input: SessionReportInput): SessionReport {
     passedLabels: [...input.passedLabels],
     shaky,
     unlocked: input.unlocked,
-    learn: input.mode === 'learn' ? (input.learn ?? null) : null,
+    learn: MODE_POLICY[input.mode].hasLearnLoop ? (input.learn ?? null) : null,
     suggestion: pickSuggestion(input.mode, grade, input.chords, input.setAside),
     goal: input.goal,
   }

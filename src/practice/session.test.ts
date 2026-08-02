@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_SESSION_LENGTH,
+  effectiveLength,
+  MODE_POLICY,
   sanitizeSessionLength,
   sessionLengthReached,
   summarizeSession,
+  UNLIMITED_LENGTH,
   type SessionEvent,
 } from './session'
 
@@ -89,6 +92,61 @@ describe('sanitizeSessionLength (§7.2)', () => {
       unit: 'prompts',
       value: 10,
     })
+  })
+})
+
+// Not a restatement of the table — the store's own tests cover what each mode
+// does. These are the relations that have to hold *between* fields, so a row
+// added for a new mode can't quietly claim a combination that means nothing.
+describe('MODE_POLICY invariants (§7)', () => {
+  const policies = Object.values(MODE_POLICY)
+
+  it('only announces a pass in a mode that can record one (§5.1/§7.3)', () => {
+    for (const policy of policies) {
+      if (policy.announcesLearned) {
+        expect(policy.movesUnlockProgress).toBe(true)
+      }
+    }
+  })
+
+  it('never moves the unlock queue on session-local reps (§5.4)', () => {
+    for (const policy of policies) {
+      if (policy.statsSource === 'session') {
+        expect(policy.movesUnlockProgress).toBe(false)
+      }
+    }
+  })
+
+  it('only announces a rehearsal where the loop runs (§5.4)', () => {
+    for (const policy of policies) {
+      if (policy.announcesRehearsed) expect(policy.hasLearnLoop).toBe(true)
+    }
+  })
+
+  it('never gates a clock-paced mode on ready (§6.5/§7.3)', () => {
+    for (const policy of policies) {
+      if (policy.clockPaced) expect(policy.gatesOnReady).toBe(false)
+    }
+  })
+})
+
+describe('effectiveLength (§7.2)', () => {
+  const drafted = { unit: 'prompts', value: 40 } as const
+
+  it('gives free practice the length it drafted', () => {
+    expect(effectiveLength('free', drafted, 15)).toEqual(drafted)
+  })
+
+  it('gives daily practice its persisted cap in minutes (§5.3)', () => {
+    expect(effectiveLength('daily', drafted, 15)).toEqual({
+      unit: 'minutes',
+      value: 15,
+    })
+  })
+
+  it('gives Learn and Song no length to run out (§5.4/§6.5)', () => {
+    expect(effectiveLength('learn', drafted, 15)).toEqual(UNLIMITED_LENGTH)
+    expect(effectiveLength('song', drafted, 15)).toEqual(UNLIMITED_LENGTH)
   })
 })
 

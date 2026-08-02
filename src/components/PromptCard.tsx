@@ -4,8 +4,8 @@ import { useSettings } from '../store/settingsStore'
 import {
   FIRST_TRY_STREAK_DISPLAY_MIN,
   FAST_TIME_MS,
-  isPracticeMode,
   MAX_TIME_TO_CORRECT_MS,
+  MODE_POLICY,
   SLOW_TIME_MS,
   type ChordNameSize,
   type Hint,
@@ -169,7 +169,7 @@ function FeedbackPill() {
     // exactly the reps that would grade the combo F on speed alone. Amber, not
     // F's red: this is one rep, a warning about pace, while the red letter is a
     // verdict on a whole window of them.
-    const graded = isPracticeMode(mode) && song === null
+    const graded = MODE_POLICY[mode].graded && song === null
     const slow = graded && reactionMs > SLOW_TIME_MS
     // Fast is the same idea from the other end (§7.3): A's second, so the chip
     // fires on exactly the reps that would grade the combo A on speed alone.
@@ -214,7 +214,7 @@ function FeedbackPill() {
         ✕ {hintText(hint)}
       </span>
     )
-  } else if (mode === 'learn' && song === null) {
+  } else if (MODE_POLICY[mode].revealsAnswer && song === null) {
     content = (
       <span
         className={cx(base, 'bg-track text-base font-semibold text-ink-soft')}
