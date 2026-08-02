@@ -2,30 +2,27 @@ import { createStore } from 'zustand/vanilla'
 import { useStore } from 'zustand'
 import {
   ActiveTimeTracker,
-  applyOutcome,
   AttemptLifecycle,
   builtInPresets,
+  judgeCallouts,
+  repOutcome,
+  streakAfter,
   createPoolResolver,
   songChordLabel,
   comboKey,
-  comboMetrics,
+  MAX_TIME_TO_CORRECT_MS,
+  poolChordKey,
   dailyChordCount,
   dailyPool,
   DEFAULT_DIATONIC_KEY,
   effectiveLength,
   fillQueue,
-  gradeRank,
-  IMPROVED_MIN_ATTEMPTS,
   InMemoryComboStats,
-  isChordInLearning,
   isLearnSetComplete,
-  isPassingGrade,
   MODE_POLICY,
   rehearsedChords,
   sanitizeLearnSelection,
   sessionLengthReached,
-  MAX_TIME_TO_CORRECT_MS,
-  poolChordKey,
   RECENT_WINDOW,
   recordChordAttempt,
   romanNumeral,
@@ -38,6 +35,8 @@ import {
   UPCOMING_COUNT,
   wrongHeldKeys,
   type AttemptPhase,
+  type CalloutContext,
+  type GradeUpFlash,
   type ChordPassEntry,
   type Combo,
   type ComboStatsSource,
@@ -180,14 +179,6 @@ export const EMPTY_LEARN_PROGRESS: LearnProgress = {
   filler: [],
   rehearsed: 0,
   total: 0,
-}
-
-// A combo whose grade just improved mid-session (§7.3): the label it's known
-// by in the chord stats, and the two letters, for the line under the ✔ pill.
-export interface GradeUpFlash {
-  label: string
-  from: ComboGrade
-  to: ComboGrade
 }
 
 // How long the top-bar chip celebrates a fresh unlock before settling.
@@ -709,16 +700,11 @@ export function createPracticeStore({
         recordLearnRep()
         return false
       }
-      const outcome: PromptOutcome =
-        machine.state.missCount > 0 ? 'missed' : 'first-try'
-      // One clamp point for the whole recording path (§6.2): combo stats and
+      // The same reduction the ✔ pill projected a window earlier (§6.2), which
+      // is why it is one function: from here it reaches combo stats and
       // weighting, unlock progress, the session tallies, the Report log and —
-      // through stats.record — the day's summed time. A rep that reaches the
-      // ceiling is demoted for grading only, inside applyOutcome.
-      const timeToCorrectMs = Math.min(
-        machine.state.reactionMs ?? 0,
-        MAX_TIME_TO_CORRECT_MS,
-      )
+      // through stats.record — the day's summed time.
+      const { outcome, timeToCorrectMs } = repOutcome(machine.state)
       const key = comboKey(currentCombo)
       const label = pool.comboLabel(currentCombo)
       stats.record(key, outcome, timeToCorrectMs)
@@ -737,128 +723,47 @@ export function createPracticeStore({
       return true
     }
 
-    // The §7.3 combo streak, driven by the judgment edges rather than by the
-    // completed prompt: a miss drops it the moment the ✘ lands (it used to
-    // wait for the auto-advance, which left the ✔ flash of a missed prompt
-    // claiming a streak the miss had already ended — and made a *surviving*
-    // streak undercount by one, so "🔥 10 combo" appeared on the 11th), and a
-    // first-try ✔ counts itself. Learn is stats-neutral (§5) and Song bars
-    // have no self-paced streak.
+    // Learn is stats-neutral (§5) and Song bars have no self-paced streak, so
+    // only the modes the policy says streak move the count. Both writes stay
+    // here: a reset publishes a 0 that is not a best streak to record.
     const applyStreak = (next: LifecycleState) => {
       const state = get()
       if (!MODE_POLICY[state.mode].streaks) return
-      if (next.missCount > state.missCount) {
-        if (state.firstTryStreak > 0) set({ firstTryStreak: 0 })
-        return
-      }
-      if (
-        next.phase === 'advancing' &&
-        state.phase !== 'advancing' &&
-        next.missCount === 0
-      ) {
-        const firstTryStreak = state.firstTryStreak + 1
-        set({ firstTryStreak })
-        bestStreak.record(firstTryStreak)
-      }
+      const firstTryStreak = streakAfter(state, next)
+      if (firstTryStreak === null) return
+      set({ firstTryStreak })
+      if (firstTryStreak > 0) bestStreak.record(firstTryStreak)
     }
 
-    // Everything the ✔ flash says about the rep it belongs to has to be worked
-    // out on the judgment edge: outcomes are recorded on *advance*, by which
-    // time the flash is already gone. This projects the record recordOutcome
-    // will write — same inputs, one window early — so the pill and the stats
-    // can't disagree. Practice only: Learn records nothing (§5) and Song bars
-    // never reach the machine — daily and free alike record, so both project.
-    interface ProjectedRep {
-      key: string
-      combo: Combo
-      before: ComboStatRecord | null
-      record: ComboStatRecord
-    }
-
-    const projectRep = (next: LifecycleState): ProjectedRep | null => {
-      const mode = get().mode
-      if (currentCombo === null) return null
-      // Learn projects too (§5.4) — against its own stats, for its own callout.
-      const statsSource = MODE_POLICY[mode].statsSource
-      if (statsSource === null) return null
-      const source = statsSource === 'session' ? learnStats : stats
-      const key = comboKey(currentCombo)
-      const before = source.get(key)
-      return {
-        key,
-        combo: currentCombo,
-        before,
-        record: applyOutcome(
-          before,
-          next.missCount > 0 ? 'missed' : 'first-try',
-          Math.min(next.reactionMs ?? 0, MAX_TIME_TO_CORRECT_MS),
-        ),
-      }
-    }
-
-    // The §7.3 `learned` callout: the same chord grade applyProgress will read,
-    // over the same records, with this rep projected in. Daily practice passes
-    // nothing (recordOutcome), so it never claims to — the same chord can sit
-    // unlocked-but-unpassed in the *selected* preset while being learned in
-    // another, and the pill would otherwise announce a pass that never lands.
-    const judgeLearned = ({ key, combo, record }: ProjectedRep): boolean => {
-      if (!MODE_POLICY[get().mode].announcesLearned) return false
-      const chordKey = poolChordKey(combo)
-      if (!isChordInLearning(pool.chordOrder, pool.progressRecord, chordKey))
-        return false
-      return isPassingGrade(
-        pool.chordGrade(chordKey, { projected: { key, record } }),
-      )
-    }
-
-    // The §7.3 grade-up chip. Both grades must rest on at least the
-    // most-improved evidence floor — below that a letter swings on one rep and
-    // the notice is noise — and each letter is news once per session per combo
-    // (announcedGradeUps): a grade rides a moving window, so a combo hovering
-    // on a cut point re-crosses it every few reps, and B → A → B → A would
-    // otherwise announce the same A over and over.
-    const judgeGradeUp = ({
-      key,
-      combo,
-      before,
-      record,
-    }: ProjectedRep): GradeUpFlash | null => {
-      // Practice only: Learn's letters are session-local (§5.4), and a chip
-      // announcing a climb that no record will hold would be a lie.
-      if (!MODE_POLICY[get().mode].announcesGradeUp) return null
-      if (before === null || before.attempts < IMPROVED_MIN_ATTEMPTS)
-        return null
-      const from = comboMetrics(before).grade
-      const to = comboMetrics(record).grade
-      if (gradeRank(to) <= gradeRank(from)) return null
-      if (!run.announceGradeUp(key, to)) return null
-      const label = pool.comboLabel(combo)
-      return { label, from, to }
-    }
-
-    // Both callouts ride the ✔ flash itself (§7.3), so they are decided on the
-    // edge into 'advancing' and last exactly as long as it does — the pill
-    // renders neither in any other phase.
-    // The §5.4 `✓ rehearsed` callout: this rep took a *selected* chord that
-    // wasn't there yet to the pass bar, judged on the loop's own stats with the
-    // rep projected in — the same call publishLearnProgress will make once it
-    // lands. Filler chords never earn it; nothing about them is the point.
-    const judgeRehearsed = ({ key, combo, record }: ProjectedRep): boolean => {
-      if (!MODE_POLICY[get().mode].announcesRehearsed) return false
-      const chordKey = poolChordKey(combo)
-      if (!get().learnSelection.includes(chordKey)) return false
-      if (learnRehearsed.has(chordKey)) return false
-      return isPassingGrade(learnChordGrade(chordKey, { key, record }))
-    }
+    // What the ✔ pill has to say about this rep (§7.3/§5.4), decided on the
+    // edge into 'advancing' and lasting exactly as long as the flash does — the
+    // pill renders none of it in any other phase. A climb comes back as a
+    // candidate: whether it is *worth* saying is about the rep, whether it has
+    // already been said is about the session (§7.3), and the run answers that.
+    const calloutContext = (): CalloutContext => ({
+      mode: get().mode,
+      combo: currentCombo,
+      pool,
+      stats,
+      learnStats,
+      learnSelection: get().learnSelection,
+      learnRehearsed,
+    })
 
     const applyFlashes = (next: LifecycleState) => {
       if (next.phase !== 'advancing' || get().phase === 'advancing') return
-      const rep = projectRep(next)
-      const justLearned = rep !== null && judgeLearned(rep)
+      const { justLearned, justRehearsed, climb } = judgeCallouts(
+        next,
+        calloutContext(),
+      )
       if (justLearned !== get().justLearned) set({ justLearned })
-      const justRehearsed = rep !== null && judgeRehearsed(rep)
       if (justRehearsed !== get().justRehearsed) set({ justRehearsed })
-      const gradeUp = rep === null ? null : judgeGradeUp(rep)
+      // The candidate carries the combo key the dedup is asked by; the pill
+      // only ever shows the three fields, so that is what is published.
+      const gradeUp: GradeUpFlash | null =
+        climb !== null && run.announceGradeUp(climb.key, climb.to)
+          ? { label: climb.label, from: climb.from, to: climb.to }
+          : null
       if (gradeUp !== null || get().gradeUp !== null) set({ gradeUp })
     }
 
