@@ -49,11 +49,11 @@ import {
   setAsideChord,
   sanitizeSessionLength,
   DEFAULT_SESSION_LENGTH,
+  SessionRun,
   songChordLabel,
   SongEngine,
   UPCOMING_COUNT,
   unlockedChordKeys,
-  buildSessionReport,
   wrongHeldKeys,
   type AttemptPhase,
   type ChordPassEntry,
@@ -71,10 +71,11 @@ import {
   type Prompt,
   type PromptOutcome,
   type Rng,
-  type SessionEvent,
   type SessionLength,
   type SessionMode,
   type SessionReport,
+  type SessionRunContext,
+  type SessionStats,
   type SongChord,
   type SongState,
 } from '../practice'
@@ -125,22 +126,6 @@ function sanitizeDiatonicKey(value: unknown): PitchClass {
     value <= 11
     ? value
     : DEFAULT_DIATONIC_KEY
-}
-
-// Live session tallies (§7). A "session" runs from start() to endSession()
-// (§7.2); each fresh session zeroes these. Learn-mode prompts never count
-// toward accuracy (§7); time-to-correct includes retries. Song bars
-// count as prompts with no time sample (§6.5).
-export interface SessionStats {
-  prompts: number
-  firstTrySuccesses: number
-  totalTimeToCorrectMs: number
-}
-
-const FRESH_SESSION: SessionStats = {
-  prompts: 0,
-  firstTrySuccesses: 0,
-  totalTimeToCorrectMs: 0,
 }
 
 // A §5/§7 upcoming-preview entry: the next combos to be dealt, in order.
@@ -432,7 +417,11 @@ export function createPracticeStore({
   // recentKeys.
   let queue: Combo[] = []
   let currentCombo: Combo | null = null
-  let sessionEvents: SessionEvent[] = []
+  // What this session has accumulated about itself (§7.2) — its recorded
+  // prompts, the chords it passed / opened / rehearsed, its active time and the
+  // grade climbs already announced. Replaced wholesale at each session start,
+  // which is what makes a session start over.
+  let run = new SessionRun()
   // Is a session running (§7.2)? True from start() until the session ends —
   // through a Report (endSession/the length) or a restart (discardSession) —
   // and it stays true across a pause(), which is what lets the Stage resume
@@ -440,12 +429,6 @@ export function createPracticeStore({
   // Home's mode chips and the session sheet's pickers are pure config: no
   // judging, no stats, no Song clock outside the Stage (§7.1).
   let sessionLive = false
-  // Chords passed / newly unlocked this session (§5.1) and the session's own
-  // accrued active ms — the Report's passed/unlock lists and time increment
-  // (§7.4). Reset alongside sessionEvents at each session start.
-  let sessionPassedLabels: string[] = []
-  let sessionUnlockedLabels: string[] = []
-  let sessionActiveMs = 0
   // The learn loop's own stat source (§5.4): grading is session-local, so the
   // loop reads and writes this and never the persisted records — it can't move
   // a lifetime grade, the weighting or the unlock queue. Replaced wholesale at
@@ -454,7 +437,8 @@ export function createPracticeStore({
   // Which selected chords have reached the pass bar on those reps, and their
   // labels in the order they got there — the Stage counter and the Report list.
   let learnRehearsed: ReadonlySet<string> = new Set()
-  let sessionRehearsedLabels: string[] = []
+  // Buffered active time, deliberately *not* session-scoped: a partial flush
+  // survives into the next session, so it outlives the run beside it (§7.6).
   let pendingActiveMs = 0
   const activeTime = new ActiveTimeTracker()
 
@@ -507,10 +491,6 @@ export function createPracticeStore({
     let progressRecord: PresetProgressRecord = initialProgress(1)
     let unlocked: ReadonlySet<string> = new Set()
     let justUnlockedTimer: ReturnType<typeof setTimeout> | null = null
-    // `${comboKey}:${grade}` for every climb already announced this session
-    // (§7.3) — see judgeGradeUp. Cleared with the rest of the session
-    // tallies, so a fresh session hears each climb again.
-    let announcedGradeUps = new Set<string>()
 
     // A preset's chord order and its reconciled unlock record (§5.1), read
     // without touching the store's own. Split out of reloadProgress so
@@ -696,9 +676,7 @@ export function createPracticeStore({
         rehearsed: learnRehearsed.has(key),
       }))
       for (const chord of chords) {
-        if (chord.rehearsed && !sessionRehearsedLabels.includes(chord.label)) {
-          sessionRehearsedLabels.push(chord.label)
-        }
+        if (chord.rehearsed) run.noteRehearsed(chord.label)
       }
       set({
         learnProgress: {
@@ -749,7 +727,7 @@ export function createPracticeStore({
       }
       const misses = new Map<string, number>()
       const played: string[] = []
-      for (const event of sessionEvents) {
+      for (const event of run.events) {
         const chordKey = chordOf.get(event.key)
         if (chordKey === undefined) continue
         if (!played.includes(chordKey)) played.push(chordKey)
@@ -804,10 +782,7 @@ export function createPracticeStore({
       )
       if (!update.changed) return
       // The chord just passed this attempt (§5.1) — collect it for the Report.
-      const passedLabel = chordKeyLabel(poolChordKey(combo))
-      if (!sessionPassedLabels.includes(passedLabel)) {
-        sessionPassedLabels.push(passedLabel)
-      }
+      run.notePassed(chordKeyLabel(poolChordKey(combo)))
       const previousCount = progressRecord.unlockedCount
       progressRecord = update.record
       unlocked = unlockedChordKeys(chordOrder, progressRecord)
@@ -819,11 +794,7 @@ export function createPracticeStore({
         const newLabels = chordOrder
           .slice(previousCount, progressRecord.unlockedCount)
           .map(chordKeyLabel)
-        for (const label of newLabels) {
-          if (!sessionUnlockedLabels.includes(label)) {
-            sessionUnlockedLabels.push(label)
-          }
-        }
+        run.noteUnlocked(newLabels)
         flashJustUnlocked(newLabels)
       }
     }
@@ -994,22 +965,13 @@ export function createPracticeStore({
       if (MODE_POLICY[get().mode].movesUnlockProgress) {
         applyProgress(currentCombo)
       }
-      sessionEvents.push({ key, label, outcome, timeToCorrectMs })
+      run.logEvent({ key, label, outcome, timeToCorrectMs })
       // Defensive: a ✔ is recorded exactly once — clear the combo so a stray
       // second recordOutcome (still 'advancing') can't double-count it.
       currentCombo = null
       // The combo streak isn't touched here — it moves on the judgment edges
       // themselves (applyStreak below), which is what keeps the flash honest.
-      set((state) => ({
-        session: {
-          prompts: state.session.prompts + 1,
-          firstTrySuccesses:
-            state.session.firstTrySuccesses + (outcome === 'first-try' ? 1 : 0),
-          totalTimeToCorrectMs:
-            state.session.totalTimeToCorrectMs + timeToCorrectMs,
-        },
-        done: state.done + 1,
-      }))
+      set((state) => ({ session: run.stats(), done: state.done + 1 }))
       return true
     }
 
@@ -1104,9 +1066,7 @@ export function createPracticeStore({
       const from = comboMetrics(before).grade
       const to = comboMetrics(record).grade
       if (gradeRank(to) <= gradeRank(from)) return null
-      const announced = `${key}:${to}`
-      if (announcedGradeUps.has(announced)) return null
-      announcedGradeUps.add(announced)
+      if (!run.announceGradeUp(key, to)) return null
       const label = comboLabel(
         combo,
         expansion.rootSpellings.get(combo.root),
@@ -1168,9 +1128,7 @@ export function createPracticeStore({
         // Checked between prompts, so a timed session never cuts a rep off
         // mid-attempt (§7.2) — and its clock is active time, so it can only
         // run out while someone is playing.
-        if (
-          sessionLengthReached(currentLength(), get().done, sessionActiveMs)
-        ) {
+        if (sessionLengthReached(currentLength(), get().done, run.activeMs)) {
           concludeSession() // reached the §7.2 length → Report
           return
         }
@@ -1254,20 +1212,13 @@ export function createPracticeStore({
         const key = songComboKey(chord)
         const outcome: PromptOutcome = hit ? 'first-try' : 'missed'
         stats.record(key, outcome, null)
-        sessionEvents.push({
+        run.logEvent({
           key,
           label: songLabel(chord),
           outcome,
           timeToCorrectMs: null,
         })
-        set((state) => ({
-          session: {
-            prompts: state.session.prompts + 1,
-            firstTrySuccesses: state.session.firstTrySuccesses + (hit ? 1 : 0),
-            totalTimeToCorrectMs: state.session.totalTimeToCorrectMs,
-          },
-          done: state.done + 1,
-        }))
+        set((state) => ({ session: run.stats(), done: state.done + 1 }))
       },
     })
 
@@ -1299,25 +1250,20 @@ export function createPracticeStore({
       pendingActiveMs += delta
       // This session's share: the report's time increment, and the clock a
       // timed session (§7.2) and daily practice's cap (§5.3) run against.
-      sessionActiveMs += delta
-      set({ sessionActiveMs })
+      run.addActiveMs(delta)
+      set({ sessionActiveMs: run.activeMs })
       if (pendingActiveMs >= ACTIVE_FLUSH_MS) flushActivity()
     }
 
     const resetSession = () => {
-      sessionEvents = []
-      announcedGradeUps = new Set()
-      sessionPassedLabels = []
-      sessionUnlockedLabels = []
-      sessionActiveMs = 0
+      run = new SessionRun()
       // A fresh loop grades from nothing (§5.4): last session's reps are gone,
       // so a chord rehearsed yesterday must be brought up again today. That is
       // the point of grading the session rather than the record.
       learnStats = new InMemoryComboStats()
       learnRehearsed = new Set()
-      sessionRehearsedLabels = []
       set({
-        session: FRESH_SESSION,
+        session: run.stats(),
         firstTryStreak: 0,
         done: 0,
         sessionActiveMs: 0,
@@ -1327,9 +1273,10 @@ export function createPracticeStore({
       publishLearnProgress()
     }
 
-    // Assemble the §7.4 Report from the just-ended session's tallies plus the
-    // persisted lifetime totals. Called only when at least one prompt played.
-    const buildReport = (): SessionReport => {
+    // Everything the §7.4 Report needs that the session itself doesn't hold:
+    // the persisted history it is measured against, and the figures derived
+    // from the pool it was drawn from. The run merges its own tallies in.
+    const reportContext = (): SessionRunContext => {
       const records = activity.records()
       let lifetimePrompts = 0
       let lifetimeActiveMinutes = 0
@@ -1337,42 +1284,27 @@ export function createPracticeStore({
         lifetimePrompts += record.prompts
         lifetimeActiveMinutes += record.activeMinutes
       }
-      return buildSessionReport({
+      return {
         mode: get().mode,
         promptsPlayed: get().done,
-        events: sessionEvents,
         records,
         todayKey: localDateKey(new Date(now())),
         lifetime: {
           prompts: lifetimePrompts,
           activeMinutes: lifetimeActiveMinutes,
         },
-        increment: {
-          prompts: sessionEvents.length,
-          activeMinutes: sessionActiveMs / 60_000,
-        },
-        passedLabels: sessionPassedLabels,
-        unlocked:
-          sessionUnlockedLabels.length > 0
-            ? {
-                labels: [...sessionUnlockedLabels],
-                unlocked: progressRecord.unlockedCount,
-                passed: progressRecord.masteredIndices.length,
-                total: chordOrder.length,
-              }
-            : null,
-        learn: MODE_POLICY[get().mode].hasLearnLoop
-          ? {
-              rehearsed: [...sessionRehearsedLabels],
-              remaining: get()
-                .learnProgress.chords.filter((chord) => !chord.rehearsed)
-                .map((chord) => chord.label),
-            }
-          : null,
+        goal: currentGoal(),
         chords: reportChords(),
         setAside: setAsideChords(),
-        goal: currentGoal(),
-      })
+        unlockedTotals: {
+          unlocked: progressRecord.unlockedCount,
+          passed: progressRecord.masteredIndices.length,
+          total: chordOrder.length,
+        },
+        learnRemaining: get()
+          .learnProgress.chords.filter((chord) => !chord.rehearsed)
+          .map((chord) => chord.label),
+      }
     }
 
     // Halt practice without deciding what comes next: the Song clock and the
@@ -1398,7 +1330,7 @@ export function createPracticeStore({
     // already recorded any pending ✔.
     const concludeSession = () => {
       haltSession()
-      set({ report: get().done > 0 ? buildReport() : null })
+      set({ report: get().done > 0 ? run.report(reportContext()) : null })
     }
 
     const applySelection = (presetId: string, diatonicKey: PitchClass) => {
@@ -1463,7 +1395,7 @@ export function createPracticeStore({
       done: 0,
       sessionActiveMs: 0,
       report: null,
-      session: FRESH_SESSION,
+      session: run.stats(),
       firstTryStreak: 0,
       upcoming: [],
       goal: currentGoal(),
