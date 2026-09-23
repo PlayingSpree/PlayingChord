@@ -1,10 +1,10 @@
 # PlayingChord — Design Document
 
-A web app for practicing piano chords with a MIDI keyboard. The app shows a random chord
-from a chosen preset, the user plays it on their connected MIDI keyboard, and the app
-validates the input and moves on to the next chord.
+A web app for practicing piano chords and scales with a MIDI keyboard. The app shows a
+random chord or scale from a chosen preset, the user plays it on their connected MIDI
+keyboard, and the app validates the input and moves on to the next one.
 
-Spec version: **9.12.0** (2026-08-01) — session-based UI. Revision history lives in
+Spec version: **10.0.0** (2026-09-23) — chords and scales. Revision history lives in
 [CHANGELOG.md](CHANGELOG.md); this document describes only what the app *is* today.
 Both previously open questions are resolved (see [§9](#9-resolved-questions)). Build
 sequencing (what gets implemented first) is intentionally left outside this document.
@@ -49,6 +49,13 @@ sequencing (what gets implemented first) is intentionally left outside this docu
   (every chord tone present, two hands allowed); omission/shell/rootless voicings are
   explicitly out of scope.
 - A MIDI keyboard is **required** — no fallback input mode when none is connected.
+- **Scales** are the app's second kind of drill (§3.6): a scale named, recalled and
+  played as a **run** (1–3 octaves, up or up-and-down) or a **block** (every note at
+  once). They reuse the whole chord machinery — presets, unlocking, grades,
+  weighting, Learn / Daily / Free, the Report — with their own theory, judging
+  (§6.6) and display. A **Chords | Scales** switch at the top of Home splits the
+  app in two (§7.1): each side has its own presets, modes, pool and progress; only
+  the daily goal, the streak and Settings are shared.
 
 ---
 
@@ -75,6 +82,9 @@ sequencing (what gets implemented first) is intentionally left outside this docu
   preset against a fixed tempo, training chord *transitions* under time pressure
   (Song mode, §6.5).
 - Track a **daily practice-time goal and streak** to encourage regular practice.
+- Drill **scales** the same way chords are drilled — the name is the prompt, the notes
+  are recalled, and recall is graded on accuracy and time (§3.6, §6.6) — with the
+  standard fingering shown alongside as a reference.
 
 ### Non-goals
 
@@ -83,9 +93,12 @@ sequencing (what gets implemented first) is intentionally left outside this docu
   import/export for portability.
 - No audio playback of the target chord — practice stays visual/notation-based, not ear
   training.
-- No melody/scale/ear training — chords only.
+- No melody or ear training — chords and scales only, and scales as *recall* (knowing
+  the notes of a key), not technique: fingering is shown but can't be seen over MIDI,
+  so it is never judged, and neither is evenness (§3.6).
 - No hand-split drills (e.g. "left hand plays the root, right hand plays the chord") — a
-  single chord played anywhere on the keyboard.
+  single chord played anywhere on the keyboard. Scales likewise never check which hand
+  plays them, and hands-together scales are out of scope.
 - No omitted-tone voicings (shell voicings, rootless voicings) — extended chords are
   drilled with all chord tones present (resolved, §9).
 - No non-MIDI input fallback — with no MIDI device connected the app shows a blocking
@@ -203,6 +216,10 @@ whenever that setting is on (§7), and revealed as the Practice-mode miss-3 hint
 (§6.4). It is illustrative only: the **name is the prompt** and matching is always
 against the rule, never against these notes.
 
+A prompt is either a chord prompt (above) or a **scale prompt** — a scale, a shape and
+the same name / example pair (§3.6). The two are one union with a `kind`, so the
+lifecycle, stats and screens that don't care which it is handle both unchanged.
+
 ### 3.5 Spelling (for notation)
 
 Grand-staff rendering needs letter names and accidentals, which pitch classes don't
@@ -218,6 +235,76 @@ carry (the third of B major is D♯, not E♭). A small spelling module in `theo
   what the key signature implies gets no glyph; a plain (natural) tone whose letter the
   key signature alters gets a courtesy natural; anything else keeps its own sharp/flat as
   usual. Off, the staff always uses the fixed root/chord-tone spelling above.
+
+### 3.6 Scales and shapes
+
+Scales are the second kind of drill. What they train is **knowing the notes of a
+key** — can you play E♭ major without hunting for the black keys — which is recall,
+the thing the rest of the app already measures for chords: a name shown, notes
+recalled, accuracy and time graded. Technique is deliberately not the point. MIDI
+can't see fingers, and grading evenness would turn a recall drill into a
+metronome one.
+
+A **scale type** is an id, a display name, its intervals from the root (each with
+its degree, as chord intervals carry, §3.2) and its fingering (below), kept as data
+in `theory/scaleTypes.ts` beside the chord types. Built-in: `major`, `natural-minor`,
+`harmonic-minor`, `melodic-minor` (ascending form — the descending form is the
+natural minor, and drilling a scale that changes on the way down is a technique
+exercise, not a recall one). Modes and pentatonics are one-entry additions when
+wanted. A **scale** is a root plus a type, exactly as a chord is.
+
+A **shape** is the scale's counterpart of a voicing rule (§3.3): *how* the scale is
+played, and like a voicing a separate axis of the drill. It is a fixed built-in
+library — there is no shape builder, because the space is small and every point in
+it is already listed:
+
+| id | plays | notes | grade × |
+|---|---|---|---|
+| `up-1` | 1 octave up | 8 | 2 |
+| `updown-1` | 1 octave up and down | 15 | 4 |
+| `up-2` | 2 octaves up | 15 | 4 |
+| `updown-2` | 2 octaves up and down | 29 | 7 |
+| `up-3` | 3 octaves up | 22 | 6 |
+| `updown-3` | 3 octaves up and down | 43 | 11 |
+| `block` | every note at once, within an octave | 7–8 | 2 |
+
+The first six are **runs**, judged as a sequence (§6.6); up-and-down plays the top
+note once (C…C′…C). `block` is a set of held notes and is judged exactly like a
+chord (§6.2). Three octaves is the ceiling: four need 49+ keys, more than the
+on-screen keyboard draws and more than many controllers have.
+
+The **grade multiplier** (×) is what lets one grade table serve both a two-hand
+chord and a 43-note run. A shape scales the whole §5 speed ramp — every grade
+second and the §6.2 ceiling — by its multiplier, so a letter always costs the
+same *fraction* of the run instead of a flat second that a 29-note scale would
+burn through by its third note. For runs it is about a quarter-second per note,
+rounded; an S therefore means roughly four notes a second including the start,
+hard but reachable, as the top of the scale is meant to be (§7.5).
+
+A **scale combo** is `(root, scaleType, shape)` — a shape changes both the time a
+rep takes and what it tests, so "D major, 2 octaves up and down" and "D major, 1
+octave up" have separate stats, grades and weights, just as two voicings of one
+chord do (§5).
+
+**Spelling.** A scale is spelled strictly by degree — each letter once — so
+harmonic and melodic minor can need a double sharp (G♯ harmonic minor's F𝄪), which
+the staff draws. Roots follow the key with the fewest accidentals: major scales use
+the major-key rule of §3.5 (D♭ over C♯, F♯ kept over G♭), minor scales the
+minor key with the fewest accidentals (C♯, F♯, G♯, E♭, B♭ minor; the six-each
+tie goes to E♭ minor, the one met in print) — the chord root policy would give A♭
+minor, seven flats. With the key-signature setting on, a minor scale is drawn under
+its own key signature (its relative major's), and harmonic/melodic minor's
+raised degrees appear as accidentals — which is how a player meets them in print.
+
+**Fingering** is shown, never judged: the standard (ABRSM) fingering per root, scale
+type, hand and octave count, as data on the scale type. Minor forms that finger
+differently from the natural minor carry their own entry. `block` has none — there
+is no standard one.
+
+**Example.** A scale prompt's example is its full run from a root near middle C (for
+`block`, the one octave), used by the keyboard overlays exactly as a chord's example
+is (§6.4). The staff always draws the **one-octave ascending line**, whatever the
+shape: the spelling is what the staff is for, and a 29-note line would not fit.
 
 ---
 
@@ -246,13 +333,36 @@ preset using it (`practice/presets.ts`).
 7. Inversion drills — a triad/root product matched against `first-inversion` /
    `second-inversion` rules instead of `any`
 
+**Scale presets.** A preset is either a chord preset or a **scale preset**, never
+both. Its pool is a product of roots × scale types, and where a chord preset lists
+voicing-rule ids a scale preset lists **shape** ids (§3.6), each pool scale expanding
+to one combo per shape. Mixing kinds was rejected: one unlock queue holding chords
+and scales makes "pass them all to unlock two more" mean nothing, and the Home
+switch (§7.1) keeps the two apart everywhere else anyway. Built-in scale presets,
+all 12 roots:
+
+8. Major scales — `up-1`
+9. Natural minor scales — `up-1`
+10. Harmonic minor scales — `up-1`
+11. Melodic minor scales — `up-1`
+12. All minor forms (natural, harmonic, melodic) — `up-1`
+13. Major scales · 2 octaves ↕ — `updown-2`
+14. Minor scales · 2 octaves ↕ — all three forms, `updown-2`
+15. Major block scales — `block`
+
+The longer shapes get a couple of built-ins so they are reachable without the
+editor, not a copy of every preset per shape; any other combination is a custom
+preset.
+
 **Validation:** the preset editor warns when a chord type in the pool can't satisfy one
 of the preset's voicing rules (e.g. 5+-tone extended chords vs. `closed`'s span ≤ 11).
 
 **Custom presets:** created/edited/deleted via a settings UI; stored in `localStorage`,
-referencing built-in or user-defined voicing rules. **Import/export**: presets and any
-custom voicing rules they depend on serialize to JSON for backup/transfer across browsers
-or machines.
+referencing built-in or user-defined voicing rules. A new preset picks its kind first;
+a scale preset is roots × scale types × shapes, with no voicing references.
+**Import/export**: presets and any custom voicing rules they depend on serialize to
+JSON for backup/transfer across browsers or machines. A preset exported before scales
+existed carries no kind and loads as a chord preset.
 
 ---
 
@@ -260,7 +370,11 @@ or machines.
 
 - A preset's pool expands to **combos** of (chord × voicingId). Stats are keyed per combo
   — `(root, typeId, voicingId)` — so missing "C maj7, 2nd inversion" doesn't up-weight
-  root-position C maj7 (§8).
+  root-position C maj7 (§8). A scale preset's pool expands the same way, to
+  `(root, scaleType, shape)` combos (§3.6). Everything below — score, window,
+  weighting, queue, narrows — reads a combo only through its key, so it applies to
+  scale combos unchanged; where this section says *chord*, a scale preset reads
+  *scale*.
 - **Chord score**: a combo's recent accuracy times a **speed factor** — the
   piecewise-linear ramp defined by the §7.5 grade seconds: full credit (1) at or under
   **1 s**, then **0.2 lower per second** — 0.8 at 2 s, 0.6 at 3 s, 0.4 at 4 s, 0.2 at
@@ -272,6 +386,9 @@ or machines.
   no recent history *at all* scores at the uniform baseline (1) — the same score a clean,
   S-speed combo earns, so drilling a chord to an S never makes it crowd out an
   untouched one. Drives both weighted pick below and the §7 chord stats grade.
+  A **scale combo's** ramp is the same ramp with every second — the cut points and
+  the ceiling — multiplied by its shape's grade multiplier (§3.6): `up-1` runs full
+  credit to 2 s, D at 10 s, zero at 20 s.
 - **Recent window**: the last **10** outcomes, the most ever kept per combo (§8).
   Ten is a multiple of the five grade bands, so every cut point lands exactly on a
   bucket of the window and a letter takes **two** misses to move — one rep can no
@@ -333,6 +450,14 @@ flashcard-style batches instead of the whole pool at once:
   re-derives the active preset's order in place: the unlocked *count* (and the
   positional passed indices, like a diatonic key change) carries onto the new
   order, so no progress is lost, though which chords are open shifts with it.
+- **Scale presets** always unlock roots by **accidental count**, alternating sharp
+  and flat keys — major: C G F D B♭ A E♭ E A♭ B D♭ F♯; minor starting on A: A E D
+  B G F♯ C C♯ F G♯ B♭ E♭ — whatever the circle-of-fifths setting says, and a root's
+  scale types and shapes keep their pool order. Each new key adds at most one
+  accidental over what is already open, which is the order scales are taught in;
+  the true circle would hold F major (one flat) back behind six-sharp F♯, and
+  chromatic order would make the second scale C♯/D♭. The setting stays a chord
+  setting.
 - A fresh preset starts with the **first 3** chords unlocked (clamped to the pool).
 - A chord is **passed** by a free-practice attempt after which its **grade is D or
   better** (§7.5) — every letter but F. The pass bar is therefore the grade the
@@ -418,6 +543,11 @@ Everything above is scoped to *one* preset: its unlock queue, its narrows, its
 benched chords. Daily practice is the one pool that isn't — the drill you run
 because it is today, not because you picked anything (`practice/daily.ts`).
 
+- **Daily is per kind.** The Home switch (§7.1) decides which Daily runs: chord
+  Daily draws on chord presets, scale Daily on scale presets, and everything below
+  holds for each on its own. A mixed drill would put a two-second chord beside a
+  twenty-second run in one weighted queue, and the two are practiced for different
+  reasons. The cap is one preference for both.
 - **The pool is every chord already passed, in every preset** (built-in and
   custom), deduplicated by combo — the same chord under the same voicing rule
   is one drillable thing however many presets happen to contain it, which is
@@ -441,8 +571,8 @@ because it is today, not because you picked anything (`practice/daily.ts`).
   the first prompt advance at or past the cap — never mid-attempt.
 - **No preset, no narrows, no key picker.** Its only setting is the cap. A
   preset picker would look like it was choosing the pool when it wasn't.
-- **Unavailable until something is passed**: with nothing learned there is
-  nothing to maintain, so Home and the session sheet offer the mode locked
+- **Unavailable until something is passed** — of the switched-to kind: with
+  nothing learned there is nothing to maintain, so Home and the session sheet offer the mode locked
   rather than starting an empty session. The Report's set-aside offer (§7.4) is
   likewise free-practice-only — an offer made after a cross-preset session
   would act on whichever preset happened to be selected.
@@ -517,7 +647,9 @@ the pass bar (`practice/learnLoop.ts`).
 ### 6.2 Attempt lifecycle
 
 Judging is **instant** — correct the moment the rule is satisfied — with a defined
-lifecycle per prompt:
+lifecycle per prompt. It judges the *set* of held notes, so it serves chords and
+`block` scales (§3.6); scale runs are a sequence and have their own lifecycle
+(§6.6).
 
 1. **Arm:** an attempt arms only once the prompt is displayed **and** all keys are
    released. Notes still held from the previous prompt are never judged against the new
@@ -549,7 +681,9 @@ summed time all see the same capped value; past it the feedback pill reads `10.0
 (§7.3). The ceiling sits well above the §7.3 slow bar, so a clamped rep is always
 already flagged slow — the clamp only decides *how far* past it counts. The §7.3
 ready gate handles the other end of the same problem — the walk-up before the
-*first* prompt.
+*first* prompt. A scale prompt's ceiling is 10 000 ms times its shape's grade
+multiplier (§3.6) — 20 s for a one-octave run, 110 s for a three-octave round
+trip — for the same reason the whole ramp scales.
 
 A rep that *reaches* the ceiling enters the **grade** window as a miss, even
 though the right keys eventually went down. Ten seconds of hunting is not recall,
@@ -583,6 +717,13 @@ Given the active `VoicingRule`:
   miss). When off, extra notes are tolerated as long as all required chord tones are
   present (a more forgiving practice mode).
 
+A **`block`** scale (§3.6) matches when every pitch class of the scale is held exactly
+once, the lowest note is the root, and the span is within an octave — the root an
+octave up may be added on top (7 or 8 notes, span ≤ 12). A foreign pitch class, a
+second copy of a scale tone below the top root, or a span past 12 is a definitive
+miss; the doubling and strict-extra-notes settings don't apply, as they don't to
+pattern rules.
+
 A **pattern** rule (§3.3) is exact by nature — 1-4 and the doubling/strict-extra-notes
 settings don't apply. It matches when held notes, sorted ascending, have the same count
 and pitch-class sequence as the rule's resolved left-hand-then-right-hand degrees;
@@ -610,6 +751,11 @@ recall first, answer later:
 The escalation above describes **Practice mode**. In **Learn mode** the example is
 overlaid on the keyboard from the start, so the miss-3 reveal stage doesn't exist
 there — misses never escalate past the miss 1–2 hints, which still apply.
+
+Scale runs (§6.6) escalate the same way, counted per missed position: misses 1–2
+mark the wrong key, and from miss 3 the **rest of the run** is overlaid. Throughout
+a run the keyboard shows how far it has got — the notes already played correctly —
+without previewing the next one; Learn previews it (§6.6).
 
 All overlays use color **and** a shape/icon distinction, never color alone.
 
@@ -669,6 +815,43 @@ progressions (I–V–vi–IV etc. as named presets), rhythm variety (chords sho
 longer than one bar), honoring the preset's voicing rules instead of `any`, minor
 keys, and the stricter down-by-beat-1 judging variant.
 
+### 6.6 Scale runs
+
+A run (§3.6) is a sequence of single notes, which §6.2's held-set judging can't
+express — single notes release constantly, so "arm when every key is up" and "judge
+the held set" would fire on every note. Runs get their own attempt machine
+(`practice/`), which reports the **same state** §6.2's does — phase, time-to-correct,
+miss count, hint — so the feedback pill, stats recording, callouts and Report take a
+run exactly as they take a chord.
+
+- **Note-ons are the input.** Only a key going down is judged; releases, and keys
+  still held from the previous note, are ignored — legato is fine, overlapping
+  notes are fine.
+- **The first note must be the root**, in any octave; that note fixes where the run
+  sits. After it, each note-on must be the **exact next MIDI note** of the run — the
+  scale's notes upward, and for up-and-down shapes back down, the top note played
+  once. Anything else is a miss.
+- **A miss doesn't end the attempt.** The run waits on the expected note and
+  continues from there once it's played: a slip on note 20 of 29 costs the rep its
+  first-try success, not the nineteen notes before it, and time keeps running
+  (retries included, as for chords). Several wrong notes before the right one at
+  the same position are **one miss** — a fumble is one mistake, and counting each
+  key would race the hint to its reveal on a single bad spot. A wrong first note is
+  a miss too, and the run waits for the root.
+- **Starting over is free.** Replaying the run's exact starting note while it isn't
+  the expected one restarts the run from the top, with no further miss and the
+  clock still running. It is the natural recovery after a slip, and punishing it
+  would train players out of it. It can't be confused with the end of an
+  up-and-down run, where that note *is* the expected one.
+- **Correct** is the last note of the run: ✔, reaction time (prompt shown → last
+  note), optional chime, auto-advance — §6.2's advance window and the §6.2 ceiling
+  (scaled, §3.6) apply unchanged.
+- **No stall.** A pause mid-run is thinking, and is already paid for on the clock.
+- The note that dismisses the §7.3 Ready panel is not the run's first note.
+- **Learn** overlays the whole run from the start and marks the **next expected
+  key** as the run advances — the example, followed along. Practice shows only the
+  progress so far and escalates per §6.4.
+
 ---
 
 ## 7. UI / Screens
@@ -690,7 +873,18 @@ mode in `MODE_POLICY` (`src/practice/session.ts`), read by both the store and th
 screens, rather than restated as a condition at each point. Choosing which engine
 drives a session — Song's clock (§6.5) beside the self-paced attempt machine
 (§6.2) — is not among them; that is a fork, not a trait, and it names Song
-outright.
+outright. The same holds for scale runs (§6.6): which machine judges a prompt
+follows from the prompt's kind and shape, not from the mode.
+
+**Two sides.** The app is split at the top into **Chords** and **Scales** by a switch
+on Home (§7.1). Every screen below that shows a pool, a preset, a mode or a record
+shows the switched-to side's: the other kind is not hidden behind a tab on each
+screen but absent. Merging them — one preset picker with two groups, a kind tab on
+Progress, a kind switch inside Daily — was tried in design and read as confusing: a
+kind question asked on every screen instead of once. Shared across both sides are
+only the things that are about *time*, not kind — the daily goal, the streak, the
+goal calendar — and Settings. On the Scales side the UI says *scale* wherever it
+says *chord*.
 
 **Visual language** (reference mock: `doc/Prototype.dc.html`): dark navy surface,
 green primary action color, cards and buttons as chunky 2px-bordered rounded
@@ -710,6 +904,11 @@ The entry screen — the app boots here, not into practice. The no-device gate
   screenshot has to be able to say which build it is; on production the branch
   is noise and stays hidden. Both values are fixed at build time, not read at
   runtime.
+- **Chords | Scales** switch: a segmented control at the top of Home, above the
+  Continue card — the §7 two sides. It is persisted, so the app reopens on the side
+  last used, and each side remembers **its own active preset**, so switching is
+  never a preset change in disguise. It lives on Home only: a session runs on one
+  side, the sheet stays on it, and changing side means going back Home.
 - **Continue card** (primary): the active preset's name with a **Change**
   control (the preset picker, incl. the diatonic key picker); unlock progress —
   `N/total chords unlocked`, a bar, and how many unlock on the next pass (§5.1);
@@ -726,9 +925,10 @@ The entry screen — the app boots here, not into practice. The no-device gate
   Behind a toggle because the row is read every session and edited rarely: a
   chip that benched a chord on a stray click would be a trap in a row you scan.
   Then the **mode selector** (Learn / Daily /
-  Free / Song) — configuration only, like everything else outside a session
-  (§7.2). **Daily** reads locked until some chord, anywhere, has been passed
-  (§5.3); selecting it adds one line saying what it will deal — `N learned
+  Free / Song — the Scales side has no Song, which drills chord transitions, §6.5)
+  — configuration only, like everything else outside a session
+  (§7.2). **Daily** reads locked until some chord (on the Scales side, some
+  scale), anywhere, has been passed (§5.3); selecting it adds one line saying what it will deal — `N learned
   chords from every preset · 10 min cap` — since the preset lines above it
   govern the other three modes, not that one. Then the **Start** button,
   labeled per mode.
@@ -737,7 +937,9 @@ The entry screen — the app boots here, not into practice. The no-device gate
 - **Last 2 weeks**: a 14-day mini calendar of daily goal results
   (met / practiced-but-short / missed / today).
 - **Progress button**: opens Progress (§7.5); shows this week's first-try
-  accuracy with a delta vs the prior week.
+  accuracy on the switched-to side with a delta vs the prior week — per side,
+  because a combined figure would move with how much of each kind a week
+  happened to hold. The goal ring, the calendar and the streak chip are shared.
 
 ### 7.2 Session sheet & length
 
@@ -754,10 +956,12 @@ count. Song's tempo / chords-per-progression / show-example are the exception �
 persisted preferences that apply from the next beat or progression (§7.3), not
 session config, so they take effect as they're set.
 
-- **Preset**: the same picker as the Continue card.
+- **Preset**: the same picker as the Continue card — the switched-to side's
+  presets only (§7.1).
 - **Preset**: hidden in Daily, which has no preset to pick (§5.3) — a picker
   there would look like it was choosing the pool.
-- **Mode**: Learn / Daily / Free / Song, segmented. Each mode's sub-settings
+- **Mode**: Learn / Daily / Free / Song, segmented (no Song on the Scales side).
+  Each mode's sub-settings
   (§7.3) appear under the row while that mode is selected: Learn's *Chords to
   learn*, Daily's *Cap*, Free's *Worst chords only*, Song's *Tempo* / *Chords per
   progression* / *Show example*. Daily is disabled until something is learned.
@@ -903,13 +1107,23 @@ counts a new progression in).
   voicing unless it's the `any` rule); Song mode's progression display (§6.5)
   keeps a left-to-right row instead, since it reads in time. Both scale with the
   chord-name size setting so they stay readable from the same distance as the name.
+- **Scale prompts**: the name large as ever ("E♭ major") with a small *scale* tag,
+  the shape as the text label where a chord shows its voicing ("2 octaves ↕",
+  "block"; omitted for `up-1`, as `any` is for chords), and the **fingering** as a
+  line under it — `RH 1 2 3 1 2 3 4 5 · LH 5 4 3 2 1 3 2 1` — always shown, never
+  judged (§3.6), and absent for `block`. The staff, when on, draws the one-octave
+  ascending line in the treble clef near middle C, spelled by degree (§3.6). The
+  upcoming preview labels scales the same way.
 - **Keyboard visual**: shows currently held notes live; in Practice, after misses,
   overlays escalate per the hint stages (§6.4), always color + shape/icon; Learn mode
   overlays the example voicing from the start instead. When a note falls outside the
   drawn ~3-octave range (custom two-hand voicings can place a left-hand note below it,
   §6.3), its whole note set octave-shifts together into view — held + wrong-key marks
   as one shape, the answer overlay as another — so the voicing's shape stays intact; a
-  shape wider than the drawn range folds the leftover notes per note.
+  shape wider than the drawn range folds the leftover notes per note. A **scale
+  run** never folds — folding would scramble the very order being drilled — so a
+  three-octave shape (37 keys) widens the drawn keyboard to fit it instead. Runs
+  also show the run's progress and, in Learn, the next key (§6.6).
 - **Feedback**: a pill under the prompt — correct flash + reaction time + optional
   chime, auto-advance (default 800 ms). A Practice-mode answer past the **slow
   bar** turns the flash amber and adds a **`· slow`** chip. The bar is not a
@@ -919,7 +1133,9 @@ counts a new progression in).
   from the letter it feeds. An answer at or under **A's second (2 s)** is the
   mirror image — the flash turns blue with a **`· fast`** chip, marking the reps
   that hold an A on speed alone. Between the two bars the pill is plain green: a
-  perfectly ordinary answer says nothing extra. Both chips follow the number
+  perfectly ordinary answer says nothing extra. For a scale both bars — and the
+  `10.0s+` ceiling readout — are multiplied by the shape's grade multiplier
+  (§3.6), for the reason they are grade seconds in the first place. Both chips follow the number
   displayed, so a slow answer after a retry gets it too
   (time-to-correct includes retries), and past the §6.2 ceiling the pill reads
   `10.0s+` — what was actually recorded. Learn shows the answer from the start
@@ -943,7 +1159,8 @@ counts a new progression in).
   clock-paced — so a detour would otherwise park the count and hand it back
   intact. Session-only —
   not shown elsewhere — but the longest streak ever reached is tracked lifetime
-  (§7.5 Progress). There is no separate live stats panel — session stats surface in
+  (§7.5 Progress), **per side**: ten chords in a row and ten scales in a row are
+  not the same feat. There is no separate live stats panel — session stats surface in
   the Report.
 
 ### 7.4 Report (end of session)
@@ -959,7 +1176,10 @@ count as prompts, a hit being a first-try success (§6.5).
   the speed ramp — mapped to the same letter thresholds as the chord-stats
   grade, so session and per-chord grades mean the same thing, and a session's
   letter reads on the same round seconds (§7.5). Note the top of the scale is
-  literal: an S session is a flawless one averaging under a second. Song sessions have no time samples → full speed credit, exactly
+  literal: an S session is a flawless one averaging under a second. In a scale
+  session each prompt's time is divided by its shape's grade multiplier (§3.6)
+  before averaging, so a session of mixed shapes grades on the same footing its
+  combos do; the *Avg time-to-correct* card still shows plain seconds. Song sessions have no time samples → full speed credit, exactly
   as §5 scores such combos. Learn sessions are stats-neutral (§5): no grade, no
   accuracy/speed cards — just prompts played, active time, and the goal line.
 - **Headline**: the line beside the badge follows that letter rather than a
@@ -978,7 +1198,10 @@ count as prompts, a hit being a first-try success (§6.5).
   baseline divides the day's summed time by its **timed** prompts (§8) rather
   than by all of them, so clock-paced bars — which contribute no time — can't
   drag it toward zero; a day of nothing but Song bars counts toward the accuracy
-  baseline and sits out the time one.
+  baseline and sits out the time one. Every session is one kind (§7), and both
+  baselines and **Total prompts** are that kind's — a scale session is measured
+  against scale days, never against a chord average it could not be compared
+  with; **Total time** is shared, like the goal it feeds.
 - **Unlock banner**: when the session unlocked chords — names them and shows
   pool progress toward the next batch (§5.1).
 - **Chords passed** this session (§5.1 passes) and **Still shaky** — chords
@@ -1011,10 +1234,13 @@ count as prompts, a hit being a first-try success (§6.5).
 ### 7.5 Progress & chord stats
 
 **Progress** (formerly *History*; reached from Home) — persisted trends across
-all sessions:
+all sessions, for the side Home is switched to (§7.1), titled *Chord progress* or
+*Scale progress* so the side is never a guess:
 
 - **Header stat cards**: current & best streak, total practice time, days
-  practiced, total prompts.
+  practiced — shared, since they come from the shared goal and active minutes —
+  and total prompts, the side's own. Everything below the header is the side's
+  own too, chord stats included.
 - Accuracy over time and time-to-correct trend (30 days), the goal/streak
   calendar (12 weeks), most-improved / needs-work chords, goal history, and the
   lifetime **best combo streak** (the longest run of consecutive first-try
@@ -1052,6 +1278,10 @@ all sessions:
     weighting keeps drilling the combo and the pass gate keeps reading the real
     letter. A chord folds to `new` only when nothing *proven* is failing: one
     proven F still reads red however many unproven combos sit beside it.
+  - **Scales** grade on the same table with every second multiplied by the shape's
+    grade multiplier (§3.6): a one-octave run is S ≤ 2 s … D ≤ 10 s. The letter
+    means the same across kinds — a fixed share of the drill per letter — rather
+    than the same number of seconds.
   - So an **S means flawless and inside a second** — the top of the scale is
     literal and deliberately hard, with A as the ordinary "doing well" letter.
     §5's no-history baseline sits at that same top score (an untouched combo is
@@ -1072,13 +1302,19 @@ all sessions:
 
 - **Goals & streaks**: daily goal = **active practice minutes** (default 10,
   configurable). Streak = consecutive days (local timezone) meeting the goal.
+  **One goal and one streak for both sides** (§7): a day of scales keeps the
+  streak like a day of chords, and two streaks would mean two goals to meet.
   Shown on Home (goal ring + streak chip) and after each session in the
   Report's goal line; detailed in Progress.
 - **Voicing builder** (settings): dedicated form UI to compose a custom `VoicingRule`
   from bass/span/doubling primitives, save it to the shared library, and use it in any
   preset.
 - **Preset editor** (settings): create/edit/delete presets (pool + voicing refs, §4)
-  with rule-compatibility validation; import/export as JSON. Each preset row (built-in
+  with rule-compatibility validation; import/export as JSON. It lists **both kinds**,
+  under a *Chords* and a *Scales* heading, whichever side Home is on: Settings is
+  where everything is managed, and a filtered list would make a scale preset seem
+  to vanish while the app sits on the Chords side. A new preset picks its kind;
+  a scale preset is edited as roots × scale types × shapes (§4). Each preset row (built-in
   and custom) also offers **Reset progress**, restarting its §5.1 unlocks at the
   initial count.
 - **Settings** (grouped into cards: Sound / Notation / Matching & timing /
@@ -1090,7 +1326,10 @@ all sessions:
   goal minutes, circle-of-fifths unlock order on/off (§5.1). (Mode sub-settings —
   worst-chords-only, the learn set, Song's tempo / chords-per-progression /
   show-example — live in the session sheet, §7.2, not the settings panel; the
-  session length lives there too.)
+  session length lives there too.) Doubling, strict extra notes and the judgment
+  delay are chord settings: scale matching is exact and runs have no stall (§6.3,
+  §6.6), so none of the three touches a scale prompt. Circle-of-fifths order is
+  a chord setting too (§5.1).
 
 ---
 
@@ -1122,6 +1361,25 @@ whenever a session's live streak beats it. The learn loop adds **nothing** here 
 its chord set and its grades are session-only by design (§5.4), so the schema is
 untouched by it.
 
+Scales (10.0.0) extend these without a migration:
+
+- **Scale combo stats** share the per-combo record and its store; their keys carry a
+  scale prefix (`s:<root>:<scaleType>:<shape>`), so every chord key — and the stats
+  under it — is unchanged, and a stale scale key parses to nothing like a stale
+  chord key does.
+- **Daily record**: the existing counters (prompts, first-try successes, timed
+  prompts, summed time) now count **chord** prompts — which is all any record
+  written before 10.0.0 holds — and an optional **`scales`** bucket carries the same
+  four counters for scale prompts. Absent reads as zero scales. Active minutes stay
+  one figure, since the goal is about time, not kind. Summed scale time is plain
+  seconds, so the scale time trend (§7.5) moves with the mix of shapes played; the
+  grades don't, because they scale per combo.
+- **Presets** gain a kind; a stored or imported preset without one is a chord
+  preset. Preset progress records (§5.1) are keyed by preset id as before.
+- **Settings** gain the switched-to side, an active preset per side (the existing
+  one becomes the chord side's), and the best combo streak becomes per side (the
+  existing integer becomes the chord side's).
+
 ---
 
 ## 9. Resolved Questions
@@ -1145,3 +1403,10 @@ specified in this document — track it separately (e.g. an issue tracker).
    and match exactly (§6.3); constraint rules remain for "any voicing satisfying a
    property." This doesn't reopen omitted-tone primitives (#1 above) — every pattern
    degree still names a real chord tone or the plain scale step above the root.
+4. **Scales** — *resolved: in scope as recall, as a second side of the app.* The
+   original "chords only" non-goal is narrowed to melody and ear training. Scales
+   train knowing a key's notes — the same recall the chord drill grades — so they
+   reuse its machinery rather than growing a technique trainer: fingering is shown
+   but not judged, and hands are never checked (§3.6, §6.6). They sit behind a
+   top-level Chords | Scales switch rather than mixed into chord screens (§7),
+   and a preset is one kind or the other (§4).

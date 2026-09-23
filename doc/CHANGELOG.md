@@ -15,6 +15,46 @@ artifact and are not recoverable.
 
 ---
 
+## 10.0.0 — 2026-09-23
+
+**Scales.** The app gains a second kind of drill, and the "chords only" non-goal
+narrows to melody and ear training (§1, §9 #4). A scale is drilled the way a
+chord is — the name is the prompt, the notes are recalled, accuracy and time are
+graded — because what it trains is knowing a key's notes, not technique:
+fingering is shown under the name (ABRSM standard) but can't be seen over MIDI,
+so it is never judged, and neither is which hand plays (§3.6).
+
+A scale combo is root × scale type × **shape**, the scale's counterpart of a
+voicing rule: 1–3 octave runs, up or up-and-down, or a **block** (every note at
+once, judged exactly like a chord). Runs are a sequence, which held-set judging
+can't express, so they get their own attempt machine (§6.6): each note-on must be
+the exact next note; a wrong one is a miss but the run continues from the
+expected note, a fumble at one spot counting once; replaying the starting note
+restarts the run for free; there is no stall. Grades use the chord table with
+every second — and the ceiling — multiplied per shape (×2 for one octave up to
+×11 for a three-octave round trip), so a letter costs a fixed share of the run
+rather than a flat second a long scale would spend by its third note (§5, §7.5).
+
+Everything above the combo is reused: scale presets (one kind per preset, eight
+built-ins, editable), unlocking — in accidental-count order, C G F D B♭ … —
+passing, set-aside, weighting, Learn, Free, Daily and the Report (§4, §5).
+Minor scales are spelled from the fewest-accidental minor key and every scale by
+degree, double sharps included (§3.6).
+
+**Two sides.** Home gains a persisted **Chords | Scales** switch that splits the
+app in two (§7, §7.1): presets, the active preset (one remembered per side), the
+mode row (no Song for scales), Daily's pool, Progress below its header, chord
+stats, Report baselines, total prompts and the best combo streak are all the
+switched-to side's. Only the daily goal, the streak, total time and Settings
+are shared. An earlier draft merged the two — grouped pickers, a kind tab on
+Progress, a kind switch inside Daily — and asked the same question on every
+screen; the switch asks it once. The daily record gains an optional `scales`
+bucket beside its now chord-only counters; nothing written before needs
+migrating (§8).
+
+Structural — the combo and the prompt become unions over kind, and the UI shell
+gains a top-level split — hence a MAJOR version.
+
 ## 9.12.1 — 2026-08-02
 
 **Mode differences become a table.** No behavior change: §7 now says that what
