@@ -37,6 +37,20 @@ export function isScaleCombo(combo: Combo): combo is ScaleCombo {
   return combo.kind === 'scale'
 }
 
+// The app's two halves (§7.1): Home switches between them, and the daily
+// counters, active preset and best combo streak are kept per side (§8).
+export type Side = 'chords' | 'scales'
+
+export function comboSide(combo: Combo): Side {
+  return isScaleCombo(combo) ? 'scales' : 'chords'
+}
+
+// A stored key's side, read off its prefix — no parse, so a stale scale key
+// still counts where it was played.
+export function comboKeySide(key: string): Side {
+  return key.startsWith('s:') ? 'scales' : 'chords'
+}
+
 // Scale keys carry a prefix so every chord key — and the stats persisted
 // under it — is byte-identical to what it was before scales (§8).
 export function comboKey(combo: Combo): string {

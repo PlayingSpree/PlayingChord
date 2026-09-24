@@ -14,6 +14,7 @@ import {
   sanitizePresetSelection,
   sanitizeStateV1,
   sanitizeStateV2,
+  dailyCounts,
 } from './schema'
 import {
   EDITOR_MAX_HAND_NOTES,
@@ -509,5 +510,149 @@ describe('sanitizePresetProgress (v2, §5)', () => {
     expect(sanitizePresetProgress(null)).toEqual({})
     expect(sanitizePresetProgress([])).toEqual({})
     expect(sanitizePresetProgress('junk')).toEqual({})
+  })
+})
+
+// Scales (10.0.0) extend the v2 schema without a migration (§8): everything
+// they add reads a default when absent, so a state written before them
+// loads as chords-only.
+describe('scales in the v2 schema (§8)', () => {
+  const day = {
+    date: '2026-09-01',
+    activeMinutes: 12,
+    prompts: 20,
+    firstTrySuccesses: 15,
+    timedPrompts: 20,
+    timeToCorrectMs: 40_000,
+  }
+
+  it('loads a pre-10.0.0 state as chords-only', () => {
+    const state = sanitizeStateV2({
+      version: 2,
+      presetSelection: { presetId: 'diatonic', diatonicKey: 0 },
+      dailyRecords: { [day.date]: day },
+      customPresets: [
+        {
+          id: 'old',
+          name: 'Old',
+          pool: { kind: 'product', roots: [0], chordTypes: ['maj'] },
+          voicingIds: ['any'],
+        },
+      ],
+      bestComboStreak: 9,
+    })
+    expect(state.side).toBe('chords')
+    expect(state.scalePresetId).toBeNull()
+    expect(state.bestComboStreak).toBe(9)
+    expect(state.bestScaleComboStreak).toBe(0)
+    expect(state.presetSelection?.presetId).toBe('diatonic')
+    expect(state.dailyRecords[day.date]).toEqual(day)
+    expect(dailyCounts(state.dailyRecords[day.date], 'scales')).toEqual({
+      prompts: 0,
+      firstTrySuccesses: 0,
+      timedPrompts: 0,
+      timeToCorrectMs: 0,
+    })
+    expect(state.customPresets[0]?.kind).toBeUndefined()
+  })
+
+  it('keeps the side, the scales preset and its best streak', () => {
+    const state = sanitizeStateV2({
+      version: 2,
+      side: 'scales',
+      scalePresetId: 'major-scales',
+      bestScaleComboStreak: 4,
+    })
+    expect(state.side).toBe('scales')
+    expect(state.scalePresetId).toBe('major-scales')
+    expect(state.bestScaleComboStreak).toBe(4)
+  })
+
+  it('defaults a junk side, preset id or streak', () => {
+    const state = sanitizeStateV2({
+      version: 2,
+      side: 'both',
+      scalePresetId: 7,
+      bestScaleComboStreak: -1,
+    })
+    expect(state.side).toBe('chords')
+    expect(state.scalePresetId).toBeNull()
+    expect(state.bestScaleComboStreak).toBe(0)
+  })
+
+  it('reads the scales bucket beside the chord counters', () => {
+    const scales = {
+      prompts: 5,
+      firstTrySuccesses: 4,
+      timedPrompts: 5,
+      timeToCorrectMs: 30_000,
+    }
+    const records = sanitizeDailyRecords({ x: { ...day, scales } })
+    expect(records[day.date]?.scales).toEqual(scales)
+    expect(dailyCounts(records[day.date], 'scales')).toEqual(scales)
+    expect(dailyCounts(records[day.date], 'chords')).toEqual({
+      prompts: 20,
+      firstTrySuccesses: 15,
+      timedPrompts: 20,
+      timeToCorrectMs: 40_000,
+    })
+  })
+
+  it('drops a garbled scales bucket, not the day', () => {
+    const records = sanitizeDailyRecords({
+      x: { ...day, scales: { prompts: 1, firstTrySuccesses: 3 } },
+    })
+    expect(records[day.date]).toEqual(day)
+  })
+})
+
+describe('sanitizeCustomPresets — scale presets (§4)', () => {
+  const scalePreset = {
+    kind: 'scale',
+    id: 'my-scales',
+    name: 'My scales',
+    pool: { kind: 'product', roots: [0, 7], scaleTypes: ['major'] },
+    shapeIds: ['up-1', 'updown-2'],
+  }
+
+  it('keeps a valid scale preset', () => {
+    expect(sanitizeCustomPresets([scalePreset], [])).toEqual([scalePreset])
+  })
+
+  it('filters unknown scale types and shapes, drops empty results', () => {
+    const [kept] = sanitizeCustomPresets(
+      [
+        {
+          ...scalePreset,
+          pool: {
+            kind: 'product',
+            roots: [0, 99],
+            scaleTypes: ['major', 'blues'],
+          },
+          shapeIds: ['up-1', 'up-4'],
+        },
+      ],
+      [],
+    )
+    expect(kept).toEqual({
+      ...scalePreset,
+      pool: { kind: 'product', roots: [0], scaleTypes: ['major'] },
+      shapeIds: ['up-1'],
+    })
+    expect(
+      sanitizeCustomPresets([{ ...scalePreset, shapeIds: ['up-4'] }], []),
+    ).toEqual([])
+    expect(
+      sanitizeCustomPresets(
+        [{ ...scalePreset, pool: { kind: 'diatonic', key: 0 } }],
+        [],
+      ),
+    ).toEqual([])
+  })
+
+  it('refuses a scale built-in id', () => {
+    expect(
+      sanitizeCustomPresets([{ ...scalePreset, id: 'major-scales' }], []),
+    ).toEqual([])
   })
 })

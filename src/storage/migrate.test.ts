@@ -51,6 +51,10 @@ describe('migrateState', () => {
     expect(state.comboStats).toEqual(v1.comboStats)
     expect(state.presetProgress).toEqual({})
     expect(state.bestComboStreak).toBe(0)
+    // A v1 state is chords-only (§8).
+    expect(state.side).toBe('chords')
+    expect(state.scalePresetId).toBeNull()
+    expect(state.bestScaleComboStreak).toBe(0)
   })
 
   it('folds the Phase 2–5 plain keys into a fresh state', () => {

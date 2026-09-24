@@ -30,13 +30,17 @@ export interface LegacySnapshot {
 
 // v1 → v2: unlock progress (§5) starts empty — every preset opens at the
 // initial unlock count on first use; the lifetime best combo streak (also
-// new in v2) starts at 0, same as a fresh install.
+// new in v2) starts at 0, same as a fresh install — and so does everything
+// v2 gained with scales, since a v1 state is chords-only.
 export function migrateV1ToV2(state: PersistedStateV1): PersistedState {
   return {
     ...state,
     version: SCHEMA_VERSION,
     presetProgress: {},
     bestComboStreak: 0,
+    side: 'chords',
+    scalePresetId: null,
+    bestScaleComboStreak: 0,
   }
 }
 

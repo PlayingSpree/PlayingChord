@@ -9,6 +9,9 @@ import {
   EDITOR_MAX_HAND_NOTES,
   EDITOR_MAX_PATTERN_DEGREE,
   RECENT_OUTCOME_WINDOW,
+  type ScalePool,
+  type ScalePreset,
+  type Side,
   sanitizeSettings,
   TIME_TO_CORRECT_SAMPLE_CAP,
   type ChordPool,
@@ -22,9 +25,13 @@ import {
 import {
   BUILT_IN_VOICING_RULES,
   CHORD_TYPES,
+  isScaleShapeId,
+  isScaleTypeId,
   type BassConstraint,
   type ChordTypeId,
   type PitchClass,
+  type ScaleShapeId,
+  type ScaleTypeId,
   type SpanConstraint,
   type VoicingRule,
 } from '../theory'
@@ -47,7 +54,10 @@ export interface PersistedPresetSelection {
 
 // One row per local-timezone day (§8). Active minutes are tracked from
 // Phase 7 (goals/streaks); the field is persisted from v1 so no migration
-// is needed when tracking lands.
+// is needed when tracking lands. The four prompt counters at the top level
+// count *chord* prompts — all that any record written before 10.0.0 holds —
+// and `scales` carries the same four for scale prompts, absent meaning none.
+// Active minutes stay one figure: the goal is about time, not kind.
 export interface DailyRecord {
   date: string // local 'YYYY-MM-DD', also the dailyRecords key
   activeMinutes: number
@@ -67,6 +77,31 @@ export interface DailyRecord {
   // Added within v1: absent in early-v1 states, so it defaults rather than
   // invalidating the record.
   timeToCorrectMs: number
+  scales?: DailyCounts
+}
+
+// The counters a day keeps per side.
+export type DailyCounts = Pick<
+  DailyRecord,
+  'prompts' | 'firstTrySuccesses' | 'timedPrompts' | 'timeToCorrectMs'
+>
+
+export const EMPTY_DAILY_COUNTS: DailyCounts = {
+  prompts: 0,
+  firstTrySuccesses: 0,
+  timedPrompts: 0,
+  timeToCorrectMs: 0,
+}
+
+// One side's counters for a day — zero where the day has none.
+export function dailyCounts(
+  record: DailyRecord | undefined,
+  side: Side,
+): DailyCounts {
+  if (record === undefined) return EMPTY_DAILY_COUNTS
+  if (side === 'scales') return record.scales ?? EMPTY_DAILY_COUNTS
+  const { prompts, firstTrySuccesses, timedPrompts, timeToCorrectMs } = record
+  return { prompts, firstTrySuccesses, timedPrompts, timeToCorrectMs }
 }
 
 export interface PersistedStateV1 {
@@ -89,8 +124,15 @@ export interface PersistedStateV2 extends Omit<PersistedStateV1, 'version'> {
   presetProgress: Record<string, PresetProgressRecord>
   // Added within v2 (§7 History): the longest combo streak (consecutive
   // first-try prompts) ever reached, across all sessions. Absent in early-v2
-  // states, so it defaults to 0 rather than invalidating the record.
+  // states, so it defaults to 0 rather than invalidating the record. Since
+  // 10.0.0 it is the chords side's; the scales side keeps its own.
   bestComboStreak: number
+  // Added within v2 with scales (10.0.0), each defaulting when absent: the
+  // side Home was last switched to, the scales side's active preset (the
+  // existing presetSelection is the chords side's) and its best combo streak.
+  side: Side
+  scalePresetId: string | null
+  bestScaleComboStreak: number
 }
 
 // The current schema — what AppStorage holds and every consumer reads.
@@ -108,6 +150,9 @@ export function defaultState(): PersistedState {
     customPresets: [],
     presetProgress: {},
     bestComboStreak: 0,
+    side: 'chords',
+    scalePresetId: null,
+    bestScaleComboStreak: 0,
   }
 }
 
@@ -202,45 +247,59 @@ export function sanitizeDailyRecords(
     if (!record) continue
     const date = record.date
     const activeMinutes = record.activeMinutes
-    const prompts = asCount(record.prompts)
-    const firstTrySuccesses = asCount(record.firstTrySuccesses)
+    const counts = sanitizeDailyCounts(record)
     if (
       typeof date !== 'string' ||
       !DATE_KEY_PATTERN.test(date) ||
       typeof activeMinutes !== 'number' ||
       !Number.isFinite(activeMinutes) ||
       activeMinutes < 0 ||
-      prompts === null ||
-      firstTrySuccesses === null ||
-      firstTrySuccesses > prompts
+      counts === null
     ) {
       continue
     }
-    // Absent in early-v1 states (see DailyRecord); a bad value zeroes only
-    // this metric instead of dropping the whole day.
-    const timeToCorrectMs =
-      typeof record.timeToCorrectMs === 'number' &&
-      Number.isFinite(record.timeToCorrectMs) &&
-      record.timeToCorrectMs >= 0
-        ? record.timeToCorrectMs
-        : 0
-    // Absent before Song bars started counting as prompts (see DailyRecord):
-    // every prompt those states counted was timed, so `prompts` is the honest
-    // default. A stored value can never exceed the day's prompts.
-    const storedTimed = asCount(record.timedPrompts)
-    const timedPrompts =
-      storedTimed === null ? prompts : Math.min(storedTimed, prompts)
+    // A garbled scales bucket loses only the day's scale counters.
+    const scales = sanitizeDailyCounts(asRecord(record.scales))
     // The record's own date is canonical — a mismatched map key self-heals.
     records[date] = {
       date,
       activeMinutes,
-      prompts,
-      firstTrySuccesses,
-      timedPrompts,
-      timeToCorrectMs,
+      ...counts,
+      ...(scales !== null ? { scales } : {}),
     }
   }
   return records
+}
+
+// One side's four counters, or null when the prompt pair is unusable.
+function sanitizeDailyCounts(
+  record: Record<string, unknown> | null,
+): DailyCounts | null {
+  if (!record) return null
+  const prompts = asCount(record.prompts)
+  const firstTrySuccesses = asCount(record.firstTrySuccesses)
+  if (
+    prompts === null ||
+    firstTrySuccesses === null ||
+    firstTrySuccesses > prompts
+  ) {
+    return null
+  }
+  // Absent in early-v1 states (see DailyRecord); a bad value zeroes only
+  // this metric instead of dropping the whole day.
+  const timeToCorrectMs =
+    typeof record.timeToCorrectMs === 'number' &&
+    Number.isFinite(record.timeToCorrectMs) &&
+    record.timeToCorrectMs >= 0
+      ? record.timeToCorrectMs
+      : 0
+  // Absent before Song bars started counting as prompts (see DailyRecord):
+  // every prompt those states counted was timed, so `prompts` is the honest
+  // default. A stored value can never exceed the day's prompts.
+  const storedTimed = asCount(record.timedPrompts)
+  const timedPrompts =
+    storedTimed === null ? prompts : Math.min(storedTimed, prompts)
+  return { prompts, firstTrySuccesses, timedPrompts, timeToCorrectMs }
 }
 
 // ——— Custom library (Phase 9, §4) ———
@@ -459,10 +518,11 @@ function sanitizeCustomPreset(
   if (!raw) return null
   const id = asLibraryId(raw.id, BUILT_IN_PRESET_IDS)
   const name = asLibraryName(raw.name)
+  if (id === null || seenIds.has(id) || name === null) return null
+  // No kind is a chord preset: everything stored or exported before scales.
+  if (raw.kind === 'scale') return sanitizeScalePreset(raw, id, name)
   const pool = sanitizePool(raw.pool)
-  if (id === null || seenIds.has(id) || name === null || pool === null) {
-    return null
-  }
+  if (pool === null) return null
   if (!Array.isArray(raw.voicingIds)) return null
   // References to since-deleted rules are filtered, not fatal — the preset
   // keeps drilling its surviving rules (the editor warns about the rest).
@@ -475,6 +535,49 @@ function sanitizeCustomPreset(
   ]
   if (voicingIds.length === 0) return null
   return { id, name, pool, voicingIds }
+}
+
+// A scale preset (§4): roots × scale types, with shape ids where a chord
+// preset has voicing ids. The shapes are a fixed built-in library (§3.6),
+// so unknown ones are filtered like a deleted voicing rule.
+function sanitizeScalePool(value: unknown): ScalePool | null {
+  const raw = asRecord(value)
+  if (!raw || raw.kind !== 'product') return null
+  if (!Array.isArray(raw.roots) || !Array.isArray(raw.scaleTypes)) return null
+  const roots = [
+    ...new Set(
+      raw.roots
+        .map(asPitchClassValue)
+        .filter((pc): pc is PitchClass => pc !== null),
+    ),
+  ]
+  const scaleTypes = [
+    ...new Set(
+      raw.scaleTypes.filter(
+        (t): t is ScaleTypeId => typeof t === 'string' && isScaleTypeId(t),
+      ),
+    ),
+  ]
+  if (roots.length === 0 || scaleTypes.length === 0) return null
+  return { kind: 'product', roots, scaleTypes }
+}
+
+function sanitizeScalePreset(
+  raw: Record<string, unknown>,
+  id: string,
+  name: string,
+): ScalePreset | null {
+  const pool = sanitizeScalePool(raw.pool)
+  if (pool === null || !Array.isArray(raw.shapeIds)) return null
+  const shapeIds = [
+    ...new Set(
+      raw.shapeIds.filter(
+        (s): s is ScaleShapeId => typeof s === 'string' && isScaleShapeId(s),
+      ),
+    ),
+  ]
+  if (shapeIds.length === 0) return null
+  return { kind: 'scale', id, name, pool, shapeIds }
 }
 
 export function sanitizeCustomPresets(
@@ -570,11 +673,24 @@ export function sanitizeBestComboStreak(value: unknown): number {
   return asCount(value) ?? 0
 }
 
+export function sanitizeSide(value: unknown): Side {
+  return value === 'scales' ? 'scales' : 'chords'
+}
+
+// Only the id is kept — whether the preset still exists is the store's
+// call, which falls back when it doesn't, as it does for presetSelection.
+export function sanitizeScalePresetId(value: unknown): string | null {
+  return typeof value === 'string' && value !== '' ? value : null
+}
+
 export function sanitizeStateV2(raw: Record<string, unknown>): PersistedState {
   return {
     ...sanitizeStateV1(raw),
     version: SCHEMA_VERSION,
     presetProgress: sanitizePresetProgress(raw.presetProgress),
     bestComboStreak: sanitizeBestComboStreak(raw.bestComboStreak),
+    side: sanitizeSide(raw.side),
+    scalePresetId: sanitizeScalePresetId(raw.scalePresetId),
+    bestScaleComboStreak: sanitizeBestComboStreak(raw.bestScaleComboStreak),
   }
 }

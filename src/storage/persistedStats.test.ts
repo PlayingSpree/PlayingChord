@@ -243,3 +243,54 @@ describe('PersistedBestStreak (§7 lifetime combo streak)', () => {
     expect(bestStreak.best()).toBe(9)
   })
 })
+
+describe('daily record per side (§8)', () => {
+  it('counts a scale prompt in the scales bucket, leaving chords alone', () => {
+    const chords = applyDailyPrompt(undefined, '2026-09-01', 'first-try', 1000)
+    const both = applyDailyPrompt(
+      chords,
+      '2026-09-01',
+      'missed',
+      6000,
+      'scales',
+    )
+    expect(both.prompts).toBe(1)
+    expect(both.timeToCorrectMs).toBe(1000)
+    expect(both.scales).toEqual({
+      prompts: 1,
+      firstTrySuccesses: 0,
+      timedPrompts: 1,
+      timeToCorrectMs: 6000,
+    })
+  })
+
+  it('routes a recorded outcome by its combo key', () => {
+    const storage = new AppStorage(fakeKV())
+    const stats = new PersistedComboStats(storage, () => '2026-09-01')
+    stats.record(KEY, 'first-try', 1000)
+    stats.record('s:0:major:up-1', 'first-try', 3000)
+    const day = storage.state.dailyRecords['2026-09-01']
+    expect(day?.prompts).toBe(1)
+    expect(day?.scales?.prompts).toBe(1)
+    expect(day?.scales?.timeToCorrectMs).toBe(3000)
+  })
+})
+
+describe('best combo streak per side (§8)', () => {
+  it('keeps the scales side apart from the chords side', () => {
+    const storage = new AppStorage(fakeKV())
+    const best = new PersistedBestStreak(storage)
+    best.record(6)
+    best.record(3, 'scales')
+    best.record(2, 'scales')
+    expect(storage.state.bestComboStreak).toBe(6)
+    expect(storage.state.bestScaleComboStreak).toBe(3)
+  })
+
+  it('keeps the test double per side too', () => {
+    const best = new InMemoryBestStreak()
+    best.record(5, 'scales')
+    expect(best.best()).toBe(0)
+    expect(best.best('scales')).toBe(5)
+  })
+})

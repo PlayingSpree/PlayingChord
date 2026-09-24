@@ -5,15 +5,22 @@
 
 import {
   applyOutcome,
+  comboKeySide,
   gradeScaleOf,
   recentHistoryOf,
   type ComboRecentHistory,
   type ComboStatRecord,
   type ComboStatsSource,
   type PromptOutcome,
+  type Side,
 } from '../practice'
 import type { AppStorage } from './appStorage'
-import { localDateKey, type DailyRecord } from './schema'
+import {
+  EMPTY_DAILY_COUNTS,
+  localDateKey,
+  type DailyCounts,
+  type DailyRecord,
+} from './schema'
 
 function emptyDailyRecord(date: string): DailyRecord {
   return {
@@ -26,19 +33,38 @@ function emptyDailyRecord(date: string): DailyRecord {
   }
 }
 
-// One completed prompt into the day's tallies. Every prompt counts toward
-// `prompts` / `firstTrySuccesses`, Song bars included; a null time marks a
-// clock-paced bar (§6.5), which has no span to add and so leaves the timed
-// pair — the divisor for the day's average — alone.
+// One completed prompt into the day's tallies, on its side's counters (§8):
+// the top level for chords, the `scales` bucket for scales. Every prompt
+// counts toward `prompts` / `firstTrySuccesses`, Song bars included; a null
+// time marks a clock-paced bar (§6.5), which has no span to add and so
+// leaves the timed pair — the divisor for the day's average — alone.
 export function applyDailyPrompt(
   record: DailyRecord | undefined,
   date: string,
   outcome: PromptOutcome,
   timeToCorrectMs: number | null,
+  side: Side = 'chords',
 ): DailyRecord {
   const base = record ?? emptyDailyRecord(date)
+  if (side === 'scales') {
+    return {
+      ...base,
+      scales: countPrompt(
+        base.scales ?? EMPTY_DAILY_COUNTS,
+        outcome,
+        timeToCorrectMs,
+      ),
+    }
+  }
+  return { ...base, ...countPrompt(base, outcome, timeToCorrectMs) }
+}
+
+function countPrompt(
+  base: DailyCounts,
+  outcome: PromptOutcome,
+  timeToCorrectMs: number | null,
+): DailyCounts {
   return {
-    ...base,
     prompts: base.prompts + 1,
     firstTrySuccesses:
       base.firstTrySuccesses + (outcome === 'first-try' ? 1 : 0),
@@ -98,6 +124,7 @@ export class PersistedComboStats implements ComboStatsSource {
           date,
           outcome,
           timeToCorrectMs,
+          comboKeySide(comboKey),
         ),
       },
     }))
@@ -182,10 +209,16 @@ export class InMemoryDailyActivity implements DailyActivitySource {
 // per-combo/daily records, it has no history of its own to derive a "best"
 // from — the running max has to be kept. "Streak" here is the first-try run
 // the UI calls a combo, not a (root, type, voicing) Combo — see
-// firstTryStreak in the practice store.
+// firstTryStreak in the practice store. Kept per side since scales (§8);
+// a caller that names none is on the chords side, the one there was.
 export interface BestStreakSource {
-  record(streak: number): void
+  record(streak: number, side?: Side): void
 }
+
+const BEST_STREAK_FIELD = {
+  chords: 'bestComboStreak',
+  scales: 'bestScaleComboStreak',
+} as const
 
 export class PersistedBestStreak implements BestStreakSource {
   private readonly storage: AppStorage
@@ -194,21 +227,22 @@ export class PersistedBestStreak implements BestStreakSource {
     this.storage = storage
   }
 
-  record(streak: number): void {
-    if (streak <= this.storage.state.bestComboStreak) return
-    this.storage.update((state) => ({ ...state, bestComboStreak: streak }))
+  record(streak: number, side: Side = 'chords'): void {
+    const field = BEST_STREAK_FIELD[side]
+    if (streak <= this.storage.state[field]) return
+    this.storage.update((state) => ({ ...state, [field]: streak }))
   }
 }
 
 // Test double for stores that shouldn't touch the appStorage singleton.
 export class InMemoryBestStreak implements BestStreakSource {
-  private value = 0
+  private readonly values: Record<Side, number> = { chords: 0, scales: 0 }
 
-  record(streak: number): void {
-    this.value = Math.max(this.value, streak)
+  record(streak: number, side: Side = 'chords'): void {
+    this.values[side] = Math.max(this.values[side], streak)
   }
 
-  best(): number {
-    return this.value
+  best(side: Side = 'chords'): number {
+    return this.values[side]
   }
 }

@@ -92,3 +92,28 @@ describe('exportLibraryJson / planImport (§4)', () => {
     expect(result.plan.presets).toEqual([preset])
   })
 })
+
+describe('scale presets in the library file (§4)', () => {
+  const scales: Preset = {
+    kind: 'scale',
+    id: 'my-scales',
+    name: 'My scales',
+    pool: { kind: 'product', roots: [2], scaleTypes: ['harmonic-minor'] },
+    shapeIds: ['updown-1'],
+  }
+
+  it('round-trips a scale preset with its kind', () => {
+    const json = exportLibraryJson([rule], [preset, scales])
+    const result = planImport(json, [], [])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.plan.presets).toEqual([preset, scales])
+  })
+
+  it('reads a preset with no kind as a chord preset', () => {
+    const result = planImport(exportLibraryJson([rule], [preset]), [], [])
+    if (!result.ok) throw new Error('import failed')
+    expect(result.plan.presets[0]?.kind).toBeUndefined()
+    expect(result.plan.presets[0]).toHaveProperty('voicingIds')
+  })
+})

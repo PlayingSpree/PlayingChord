@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { voicingLibrary } from '../theory'
-import { comboKey, parseComboKey, type Combo, type ScaleCombo } from './combos'
+import {
+  comboKey,
+  comboKeySide,
+  comboSide,
+  parseComboKey,
+  type Combo,
+  type ScaleCombo,
+} from './combos'
 
 describe('parseComboKey', () => {
   it('round-trips comboKey', () => {
@@ -64,5 +71,27 @@ describe('scale combo keys (§8)', () => {
     expect(parseComboKey('s:12:major:up-1')).toBeNull()
     expect(parseComboKey('s:0:major')).toBeNull()
     expect(parseComboKey('s:0:major:up-1:x')).toBeNull()
+  })
+})
+
+describe('comboKeySide (§8)', () => {
+  it('reads the side off the key', () => {
+    expect(comboKeySide('0:maj:any')).toBe('chords')
+    expect(comboKeySide('s:0:major:up-1')).toBe('scales')
+    expect(comboKeySide('s:0:blues:up-9')).toBe('scales') // stale still counts
+  })
+
+  it('reads the side off a combo', () => {
+    expect(comboSide({ root: 0, typeId: 'maj', voicingId: 'any' })).toBe(
+      'chords',
+    )
+    expect(
+      comboSide({
+        kind: 'scale',
+        root: 0,
+        scaleTypeId: 'major',
+        shapeId: 'up-1',
+      }),
+    ).toBe('scales')
   })
 })
