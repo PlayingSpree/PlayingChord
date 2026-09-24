@@ -38,7 +38,7 @@ PROGRESS.md) are retired — the phase-by-phase build log lives in git history.
 
 ```sh
 npm run dev                        # dev server (http://localhost:5173)
-#   …?midi=sim                     # dev-only simulated MIDI, played via QWERTY (A=C4…)
+#   …?midi=sim                     # dev-only simulated MIDI, played via QWERTY (A=C4…, Z/X octave)
 npm test                           # all tests, single run
 npm test -- src/theory/foo.test.ts # single test file
 npm test -- -t "name"              # tests matching name

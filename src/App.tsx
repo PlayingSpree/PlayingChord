@@ -33,7 +33,7 @@ function createSource(): MidiSource {
     new URLSearchParams(window.location.search).get('midi') === 'sim'
   if (wantSim) {
     const sim = new SimulatedMidiSource([
-      { id: 'sim', name: 'Simulated keyboard (QWERTY A–P)' },
+      { id: 'sim', name: "Simulated keyboard (QWERTY A–', Z/X octave)" },
     ])
     attachQwertyKeys(sim)
     return sim

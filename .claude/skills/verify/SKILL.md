@@ -23,8 +23,8 @@ Use `chromium.launch({ channel: 'msedge', headless: true })` — system Edge, no
 browser download needed.
 
 - **Simulated MIDI:** open `http://localhost:5173/?midi=sim` (dev builds only),
-  then `page.keyboard.down/up('a'|'w'|'s'|...)` plays notes (A=C4 … P=D♯5, see
-  `src/midi/devKeyboard.ts`). Held notes appear as chips / on the UI.
+  then `page.keyboard.down/up('a'|'w'|'s'|...)` plays notes (A=C4 … '=F5, Z/X
+  shift an octave down/up; see `src/midi/devKeyboard.ts`). Held notes appear as chips / on the UI.
 - **Real Web MIDI:** `context.grantPermissions(['midi', 'midi-sysex'], { origin })`.
   Granting only `'midi'` still rejects in Edge (Chromium gates all MIDI behind
   the sysex-level permission) → app shows the "denied" screen.

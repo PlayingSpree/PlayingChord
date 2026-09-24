@@ -26,7 +26,8 @@ npm run build      # typecheck + production build
 ```
 
 No MIDI keyboard at hand? `http://localhost:5173/?midi=sim` (dev only) simulates one,
-played from the QWERTY row (A = C4, W = C♯4, …).
+played from the QWERTY row (A = C4, W = C♯4, … ' = F5), with Z / X shifting it an
+octave down / up for the longer scale runs.
 
 Stack: React + TypeScript + Vite, Zustand, Tailwind CSS, VexFlow (notation), Vitest.
 Client-side only — no accounts, no server; everything persists to `localStorage`.
