@@ -16,8 +16,14 @@
 // Session state never lives here. A stats source, a session's event log, a rep
 // that hasn't been recorded yet — all arrive as arguments.
 
-import { comboKey, type Combo } from './combos'
-import { expandPreset, type Preset } from './presets'
+import {
+  comboKey,
+  isScaleCombo,
+  type ChordCombo,
+  type Combo,
+  type ScaleCombo,
+} from './combos'
+import { expandPreset, isScalePreset, type Preset } from './presets'
 import {
   canSetAside,
   chordOrderOf,
@@ -38,7 +44,13 @@ import {
   learnPoolChordKeys,
   selectableLearnChords,
 } from './learnLoop'
-import { comboLabel, createPrompt, type Prompt } from './prompts'
+import {
+  comboLabel,
+  createPrompt,
+  type ChordPrompt,
+  type Prompt,
+  type ScalePrompt,
+} from './prompts'
 import { songChordLabel } from './song'
 import {
   rankWorstCombos,
@@ -177,6 +189,9 @@ export class Pool {
     )
   }
 
+  promptFor(combo: ChordCombo): ChordPrompt
+  promptFor(combo: ScaleCombo): ScalePrompt
+  promptFor(combo: Combo): Prompt
   promptFor(combo: Combo): Prompt {
     return createPrompt(
       combo,
@@ -186,11 +201,14 @@ export class Pool {
   }
 
   // Compact "Am"-style label for a chord-order key — the unlock toast, the
-  // learn set, the Report's chord lines. Falls back to the key itself for a
-  // chord this pool doesn't contain, which a stale selection can still name.
+  // learn set, the Report's chord lines; a scale reads as its name ("E♭
+  // major"), shapes aside, as its chord-order key is. Falls back to the key
+  // itself for a chord this pool doesn't contain, which a stale selection can
+  // still name.
   label(chordKey: string): string {
     const combo = this.combos.find((c) => poolChordKey(c) === chordKey)
     if (combo === undefined) return chordKey
+    if (isScaleCombo(combo)) return this.promptFor(combo).displayName
     return songChordLabel(this.rootSpelling(combo.root), combo.typeId)
   }
 
@@ -378,12 +396,15 @@ export function createPoolResolver(sources: PoolSources): PoolResolver {
     }
 
     // Circle-of-fifths unlock order (§5.1) applies only to root-ordered
-    // (product) pools — diatonic/explicit orders are deliberate as-is.
+    // (product) chord pools — diatonic/explicit orders are deliberate as-is.
+    // Scale pools always unlock by accidental count, whatever the setting.
     const chordOrder = chordOrderOf(
       expansion.combos,
-      sources.unlockByFifths() && preset.pool.kind === 'product'
-        ? 'fifths'
-        : 'pool',
+      isScalePreset(preset)
+        ? 'keys'
+        : sources.unlockByFifths() && preset.pool.kind === 'product'
+          ? 'fifths'
+          : 'pool',
     )
     // A custom pool can shrink under its saved progress, so what was stored is
     // reconciled against the real size before anything reads it.

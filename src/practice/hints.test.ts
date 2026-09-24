@@ -6,7 +6,7 @@ import {
   type PatternVoicingRule,
 } from '../theory'
 import { computeHint, REVEAL_AFTER_MISSES } from './hints'
-import { createPrompt } from './prompts'
+import { createPrompt, type ChordPrompt } from './prompts'
 import type { ChordTypeId } from '../theory'
 
 const prompt = (root: number, typeId: ChordTypeId, voicingId: string) =>
@@ -15,7 +15,7 @@ const prompt = (root: number, typeId: ChordTypeId, voicingId: string) =>
 const hint = (
   missCount: number,
   notes: number[],
-  p: ReturnType<typeof createPrompt>,
+  p: ChordPrompt,
   settings: MatchSettings = DEFAULT_MATCH_SETTINGS,
 ) => computeHint(missCount, new Set(notes), p, settings)
 

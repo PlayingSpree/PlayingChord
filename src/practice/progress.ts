@@ -6,8 +6,8 @@
 // store applies the gating.
 
 import { isPassingGrade, type ComboGrade } from './stats'
-import type { Combo } from './combos'
-import type { ChordTypeId, PitchClass } from '../theory'
+import { isScaleCombo, type Combo } from './combos'
+import { getScaleType, type ChordTypeId, type PitchClass } from '../theory'
 
 // A fresh preset opens with this many chords unlocked (clamped to the pool).
 export const INITIAL_UNLOCK_COUNT = 3
@@ -23,22 +23,48 @@ export const UNLOCK_BATCH_SIZE = 2
 export const MIN_ACTIVE_CHORDS = 3
 
 // Progress is tracked per chord (root + type, across all its voicing
-// combos), keyed like comboKey minus the voicing.
-export function poolChordKey(chord: {
-  root: PitchClass
-  typeId: ChordTypeId
-}): string {
+// combos), keyed like comboKey minus the voicing — and per scale (root +
+// scale type, across its shapes), keyed like a scale comboKey minus the
+// shape. Both are "chords" to the unlock queue (§5).
+export function poolChordKey(
+  chord: { root: PitchClass; typeId: ChordTypeId } | Combo,
+): string {
+  if ('scaleTypeId' in chord) {
+    return `s:${chord.root}:${chord.scaleTypeId}`
+  }
   return `${chord.root}:${chord.typeId}`
 }
 
 // How the unlock queue is ordered (§5.1): 'pool' follows the pool's own
 // order; 'fifths' reorders roots along the circle of fifths (C → G → D …),
-// for root-ordered pools where chromatic neighbors aren't the musical ones.
-export type UnlockOrderMode = 'pool' | 'fifths'
+// for root-ordered pools where chromatic neighbors aren't the musical ones;
+// 'keys' orders scale roots by their key's accidental count, which is how
+// scale presets always unlock.
+export type UnlockOrderMode = 'pool' | 'fifths' | 'keys'
 
 // Circle-of-fifths position of a pitch class: C=0, G=1, D=2 … F=11.
 function fifthsIndex(pc: number): number {
   return (pc * 7) % 12
+}
+
+// Scale roots by accidental count, alternating sharp and flat keys (§5.1):
+// each new key adds at most one accidental over what is already open. The
+// true circle would hold F major (one flat) back behind six-sharp F♯, and
+// chromatic order would make the second scale C♯/D♭.
+const MAJOR_KEY_ORDER: readonly PitchClass[] = [
+  0, 7, 5, 2, 10, 9, 3, 4, 8, 11, 1, 6,
+] // C G F D B♭ A E♭ E A♭ B D♭ F♯
+const MINOR_KEY_ORDER: readonly PitchClass[] = [
+  9, 4, 2, 11, 7, 6, 0, 1, 5, 8, 10, 3,
+] // A E D B G F♯ C C♯ F G♯ B♭ E♭
+
+function keysIndex(combo: Combo): number {
+  if (!isScaleCombo(combo)) return fifthsIndex(combo.root)
+  const order =
+    getScaleType(combo.scaleTypeId).tonality === 'major'
+      ? MAJOR_KEY_ORDER
+      : MINOR_KEY_ORDER
+  return order.indexOf(combo.root)
 }
 
 // The unlock order: the pool's own order (§4/§5), reconstructed from the
@@ -46,24 +72,28 @@ function fifthsIndex(pc: number): number {
 // which can never be attempted, hence never passed — don't occupy (and
 // permanently block) an unlock slot. Combos of one chord are contiguous in
 // an expansion, so first-occurrence dedup preserves pool order exactly.
-// 'fifths' mode then stable-sorts by root, keeping one root's chords in
-// their pool order relative to each other.
+// 'fifths' and 'keys' modes then stable-sort by root, keeping one root's
+// chords (or scale types) in their pool order relative to each other.
 export function chordOrderOf(
   combos: readonly Combo[],
   mode: UnlockOrderMode = 'pool',
 ): string[] {
   const seen = new Set<string>()
-  const chords: { key: string; root: number }[] = []
+  const chords: { key: string; rank: number }[] = []
   for (const combo of combos) {
     const key = poolChordKey(combo)
     if (!seen.has(key)) {
       seen.add(key)
-      chords.push({ key, root: combo.root })
+      const rank =
+        mode === 'fifths'
+          ? fifthsIndex(combo.root)
+          : mode === 'keys'
+            ? keysIndex(combo)
+            : 0
+      chords.push({ key, rank })
     }
   }
-  if (mode === 'fifths') {
-    chords.sort((a, b) => fifthsIndex(a.root) - fifthsIndex(b.root))
-  }
+  chords.sort((a, b) => a.rank - b.rank)
   return chords.map((chord) => chord.key)
 }
 

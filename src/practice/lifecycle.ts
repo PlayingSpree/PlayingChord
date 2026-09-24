@@ -119,7 +119,9 @@ export class AttemptLifecycle {
 
   private judge(held: ReadonlySet<number>): void {
     const prompt = this.prompt
-    if (!prompt) return
+    // Scale prompts are judged as a block (§6.3) or a run (§6.6), neither
+    // of which is wired in yet; nothing deals one to this machine.
+    if (!prompt || prompt.kind !== 'chord') return
     this.clearStall() // any change restarts the stall clock
     if (held.size === 0) return // silent abandon: no judgment, no hint stage
     const settings = this.host.settings()
@@ -156,7 +158,7 @@ export class AttemptLifecycle {
   }
 
   private miss(settings: PracticeSettings): void {
-    if (!this.prompt) return
+    if (!this.prompt || this.prompt.kind !== 'chord') return
     this.missCount += 1
     const stage =
       (this.host.revealOnMisses?.() ?? true)

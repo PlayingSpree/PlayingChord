@@ -114,6 +114,7 @@ describe('libraryStore', () => {
 
     const combo = targetCombos[0]!
     const prompt = createPrompt(combo, undefined, targetLib)
+    if (prompt.kind !== 'chord') throw new Error('Expected a chord prompt')
     expect(prompt.voicing).toEqual(rule)
     expect(matches(prompt.example, prompt.chord, prompt.voicing)).toBe(true)
 

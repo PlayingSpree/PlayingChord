@@ -12,6 +12,7 @@ import {
 } from '../storage'
 import {
   allComboRows,
+  comboKey,
   comboLabel,
   rankMostImproved,
   rankWorstCombos,
@@ -112,12 +113,12 @@ export function ProgressView({
       ).length,
       totalPrompts: allRecords.reduce((sum, r) => sum + r.prompts, 0),
       improved: rankMostImproved(combos, stats).map((entry) => ({
-        key: `${entry.combo.root}:${entry.combo.typeId}:${entry.combo.voicingId}`,
+        key: comboKey(entry.combo),
         label: comboLabel(entry.combo, undefined, library),
         metric: `▲ ${Math.round(entry.improvement * 100)} pts`,
       })),
       worst: rankWorstCombos(combos, stats).map(({ combo, record }) => ({
-        key: `${combo.root}:${combo.typeId}:${combo.voicingId}`,
+        key: comboKey(combo),
         label: comboLabel(combo, undefined, library),
         metric: `${Math.round((100 * record.firstTrySuccesses) / record.attempts)}% first-try`,
       })),

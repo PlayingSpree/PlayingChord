@@ -4,6 +4,7 @@ import {
   ActiveTimeTracker,
   AttemptLifecycle,
   builtInPresets,
+  isScalePreset,
   judgeCallouts,
   repOutcome,
   streakAfter,
@@ -35,6 +36,9 @@ import {
   UPCOMING_COUNT,
   wrongHeldKeys,
   type AttemptPhase,
+  type ChordPool,
+  type ChordPrompt,
+  type Pool,
   type CalloutContext,
   type GradeUpFlash,
   type ChordPassEntry,
@@ -808,8 +812,17 @@ export function createPracticeStore({
     // progression (identity-compared: the engine replaces the array
     // wholesale) so the keyboard/staff reuse the ordinary Prompt plumbing.
     let songProgression: readonly SongChord[] = []
-    let songPrompts: Prompt[] = []
+    let songPrompts: ChordPrompt[] = []
     let songHeld: ReadonlySet<number> = new Set()
+
+    // Song drills chord transitions (§6.5), so the Scales side has no Song
+    // mode and a scale preset never gets here.
+    const songPoolOf = (p: Pool): ChordPool => {
+      if (isScalePreset(p.preset)) {
+        throw new Error(`Song mode needs a chord preset: ${p.preset.id}`)
+      }
+      return p.preset.pool
+    }
 
     const songComboKey = (chord: SongChord): string =>
       comboKey({ root: chord.root, typeId: chord.typeId, voicingId: 'any' })
@@ -1027,7 +1040,7 @@ export function createPracticeStore({
       // A live song rebuilds from the new pool with a fresh count-in; a
       // paused one (no clock) picks the pool up on the next start().
       if (get().mode === 'song') {
-        songEngine.setPool(pool.preset.pool)
+        songEngine.setPool(songPoolOf(pool))
         return
       }
       dealOrGate()
@@ -1081,7 +1094,7 @@ export function createPracticeStore({
           sessionLive = true
         }
         if (get().mode === 'song') {
-          songEngine.start(pool.preset.pool)
+          songEngine.start(songPoolOf(pool))
           return
         }
         // Practice waits for the player before the clock starts (§7.3). Learn
@@ -1158,7 +1171,7 @@ export function createPracticeStore({
           machine.stop() // clears phase/hint/reactionMs via onState
           set({ mode, upcoming: [] })
           publishLearnProgress()
-          songEngine.start(pool.preset.pool)
+          songEngine.start(songPoolOf(pool))
           return
         }
         set({ mode })
@@ -1275,7 +1288,7 @@ export function createPracticeStore({
         // reference deleted content.
         if (!sessionLive) return
         if (get().mode === 'song') {
-          songEngine.setPool(pool.preset.pool) // no-ops while paused
+          songEngine.setPool(songPoolOf(pool)) // no-ops while paused
         } else if (get().prompt !== null) {
           recordOutcome()
           nextPrompt()

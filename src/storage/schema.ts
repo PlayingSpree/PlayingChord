@@ -5,6 +5,7 @@
 
 import {
   builtInPresets,
+  builtInScalePresets,
   EDITOR_MAX_HAND_NOTES,
   EDITOR_MAX_PATTERN_DEGREE,
   RECENT_OUTCOME_WINDOW,
@@ -249,7 +250,9 @@ export function sanitizeDailyRecords(
 // it in the editor. Ids may never shadow a built-in.
 
 const BUILT_IN_RULE_IDS = new Set(BUILT_IN_VOICING_RULES.map((r) => r.id))
-const BUILT_IN_PRESET_IDS = new Set(builtInPresets().map((p) => p.id))
+const BUILT_IN_PRESET_IDS = new Set(
+  [...builtInPresets(), ...builtInScalePresets()].map((p) => p.id),
+)
 const KNOWN_CHORD_TYPE_IDS = new Set<string>(CHORD_TYPES.map((t) => t.id))
 
 // Custom names are user-typed free text; cap so one absurd paste can't

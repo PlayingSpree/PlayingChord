@@ -18,6 +18,8 @@ import {
   UNLOCK_BATCH_SIZE,
   type ChordPool,
   type Preset,
+  type ChordPreset,
+  type ChordPrompt,
   type Prompt,
 } from '../practice'
 import {
@@ -38,7 +40,7 @@ const STALL = DEFAULT_PRACTICE_SETTINGS.judgmentDelayMs
 function presetsOf(
   pool: ChordPool,
   voicingIds: readonly string[] = ['any'],
-): () => readonly Preset[] {
+): () => readonly ChordPreset[] {
   return () => [{ id: 'test', name: 'Test', pool, voicingIds }]
 }
 
@@ -110,12 +112,18 @@ function setup(
   return { store, press, release, releaseAll }
 }
 
+// Every prompt these tests deal is a chord prompt.
+function chordOf(prompt: Prompt | null): ChordPrompt {
+  if (prompt?.kind !== 'chord') throw new Error('Expected a chord prompt')
+  return prompt
+}
+
 // A correct voicing for the current prompt: compact chord tones above C4.
-function correctNotes(prompt: Prompt): number[] {
+function correctNotes(prompt: ChordPrompt): number[] {
   return chordPitchClasses(prompt.chord).map((pc) => 60 + pc)
 }
 
-function promptComboKey(prompt: Prompt): string {
+function promptComboKey(prompt: ChordPrompt): string {
   return comboKey({
     root: prompt.chord.root,
     typeId: prompt.chord.type.id,
@@ -130,7 +138,10 @@ const enterStage = (s: ReturnType<typeof setup>) => {
   s.store.getState().ready()
 }
 
-const playCorrectAndAdvance = (s: ReturnType<typeof setup>, prompt: Prompt) => {
+const playCorrectAndAdvance = (
+  s: ReturnType<typeof setup>,
+  prompt: ChordPrompt,
+) => {
   s.press(...correctNotes(prompt))
   s.releaseAll()
   vi.advanceTimersByTime(ADVANCE)
@@ -139,7 +150,10 @@ const playCorrectAndAdvance = (s: ReturnType<typeof setup>, prompt: Prompt) => {
 // Advance past a prompt without moving the §5.1 unlock queue: a clean rep
 // slower than D's second grades F on speed alone, so it can never pass a
 // chord. Generation tests use it to cycle prompts over a fixed pool.
-const playSlowAndAdvance = (s: ReturnType<typeof setup>, prompt: Prompt) => {
+const playSlowAndAdvance = (
+  s: ReturnType<typeof setup>,
+  prompt: ChordPrompt,
+) => {
   vi.advanceTimersByTime(6000) // past D's second (§7.5)
   playCorrectAndAdvance(s, prompt)
 }
@@ -168,7 +182,7 @@ describe('practiceStore — arming (§6.2 step 1)', () => {
 
   it('held-over notes never judge the next prompt', () => {
     const { store, press, releaseAll } = setup()
-    const first = store.getState().prompt!
+    const first = chordOf(store.getState().prompt)
     press(...correctNotes(first))
     expect(store.getState().phase).toBe('advancing')
 
@@ -179,7 +193,7 @@ describe('practiceStore — arming (§6.2 step 1)', () => {
 
     // …even if it also happens to satisfy the new prompt, nothing judges
     // until everything is released and replayed.
-    const second = store.getState().prompt!
+    const second = chordOf(store.getState().prompt)
     press(...correctNotes(second))
     expect(store.getState().phase).toBe('awaiting-release')
 
@@ -193,7 +207,7 @@ describe('practiceStore — arming (§6.2 step 1)', () => {
 describe('practiceStore — correct path', () => {
   it('flags correct with a reaction time and auto-advances', () => {
     const { store, press } = setup()
-    const prompt = store.getState().prompt!
+    const prompt = chordOf(store.getState().prompt)
 
     vi.advanceTimersByTime(1200) // "thinking" — Date.now is faked too
     press(...correctNotes(prompt))
@@ -211,7 +225,7 @@ describe('practiceStore — correct path', () => {
 
   it('judges on every held-set change, not only complete chords', () => {
     const { store, press } = setup()
-    const prompt = store.getState().prompt!
+    const prompt = chordOf(store.getState().prompt)
     const [a, b, c] = correctNotes(prompt)
 
     press(a!)
@@ -224,7 +238,7 @@ describe('practiceStore — correct path', () => {
 
   it('notes during the advance window are ignored', () => {
     const { store, press, releaseAll } = setup()
-    const first = store.getState().prompt!
+    const first = chordOf(store.getState().prompt)
     press(...correctNotes(first))
     releaseAll()
 
@@ -239,7 +253,7 @@ describe('practiceStore — correct path', () => {
 
   it('a correct chord released before the advance still advances armed', () => {
     const { store, press, releaseAll } = setup()
-    press(...correctNotes(store.getState().prompt!))
+    press(...correctNotes(chordOf(store.getState().prompt)))
     releaseAll()
     vi.advanceTimersByTime(ADVANCE)
     expect(store.getState().phase).toBe('armed')
@@ -249,7 +263,7 @@ describe('practiceStore — correct path', () => {
 describe('practiceStore — miss & retry (§6.2 steps 2–3)', () => {
   it('latches a definitive miss with a hint and retries to correct', () => {
     const { store, press, releaseAll } = setup()
-    const prompt = store.getState().prompt!
+    const prompt = chordOf(store.getState().prompt)
 
     press(61, 62, 63) // chromatic cluster — no major triad contains all three
     expect(store.getState().phase).toBe('missed')
@@ -292,7 +306,7 @@ describe('practiceStore — generation', () => {
     const seen: string[] = []
 
     for (let i = 0; i < 50; i++) {
-      const prompt = s.store.getState().prompt!
+      const prompt = chordOf(s.store.getState().prompt)
       expect(seen.slice(-3)).not.toContain(promptComboKey(prompt))
       seen.push(promptComboKey(prompt))
       playCorrectAndAdvance(s, prompt)
@@ -319,11 +333,13 @@ describe('practiceStore — upcoming queue (§5/§7)', () => {
   it('deals the queue head next and appends one item on advance', () => {
     const s = setup({ presets: bigPreset })
     const before = s.store.getState().upcoming
-    const prompt = s.store.getState().prompt!
+    const prompt = chordOf(s.store.getState().prompt)
 
     playCorrectAndAdvance(s, prompt)
 
-    expect(promptComboKey(s.store.getState().prompt!)).toBe(before[0]!.key)
+    expect(promptComboKey(chordOf(s.store.getState().prompt))).toBe(
+      before[0]!.key,
+    )
     const after = s.store.getState().upcoming
     expect(after).toHaveLength(4)
     expect(after.slice(0, 3)).toEqual(before.slice(1))
@@ -335,7 +351,7 @@ describe('practiceStore — upcoming queue (§5/§7)', () => {
       progress: fullyUnlocked('test', 6),
     })
     for (let i = 0; i < 20; i++) {
-      const prompt = s.store.getState().prompt!
+      const prompt = chordOf(s.store.getState().prompt)
       const keys = [
         promptComboKey(prompt),
         ...s.store.getState().upcoming.map((u) => u.key),
@@ -351,7 +367,7 @@ describe('practiceStore — upcoming queue (§5/§7)', () => {
 
     const seventhTypeIds = new Set(['maj7', 'min7', 'dom7'])
     const keys = [
-      promptComboKey(s.store.getState().prompt!),
+      promptComboKey(chordOf(s.store.getState().prompt)),
       ...s.store.getState().upcoming.map((u) => u.key),
     ]
     keys.forEach((key) => {
@@ -385,7 +401,7 @@ describe('practiceStore — upcoming queue (§5/§7)', () => {
 
     expect(s.store.getState().upcoming.length).toBeGreaterThan(0)
     const keys = [
-      promptComboKey(s.store.getState().prompt!),
+      promptComboKey(chordOf(s.store.getState().prompt)),
       ...s.store.getState().upcoming.map((u) => u.key),
     ]
     keys.forEach((key) => expect(key).toBe('0:maj:any'))
@@ -411,7 +427,7 @@ describe('practiceStore — outcome recording (§5/§7)', () => {
   it('records a first-try success', () => {
     const stats = new InMemoryComboStats()
     const s = setup({ presets: onePreset, stats })
-    const prompt = s.store.getState().prompt!
+    const prompt = chordOf(s.store.getState().prompt)
     playCorrectAndAdvance(s, prompt)
     expect(stats.recentHistory(promptComboKey(prompt))).toEqual({
       misses: 0,
@@ -423,7 +439,7 @@ describe('practiceStore — outcome recording (§5/§7)', () => {
   it('records a missed-then-corrected prompt as a miss', () => {
     const stats = new InMemoryComboStats()
     const s = setup({ presets: onePreset, stats })
-    const prompt = s.store.getState().prompt!
+    const prompt = chordOf(s.store.getState().prompt)
 
     s.press(61, 62, 63)
     expect(s.store.getState().phase).toBe('missed')
@@ -440,7 +456,7 @@ describe('practiceStore — outcome recording (§5/§7)', () => {
   it('caps a walked-away-from prompt at the time-to-correct ceiling', () => {
     const stats = new InMemoryComboStats()
     const s = setup({ presets: onePreset, stats })
-    const prompt = s.store.getState().prompt!
+    const prompt = chordOf(s.store.getState().prompt)
 
     vi.advanceTimersByTime(90_000) // left the keyboard mid-session
     playCorrectAndAdvance(s, prompt)
@@ -457,7 +473,7 @@ describe('practiceStore — outcome recording (§5/§7)', () => {
   it('leaves a time under the ceiling alone, and it is still first-try', () => {
     const stats = new InMemoryComboStats()
     const s = setup({ presets: onePreset, stats })
-    const prompt = s.store.getState().prompt!
+    const prompt = chordOf(s.store.getState().prompt)
 
     vi.advanceTimersByTime(MAX_TIME_TO_CORRECT_MS - 1)
     playCorrectAndAdvance(s, prompt)
@@ -473,8 +489,8 @@ describe('practiceStore — outcome recording (§5/§7)', () => {
     const stats = new InMemoryComboStats()
     const s = setup({ presets: onePreset, stats })
 
-    playCorrectAndAdvance(s, s.store.getState().prompt!) // a clean rep first
-    const prompt = s.store.getState().prompt!
+    playCorrectAndAdvance(s, chordOf(s.store.getState().prompt)) // a clean rep first
+    const prompt = chordOf(s.store.getState().prompt)
     vi.advanceTimersByTime(MAX_TIME_TO_CORRECT_MS) // …then one that stalls out
     playCorrectAndAdvance(s, prompt)
 
@@ -515,11 +531,13 @@ describe('practiceStore — unlock progress (§5)', () => {
     const s = setup({ presets: sixRoots })
     const unlockedRoots = [0, 1, 2] // pool order: chromatic roots
     for (let i = 0; i < 30; i++) {
-      expect(unlockedRoots).toContain(s.store.getState().prompt!.chord.root)
+      expect(unlockedRoots).toContain(
+        chordOf(s.store.getState().prompt).chord.root,
+      )
       s.store.getState().upcoming.forEach((u) => {
         expect(unlockedRoots).toContain(Number(u.key.split(':')[0]))
       })
-      playSlowAndAdvance(s, s.store.getState().prompt!) // never passes
+      playSlowAndAdvance(s, chordOf(s.store.getState().prompt)) // never passes
     }
     expect(s.store.getState().progress.unlocked).toBe(INITIAL_UNLOCK_COUNT)
   })
@@ -535,7 +553,7 @@ describe('practiceStore — unlock progress (§5)', () => {
       s.store.getState().progress.unlocked === INITIAL_UNLOCK_COUNT &&
       advances < 10
     ) {
-      playCorrectAndAdvance(s, s.store.getState().prompt!)
+      playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
       advances++
     }
 
@@ -560,7 +578,7 @@ describe('practiceStore — unlock progress (§5)', () => {
 
     let advances = 0
     while (!s.store.getState().justUnlocked && advances < 10) {
-      playCorrectAndAdvance(s, s.store.getState().prompt!)
+      playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
       advances++
     }
 
@@ -578,8 +596,8 @@ describe('practiceStore — unlock progress (§5)', () => {
     // Fifths positions of roots 0–5 are C=0, D=2, E=4 ahead of C♯=7,
     // E♭=9, F=11 — so the first unlocked three are 0, 2, 4.
     for (let i = 0; i < 20; i++) {
-      expect([0, 2, 4]).toContain(s.store.getState().prompt!.chord.root)
-      playSlowAndAdvance(s, s.store.getState().prompt!)
+      expect([0, 2, 4]).toContain(chordOf(s.store.getState().prompt).chord.root)
+      playSlowAndAdvance(s, chordOf(s.store.getState().prompt))
     }
   })
 
@@ -591,8 +609,10 @@ describe('practiceStore — unlock progress (§5)', () => {
     // Still the first three scale degrees — G, Am, Bm — not a fifths sort
     // of the diatonic roots (which would surface C first).
     for (let i = 0; i < 20; i++) {
-      expect([7, 9, 11]).toContain(s.store.getState().prompt!.chord.root)
-      playSlowAndAdvance(s, s.store.getState().prompt!)
+      expect([7, 9, 11]).toContain(
+        chordOf(s.store.getState().prompt).chord.root,
+      )
+      playSlowAndAdvance(s, chordOf(s.store.getState().prompt))
     }
   })
 
@@ -605,13 +625,13 @@ describe('practiceStore — unlock progress (§5)', () => {
         unlockByFifths: fifths,
       }),
     })
-    expect([0, 1, 2]).toContain(s.store.getState().prompt!.chord.root)
+    expect([0, 1, 2]).toContain(chordOf(s.store.getState().prompt).chord.root)
 
     fifths = true
     s.store.getState().refreshUnlockOrder()
     for (let i = 0; i < 20; i++) {
-      expect([0, 2, 4]).toContain(s.store.getState().prompt!.chord.root)
-      playSlowAndAdvance(s, s.store.getState().prompt!)
+      expect([0, 2, 4]).toContain(chordOf(s.store.getState().prompt).chord.root)
+      playSlowAndAdvance(s, chordOf(s.store.getState().prompt))
     }
   })
 
@@ -619,7 +639,7 @@ describe('practiceStore — unlock progress (§5)', () => {
     const s = setup({ presets: sixRoots })
     for (let i = 0; i < 6; i++) {
       vi.advanceTimersByTime(6000) // past D's second: F on speed alone
-      playCorrectAndAdvance(s, s.store.getState().prompt!)
+      playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
     }
     expect(s.store.getState().progress.unlocked).toBe(INITIAL_UNLOCK_COUNT)
     expect(s.store.getState().progress.passed).toBe(0)
@@ -635,7 +655,7 @@ describe('practiceStore — unlock progress (§5)', () => {
       advances < 40
     ) {
       vi.advanceTimersByTime(4500) // D-paced: slow, but not failing
-      playCorrectAndAdvance(s, s.store.getState().prompt!)
+      playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
       advances++
     }
     expect(s.store.getState().progress.unlocked).toBe(
@@ -645,7 +665,7 @@ describe('practiceStore — unlock progress (§5)', () => {
 
   it('flags the rep that learns a chord, one window before it lands (§7.3)', () => {
     const s = setup({ presets: sixRoots })
-    const prompt = s.store.getState().prompt!
+    const prompt = chordOf(s.store.getState().prompt)
     s.press(...correctNotes(prompt))
     s.releaseAll()
 
@@ -668,19 +688,19 @@ describe('practiceStore — unlock progress (§5)', () => {
     const s = setup({ presets: oneChord })
 
     vi.advanceTimersByTime(6000) // F on speed alone: not learned
-    s.press(...correctNotes(s.store.getState().prompt!))
+    s.press(...correctNotes(chordOf(s.store.getState().prompt)))
     s.releaseAll()
     expect(s.store.getState().justLearned).toBe(false)
     vi.advanceTimersByTime(ADVANCE)
 
     // A clean rep lifts it out of F — that one is the callout…
-    s.press(...correctNotes(s.store.getState().prompt!))
+    s.press(...correctNotes(chordOf(s.store.getState().prompt)))
     s.releaseAll()
     expect(s.store.getState().justLearned).toBe(true)
     vi.advanceTimersByTime(ADVANCE)
 
     // …and the next one, on the now-passed chord, says nothing.
-    s.press(...correctNotes(s.store.getState().prompt!))
+    s.press(...correctNotes(chordOf(s.store.getState().prompt)))
     s.releaseAll()
     expect(s.store.getState().justLearned).toBe(false)
   })
@@ -688,7 +708,7 @@ describe('practiceStore — unlock progress (§5)', () => {
   it('a missed-then-corrected prompt does not pass', () => {
     const s = setup({ presets: sixRoots })
     for (let i = 0; i < 6; i++) {
-      const prompt = s.store.getState().prompt!
+      const prompt = chordOf(s.store.getState().prompt)
       s.press(61, 62, 63)
       s.releaseAll()
       playCorrectAndAdvance(s, prompt)
@@ -702,7 +722,7 @@ describe('practiceStore — unlock progress (§5)', () => {
     // The loop ends once its set is rehearsed (§5.4), so this stops there —
     // the point is that rehearsing every chord in it still unlocks nothing.
     for (let i = 0; i < 10 && s.store.getState().report === null; i++) {
-      playCorrectAndAdvance(s, s.store.getState().prompt!)
+      playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
     }
     expect(s.store.getState().progress.unlocked).toBe(INITIAL_UNLOCK_COUNT)
     expect(s.store.getState().progress.passed).toBe(0)
@@ -758,7 +778,7 @@ describe('practiceStore — unlock progress (§5)', () => {
       setAside: 0,
     })
     // The live prompt was redealt from the narrowed pool.
-    expect([0, 1, 2]).toContain(s.store.getState().prompt!.chord.root)
+    expect([0, 1, 2]).toContain(chordOf(s.store.getState().prompt).chord.root)
     expect(progress.get('test')).toBeNull()
   })
 
@@ -825,11 +845,11 @@ describe('practiceStore — unlock progress (§5)', () => {
 
     // Neither the live prompt nor the preview can name it any more.
     for (let i = 0; i < 20; i++) {
-      expect(s.store.getState().prompt!.chord.root).not.toBe(1)
+      expect(chordOf(s.store.getState().prompt).chord.root).not.toBe(1)
       s.store.getState().upcoming.forEach((u) => {
         expect(u.key.startsWith('1:')).toBe(false)
       })
-      playSlowAndAdvance(s, s.store.getState().prompt!)
+      playSlowAndAdvance(s, chordOf(s.store.getState().prompt))
     }
   })
 
@@ -856,7 +876,7 @@ describe('practiceStore — unlock progress (§5)', () => {
 
     let advances = 0
     while (s.store.getState().progress.unlocked === 4 && advances < 20) {
-      playCorrectAndAdvance(s, s.store.getState().prompt!)
+      playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
       advances++
     }
     // The three chords left in play passed; the benched one never blocked.
@@ -902,9 +922,9 @@ describe('practiceStore — session stats & worst chords (§7)', () => {
     const s = setup({ presets: onePreset })
 
     vi.advanceTimersByTime(1000)
-    playCorrectAndAdvance(s, s.store.getState().prompt!) // first-try, 1000 ms
+    playCorrectAndAdvance(s, chordOf(s.store.getState().prompt)) // first-try, 1000 ms
 
-    const second = s.store.getState().prompt!
+    const second = chordOf(s.store.getState().prompt)
     s.press(61, 62, 63) // miss…
     s.releaseAll()
     vi.advanceTimersByTime(2000)
@@ -921,13 +941,13 @@ describe('practiceStore — session stats & worst chords (§7)', () => {
     const bestStreak = new InMemoryBestStreak()
     const s = setup({ presets: onePreset, bestStreak })
 
-    playCorrectAndAdvance(s, s.store.getState().prompt!) // first-try
+    playCorrectAndAdvance(s, chordOf(s.store.getState().prompt)) // first-try
     expect(s.store.getState().firstTryStreak).toBe(1)
 
-    playCorrectAndAdvance(s, s.store.getState().prompt!) // first-try
+    playCorrectAndAdvance(s, chordOf(s.store.getState().prompt)) // first-try
     expect(s.store.getState().firstTryStreak).toBe(2)
 
-    const prompt = s.store.getState().prompt!
+    const prompt = chordOf(s.store.getState().prompt)
     s.press(61, 62, 63) // miss…
     // …and the streak is gone at the ✘, not at the end of the prompt: the ✔
     // flash of a missed prompt must not claim a streak that already broke.
@@ -937,7 +957,7 @@ describe('practiceStore — session stats & worst chords (§7)', () => {
     expect(s.store.getState().firstTryStreak).toBe(0)
     expect(bestStreak.best()).toBe(2) // the lifetime high mark stays
 
-    playCorrectAndAdvance(s, s.store.getState().prompt!) // first-try again
+    playCorrectAndAdvance(s, chordOf(s.store.getState().prompt)) // first-try again
     expect(s.store.getState().firstTryStreak).toBe(1)
     expect(bestStreak.best()).toBe(2)
   })
@@ -945,7 +965,7 @@ describe('practiceStore — session stats & worst chords (§7)', () => {
   it('a first-try ✔ counts itself, in time for its own flash', () => {
     const s = setup({ presets: onePreset })
 
-    s.press(...correctNotes(s.store.getState().prompt!))
+    s.press(...correctNotes(chordOf(s.store.getState().prompt)))
     expect(s.store.getState().phase).toBe('advancing')
     expect(s.store.getState().firstTryStreak).toBe(1) // shown, not off by one
     s.releaseAll()
@@ -955,8 +975,8 @@ describe('practiceStore — session stats & worst chords (§7)', () => {
 
   it('a mode switch ends the streak (§7.3)', () => {
     const s = setup({ presets: onePreset })
-    playCorrectAndAdvance(s, s.store.getState().prompt!)
-    playCorrectAndAdvance(s, s.store.getState().prompt!)
+    playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
+    playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
     expect(s.store.getState().firstTryStreak).toBe(2)
 
     // Only Practice can break a streak, so a detour through Learn or Song
@@ -965,7 +985,7 @@ describe('practiceStore — session stats & worst chords (§7)', () => {
     expect(s.store.getState().firstTryStreak).toBe(0)
 
     s.store.getState().setMode('free')
-    playCorrectAndAdvance(s, s.store.getState().prompt!)
+    playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
     expect(s.store.getState().firstTryStreak).toBe(1) // starts over, not at 3
   })
 
@@ -973,7 +993,7 @@ describe('practiceStore — session stats & worst chords (§7)', () => {
     const s = setup({ presets: onePreset })
     s.store.getState().setMode('learn')
 
-    playCorrectAndAdvance(s, s.store.getState().prompt!)
+    playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
     expect(s.store.getState().firstTryStreak).toBe(0) // a Learn ✔ never counts
     s.press(61, 62, 63) // a Learn miss records nothing either
     expect(s.store.getState().firstTryStreak).toBe(0)
@@ -1009,7 +1029,7 @@ describe('practiceStore — preset selection (§4)', () => {
     store.getState().setPreset('seventh-chords')
 
     expect(store.getState().presetId).toBe('seventh-chords')
-    const prompt = store.getState().prompt!
+    const prompt = chordOf(store.getState().prompt)
     expect(['maj7', 'min7', 'dom7']).toContain(prompt.chord.type.id)
     expect(store.getState().phase).toBe('armed')
     expect(memory.saved).toContainEqual({
@@ -1029,7 +1049,7 @@ describe('practiceStore — preset selection (§4)', () => {
   it('a completed prompt awaiting auto-advance still counts when switching', () => {
     const stats = new InMemoryComboStats()
     const s = setup({ stats })
-    const prompt = s.store.getState().prompt!
+    const prompt = chordOf(s.store.getState().prompt)
     s.press(...correctNotes(prompt))
     expect(s.store.getState().phase).toBe('advancing')
 
@@ -1052,7 +1072,7 @@ describe('practiceStore — preset selection (§4)', () => {
 
     const scalePcs = new Set([11, 1, 3, 4, 6, 8, 10])
     for (let i = 0; i < 10; i++) {
-      const prompt = s.store.getState().prompt!
+      const prompt = chordOf(s.store.getState().prompt)
       expect(scalePcs.has(prompt.chord.root)).toBe(true)
       // Key spelling, e.g. D♯ min — never the default policy's E♭.
       expect(prompt.displayName).not.toContain('♭')
@@ -1065,7 +1085,9 @@ describe('practiceStore — preset selection (§4)', () => {
     store.getState().setPreset('diatonic')
     store.getState().setDiatonicKey(7) // G major
     const gMajorPcs = new Set([7, 9, 11, 0, 2, 4, 6])
-    expect(gMajorPcs.has(store.getState().prompt!.chord.root)).toBe(true)
+    expect(gMajorPcs.has(chordOf(store.getState().prompt).chord.root)).toBe(
+      true,
+    )
     expect(store.getState().diatonicKey).toBe(7)
   })
 })
@@ -1081,7 +1103,7 @@ describe('practiceStore — Learn mode (§7)', () => {
     const s = setup({ presets: onePreset, stats })
     s.store.getState().setMode('learn')
 
-    const prompt = s.store.getState().prompt!
+    const prompt = chordOf(s.store.getState().prompt)
     s.press(61, 62, 63) // even a miss…
     s.releaseAll()
     playCorrectAndAdvance(s, prompt) // …then correct
@@ -1094,7 +1116,7 @@ describe('practiceStore — Learn mode (§7)', () => {
   it('a pending ✔ earned in Practice still counts when switching to Learn', () => {
     const stats = new InMemoryComboStats()
     const s = setup({ presets: onePreset, stats })
-    s.press(...correctNotes(s.store.getState().prompt!))
+    s.press(...correctNotes(chordOf(s.store.getState().prompt)))
     expect(s.store.getState().phase).toBe('advancing')
 
     s.store.getState().setMode('learn')
@@ -1106,7 +1128,7 @@ describe('practiceStore — Learn mode (§7)', () => {
     const s = setup({ presets: onePreset, stats })
     s.store.getState().setMode('learn')
     s.releaseAll()
-    s.press(...correctNotes(s.store.getState().prompt!))
+    s.press(...correctNotes(chordOf(s.store.getState().prompt)))
     expect(s.store.getState().phase).toBe('advancing')
 
     s.store.getState().setMode('free')
@@ -1148,10 +1170,10 @@ describe('practiceStore — worst chords only (§5/§7)', () => {
     s.store.getState().setWorstOnly(true)
     const seen = new Set<number>()
     for (let i = 0; i < 30; i++) {
-      const root = s.store.getState().prompt!.chord.root
+      const root = chordOf(s.store.getState().prompt).chord.root
       expect([0, 3, 4]).toContain(root)
       seen.add(root)
-      playSlowAndAdvance(s, s.store.getState().prompt!)
+      playSlowAndAdvance(s, chordOf(s.store.getState().prompt))
     }
     expect(seen).toContain(3) // the learning chords really are in the draw
     expect(seen).toContain(4)
@@ -1173,8 +1195,8 @@ describe('practiceStore — worst chords only (§5/§7)', () => {
 
     const seen = new Set<number>()
     for (let i = 0; i < 30; i++) {
-      seen.add(s.store.getState().prompt!.chord.root)
-      playSlowAndAdvance(s, s.store.getState().prompt!)
+      seen.add(chordOf(s.store.getState().prompt).chord.root)
+      playSlowAndAdvance(s, chordOf(s.store.getState().prompt))
     }
     expect(seen.size).toBeGreaterThan(1) // not pinned to the one missed combo
   })
@@ -1214,8 +1236,8 @@ describe('practiceStore — the learn loop (§5.4)', () => {
     s.store.getState().setMode('learn')
     s.store.getState().setLearnSelection(['1:maj', '2:maj', '4:maj'])
     for (let i = 0; i < 20; i++) {
-      expect([1, 2, 4]).toContain(s.store.getState().prompt!.chord.root)
-      playSlowAndAdvance(s, s.store.getState().prompt!)
+      expect([1, 2, 4]).toContain(chordOf(s.store.getState().prompt).chord.root)
+      playSlowAndAdvance(s, chordOf(s.store.getState().prompt))
     }
   })
 
@@ -1225,8 +1247,8 @@ describe('practiceStore — the learn loop (§5.4)', () => {
     s.store.getState().setLearnSelection(['5:maj'])
     const seen = new Set<number>()
     for (let i = 0; i < 30; i++) {
-      seen.add(s.store.getState().prompt!.chord.root)
-      playSlowAndAdvance(s, s.store.getState().prompt!)
+      seen.add(chordOf(s.store.getState().prompt).chord.root)
+      playSlowAndAdvance(s, chordOf(s.store.getState().prompt))
     }
     // The selected chord plus the two most recently passed ones (roots 3, 0);
     // the chords still being learned that weren't picked stay out.
@@ -1240,7 +1262,7 @@ describe('practiceStore — the learn loop (§5.4)', () => {
     s.store.getState().setMode('learn')
     s.store.getState().setLearnSelection(['1:maj', '2:maj', '4:maj'])
     for (let i = 0; i < 12; i++) {
-      playCorrectAndAdvance(s, s.store.getState().prompt!)
+      playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
       if (s.store.getState().report !== null) break
     }
     expect(
@@ -1260,7 +1282,7 @@ describe('practiceStore — the learn loop (§5.4)', () => {
     // Fast, clean reps: each chord passes on about its second (§5.1 evidence
     // floor), so the set is done well inside this bound.
     for (let i = 0; i < 40 && s.store.getState().report === null; i++) {
-      playCorrectAndAdvance(s, s.store.getState().prompt!)
+      playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
     }
     const report = s.store.getState().report
     expect(report).not.toBeNull()
@@ -1278,7 +1300,7 @@ describe('practiceStore — the learn loop (§5.4)', () => {
     // Answer only the filler chords cleanly; the selected one is played slowly
     // enough to grade F, so it never rehearses and the loop can't finish.
     for (let i = 0; i < 30; i++) {
-      const prompt = s.store.getState().prompt!
+      const prompt = chordOf(s.store.getState().prompt)
       if (prompt.chord.root === 5) playSlowAndAdvance(s, prompt)
       else playCorrectAndAdvance(s, prompt)
     }
@@ -1291,7 +1313,7 @@ describe('practiceStore — the learn loop (§5.4)', () => {
     s.store.getState().setMode('learn')
     s.store.getState().setLearnSelection(['1:maj', '2:maj', '4:maj'])
     for (let i = 0; i < 40 && s.store.getState().report === null; i++) {
-      playCorrectAndAdvance(s, s.store.getState().prompt!)
+      playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
     }
     expect(s.store.getState().learnProgress.rehearsed).toBe(3)
 
@@ -1334,8 +1356,8 @@ describe('practiceStore — the learn loop (§5.4)', () => {
     s.store.getState().setLearnSelection(['1:maj']) // still in Practice
     const seen = new Set<number>()
     for (let i = 0; i < 30; i++) {
-      seen.add(s.store.getState().prompt!.chord.root)
-      playSlowAndAdvance(s, s.store.getState().prompt!)
+      seen.add(chordOf(s.store.getState().prompt).chord.root)
+      playSlowAndAdvance(s, chordOf(s.store.getState().prompt))
     }
     expect(seen.size).toBeGreaterThan(3)
   })
@@ -1351,7 +1373,7 @@ describe('practiceStore — session length & report (§7.2/§7.4)', () => {
     const s = setup({ presets: onePreset })
     s.store.getState().setSessionLength({ unit: 'prompts', value: 3 })
     for (let i = 0; i < 3; i++) {
-      playCorrectAndAdvance(s, s.store.getState().prompt!)
+      playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
     }
     const state = s.store.getState()
     expect(state.report).not.toBeNull()
@@ -1372,7 +1394,7 @@ describe('practiceStore — session length & report (§7.2/§7.4)', () => {
     // Clean but far past D's second: every chord grades F on speed alone,
     // and enough reps to clear the evidence floor so none of them read `new`.
     for (let i = 0; i < 40; i++) {
-      playSlowAndAdvance(s, s.store.getState().prompt!)
+      playSlowAndAdvance(s, chordOf(s.store.getState().prompt))
     }
     s.store.getState().endSession()
 
@@ -1393,7 +1415,7 @@ describe('practiceStore — session length & report (§7.2/§7.4)', () => {
     // only thing that could end this session is the length — which doesn't
     // apply.
     for (let i = 0; i < 6; i++) {
-      playSlowAndAdvance(s, s.store.getState().prompt!)
+      playSlowAndAdvance(s, chordOf(s.store.getState().prompt))
     }
     expect(s.store.getState().report).toBeNull()
     expect(s.store.getState().done).toBe(6)
@@ -1403,7 +1425,7 @@ describe('practiceStore — session length & report (§7.2/§7.4)', () => {
     const s = setup({ presets: onePreset })
     s.store.getState().setSessionLength({ unit: 'prompts', value: null })
     for (let i = 0; i < 25; i++) {
-      playCorrectAndAdvance(s, s.store.getState().prompt!)
+      playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
     }
     expect(s.store.getState().report).toBeNull()
     expect(s.store.getState().prompt).not.toBeNull()
@@ -1413,7 +1435,7 @@ describe('practiceStore — session length & report (§7.2/§7.4)', () => {
   it('End builds a report immediately, counting a pending ✔', () => {
     const stats = new InMemoryComboStats()
     const s = setup({ presets: onePreset, stats })
-    s.press(...correctNotes(s.store.getState().prompt!))
+    s.press(...correctNotes(chordOf(s.store.getState().prompt)))
     expect(s.store.getState().phase).toBe('advancing')
 
     s.store.getState().endSession()
@@ -1437,7 +1459,7 @@ describe('practiceStore — session length & report (§7.2/§7.4)', () => {
   it('input and start are ignored while a report is open', () => {
     const s = setup({ presets: onePreset })
     s.store.getState().setSessionLength({ unit: 'prompts', value: 1 })
-    playCorrectAndAdvance(s, s.store.getState().prompt!)
+    playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
     expect(s.store.getState().report).not.toBeNull()
 
     s.press(60, 64, 67)
@@ -1450,7 +1472,7 @@ describe('practiceStore — session length & report (§7.2/§7.4)', () => {
   it('dismissing the report and starting again begins a fresh session', () => {
     const s = setup({ presets: onePreset })
     s.store.getState().setSessionLength({ unit: 'prompts', value: 1 })
-    playCorrectAndAdvance(s, s.store.getState().prompt!)
+    playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
     expect(s.store.getState().report).not.toBeNull()
 
     s.store.getState().dismissReport()
@@ -1467,7 +1489,7 @@ describe('practiceStore — session length & report (§7.2/§7.4)', () => {
     const s = setup({ presets: onePreset })
     s.store.getState().setMode('learn')
     for (let i = 0; i < 10 && s.store.getState().report === null; i++) {
-      playCorrectAndAdvance(s, s.store.getState().prompt!)
+      playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
     }
     const report = s.store.getState().report
     expect(report).not.toBeNull()
@@ -1486,13 +1508,13 @@ describe('practiceStore — session length & report (§7.2/§7.4)', () => {
     // prompt length would have allowed.
     for (let i = 0; i < 15; i++) {
       vi.advanceTimersByTime(20_000)
-      playCorrectAndAdvance(s, s.store.getState().prompt!)
+      playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
     }
     expect(s.store.getState().report).toBeNull()
     expect(s.store.getState().sessionActiveMs).toBeGreaterThan(4 * 60_000)
 
     vi.advanceTimersByTime(20_000)
-    playCorrectAndAdvance(s, s.store.getState().prompt!)
+    playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
     expect(s.store.getState().report).not.toBeNull()
     expect(s.store.getState().report!.promptsPlayed).toBe(16)
   })
@@ -1504,7 +1526,7 @@ describe('practiceStore — session length & report (§7.2/§7.4)', () => {
     // walking away leaves the cap exactly where it was.
     for (let i = 0; i < 10; i++) {
       vi.advanceTimersByTime(6 * 60_000)
-      playCorrectAndAdvance(s, s.store.getState().prompt!)
+      playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
     }
     expect(s.store.getState().report).toBeNull()
     expect(s.store.getState().sessionActiveMs).toBeLessThan(60_000)
@@ -1576,7 +1598,7 @@ describe('practiceStore — daily practice (§5.3)', () => {
     const s = dailySetup()
     const seen = new Set<string>()
     for (let i = 0; i < 30; i++) {
-      const prompt = s.store.getState().prompt!
+      const prompt = chordOf(s.store.getState().prompt)
       seen.add(`${prompt.chord.root}:${prompt.chord.type.id}`)
       playSlowAndAdvance(s, prompt)
     }
@@ -1586,7 +1608,7 @@ describe('practiceStore — daily practice (§5.3)', () => {
   it('records outcomes like free practice does', () => {
     const stats = new InMemoryComboStats()
     const s = dailySetup({ stats })
-    const prompt = s.store.getState().prompt!
+    const prompt = chordOf(s.store.getState().prompt)
     playCorrectAndAdvance(s, prompt)
     expect(stats.get(promptComboKey(prompt))?.attempts).toBe(1)
   })
@@ -1597,7 +1619,7 @@ describe('practiceStore — daily practice (§5.3)', () => {
     const progress = learnedProgress()
     const s = dailySetup({ progress })
     for (let i = 0; i < 20; i++) {
-      playCorrectAndAdvance(s, s.store.getState().prompt!)
+      playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
       expect(s.store.getState().justLearned).toBe(false)
     }
     expect(s.store.getState().progress).toMatchObject({
@@ -1619,12 +1641,12 @@ describe('practiceStore — daily practice (§5.3)', () => {
     s.store.getState().setSessionLength({ unit: 'prompts', value: 2 })
     for (let i = 0; i < 15; i++) {
       vi.advanceTimersByTime(20_000)
-      playCorrectAndAdvance(s, s.store.getState().prompt!)
+      playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
     }
     expect(s.store.getState().report).toBeNull()
 
     vi.advanceTimersByTime(20_000)
-    playCorrectAndAdvance(s, s.store.getState().prompt!)
+    playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
     expect(s.store.getState().report).not.toBeNull()
     expect(s.store.getState().report!.mode).toBe('daily')
     expect(s.store.getState().report!.suggestion).toBeNull() // free only (§7.4)
@@ -1639,7 +1661,7 @@ describe('practiceStore — daily practice (§5.3)', () => {
     enterStage(s)
     s.store.getState().setSessionLength({ unit: 'prompts', value: null })
     for (let i = 0; i < 40; i++) {
-      playCorrectAndAdvance(s, s.store.getState().prompt!)
+      playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
     }
     expect(s.store.getState().progress.passed).toBe(4)
     expect(s.store.getState().learnedChordCount()).toBe(5)
@@ -1690,7 +1712,7 @@ describe('practiceStore — grade-up notice (§7.3)', () => {
     expect(comboGrade(comboMetrics(stats.get(KEY)!).score)).toBe('B')
     const s = setup({ presets: onePreset, stats })
 
-    const prompt = s.store.getState().prompt!
+    const prompt = chordOf(s.store.getState().prompt)
     s.press(...correctNotes(prompt)) // 8/10 → A, announced with the ✔
     expect(s.store.getState().phase).toBe('advancing')
     expect(s.store.getState().gradeUp).toEqual({
@@ -1701,7 +1723,7 @@ describe('practiceStore — grade-up notice (§7.3)', () => {
 
     s.releaseAll()
     vi.advanceTimersByTime(ADVANCE)
-    playCorrectAndAdvance(s, s.store.getState().prompt!) // 9/10, still an A
+    playCorrectAndAdvance(s, chordOf(s.store.getState().prompt)) // 9/10, still an A
     expect(s.store.getState().gradeUp).toBeNull()
   })
 
@@ -1709,7 +1731,7 @@ describe('practiceStore — grade-up notice (§7.3)', () => {
     // A combo with no history at all grades S off its first success — true but
     // meaningless, and the §7.5 stats page has the same floor.
     const s = setup({ presets: onePreset })
-    playCorrectAndAdvance(s, s.store.getState().prompt!)
+    playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
     expect(s.store.getState().gradeUp).toBeNull()
   })
 
@@ -1720,12 +1742,13 @@ describe('practiceStore — grade-up notice (§7.3)', () => {
     const s = setup({ presets: onePreset, stats })
     const gradeNow = () => comboGrade(comboMetrics(stats.get(KEY)!).score)
     const missThenCorrect = () => {
-      const prompt = s.store.getState().prompt!
+      const prompt = chordOf(s.store.getState().prompt)
       s.press(61, 62, 63)
       s.releaseAll()
       playCorrectAndAdvance(s, prompt)
     }
-    const clean = () => playCorrectAndAdvance(s, s.store.getState().prompt!)
+    const clean = () =>
+      playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
 
     clean() // 8/10 → A, announced
     expect(gradeNow()).toBe('A')
@@ -1752,7 +1775,7 @@ describe('practiceStore — grade-up notice (§7.3)', () => {
     const stats = seeded()
     const s = setup({ presets: onePreset, stats })
 
-    const prompt = s.store.getState().prompt!
+    const prompt = chordOf(s.store.getState().prompt)
     s.press(61, 62, 63) // miss…
     s.releaseAll()
     playCorrectAndAdvance(s, prompt) // …recorded as missed: 7/11, still B or worse
@@ -1805,7 +1828,7 @@ describe('practiceStore — ready gate (§7.3)', () => {
     vi.advanceTimersByTime(9000) // finding the stool, plugging in, whatever
     s.store.getState().ready()
     vi.advanceTimersByTime(700)
-    playCorrectAndAdvance(s, s.store.getState().prompt!)
+    playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
 
     expect(stats.get('0:maj:any')?.timeToCorrectMs).toEqual([700])
   })
@@ -1900,7 +1923,7 @@ describe('practiceStore — session lifecycle (§7.2)', () => {
     s.store.getState().setSessionLength({ unit: 'prompts', value: 2 })
     enterStage(s)
     for (let i = 0; i < 2; i++) {
-      playCorrectAndAdvance(s, s.store.getState().prompt!)
+      playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
     }
     expect(s.store.getState().report!.recordedPrompts).toBe(2)
     s.store.getState().dismissReport()
@@ -1917,7 +1940,7 @@ describe('practiceStore — session lifecycle (§7.2)', () => {
       totalTimeToCorrectMs: 0,
     })
 
-    playCorrectAndAdvance(s, s.store.getState().prompt!)
+    playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
     expect(s.store.getState().report).toBeNull() // 1 of 2, not 3 of 2
     expect(s.store.getState().done).toBe(1)
   })
@@ -1928,7 +1951,7 @@ describe('practiceStore — session lifecycle (§7.2)', () => {
     const s = setup({ presets: onePreset }, false)
     s.store.getState().setSessionLength({ unit: 'prompts', value: null })
     enterStage(s)
-    playCorrectAndAdvance(s, s.store.getState().prompt!)
+    playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
 
     s.store.getState().pause()
     expect(s.store.getState().prompt).toBeNull()
@@ -1943,10 +1966,10 @@ describe('practiceStore — session lifecycle (§7.2)', () => {
     const s = setup({ presets: onePreset }, false)
     s.store.getState().setSessionLength({ unit: 'prompts', value: null })
     enterStage(s)
-    playCorrectAndAdvance(s, s.store.getState().prompt!)
+    playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
     s.store.getState().pause()
     enterStage(s)
-    playCorrectAndAdvance(s, s.store.getState().prompt!)
+    playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
 
     s.store.getState().endSession()
     expect(s.store.getState().report!.recordedPrompts).toBe(2)
@@ -1956,7 +1979,7 @@ describe('practiceStore — session lifecycle (§7.2)', () => {
     const s = setup({ presets: onePreset }, false)
     s.store.getState().setSessionLength({ unit: 'prompts', value: null })
     enterStage(s)
-    playCorrectAndAdvance(s, s.store.getState().prompt!)
+    playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
 
     s.store.getState().discardSession() // Start / Go again
     expect(s.store.getState().prompt).toBeNull()
@@ -1971,7 +1994,7 @@ describe('practiceStore — session lifecycle (§7.2)', () => {
     const stats = new InMemoryComboStats()
     const s = setup({ presets: onePreset, stats }, false)
     enterStage(s)
-    s.press(...correctNotes(s.store.getState().prompt!))
+    s.press(...correctNotes(chordOf(s.store.getState().prompt)))
     expect(s.store.getState().phase).toBe('advancing')
 
     s.store.getState().discardSession()
@@ -2059,7 +2082,7 @@ describe('practiceStore — pause/resume (Phase 7 History nav)', () => {
   it('a ✔ waiting out its advance window still counts when pausing', () => {
     const stats = new InMemoryComboStats()
     const s = setup({ presets: onePreset, stats })
-    s.press(...correctNotes(s.store.getState().prompt!))
+    s.press(...correctNotes(chordOf(s.store.getState().prompt)))
 
     s.store.getState().pause()
     expect(stats.get('0:maj:any')?.attempts).toBe(1)
@@ -2071,7 +2094,7 @@ describe('practiceStore — pause/resume (Phase 7 History nav)', () => {
   it('start never deals a prompt over an open report', () => {
     const s = setup({ presets: onePreset })
     s.store.getState().setSessionLength({ unit: 'prompts', value: 1 })
-    playCorrectAndAdvance(s, s.store.getState().prompt!) // reaches length → report
+    playCorrectAndAdvance(s, chordOf(s.store.getState().prompt)) // reaches length → report
     expect(s.store.getState().report).not.toBeNull()
 
     s.store.getState().start()
@@ -2105,7 +2128,7 @@ describe('practiceStore — custom library (Phase 9)', () => {
       presets: () => [customPreset],
       voicings: () => voicingLibrary([wideRoot]),
     })
-    const prompt = s.store.getState().prompt!
+    const prompt = chordOf(s.store.getState().prompt)
     expect(prompt.voicing).toEqual(wideRoot)
     // The compact voicing violates the span-min-12 rule; the example is a
     // rule-satisfying voicing by construction.
@@ -2129,7 +2152,7 @@ describe('practiceStore — custom library (Phase 9)', () => {
     list = [builtInLike] // the custom preset was deleted
     s.store.getState().refreshLibrary()
     expect(s.store.getState().presetId).toBe('first')
-    expect(s.store.getState().prompt?.voicing.id).toBe('any')
+    expect(chordOf(s.store.getState().prompt).voicing.id).toBe('any')
     expect(memory.saved.at(-1)).toEqual({ presetId: 'first', diatonicKey: 0 })
   })
 

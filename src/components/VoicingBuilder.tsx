@@ -17,6 +17,7 @@ import {
 import {
   bassConstraintLabel,
   describeVoicingRule,
+  isScalePreset,
   EDITOR_BASS_DEGREES,
   EDITOR_MAX_HAND_NOTES,
   EDITOR_MAX_PATTERN_DEGREE,
@@ -234,7 +235,9 @@ export function VoicingBuilder({
   const referencedBy =
     rule === null
       ? []
-      : customPresets.filter((p) => p.voicingIds.includes(rule.id))
+      : customPresets.filter(
+          (p) => !isScalePreset(p) && p.voicingIds.includes(rule.id),
+        )
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-slate-700 bg-slate-950 p-4">

@@ -1,6 +1,6 @@
 import { createStore } from 'zustand/vanilla'
 import { useStore } from 'zustand'
-import type { Preset } from '../practice'
+import { isScalePreset, type Preset } from '../practice'
 import type { VoicingRule } from '../theory'
 import {
   appStorage,
@@ -95,7 +95,10 @@ export function createLibraryStore(
 
       deleteRule(id: string): boolean {
         if (
-          get().customPresets.some((preset) => preset.voicingIds.includes(id))
+          get().customPresets.some(
+            (preset) =>
+              !isScalePreset(preset) && preset.voicingIds.includes(id),
+          )
         ) {
           return false
         }

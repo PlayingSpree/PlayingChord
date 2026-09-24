@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { BUILT_IN_VOICING_LIBRARY, type PitchClass } from '../theory'
 import { createPoolResolver, type PoolResolver, type PoolSources } from './pool'
-import { builtInPresets, type Preset } from './presets'
+import { builtInPresets, builtInScalePresets, type Preset } from './presets'
 import {
   initialProgress,
   poolChordKey,
@@ -99,6 +99,28 @@ describe('pool resolution (§4/§5.1)', () => {
     expect(fifths.chordOrder).not.toEqual(ALL_KEYS)
   })
 
+  it('unlocks scale presets by accidental count, whatever the setting', () => {
+    for (const unlockByFifths of [false, true]) {
+      const pool = setup({
+        presets: () => builtInScalePresets(),
+        unlockByFifths: () => unlockByFifths,
+      }).resolve('major-scales', 0)
+      // C G F — F major's one flat opens before D's two sharps.
+      expect(pool.chordOrder.slice(0, 4)).toEqual([
+        's:0:major',
+        's:7:major',
+        's:5:major',
+        's:2:major',
+      ])
+      // In play keeps pool order; which three are open is the unlock order's.
+      expect(pool.inPlay.map((combo) => pool.comboLabel(combo))).toEqual([
+        'C major',
+        'F major',
+        'G major',
+      ])
+    }
+  })
+
   it('spells a diatonic preset through its key (§3.5)', () => {
     const diatonic = createPoolResolver({
       presets: (key: PitchClass) => builtInPresets(key),
@@ -144,6 +166,14 @@ describe('pool identity under a moved record (§5.1)', () => {
 describe('pool labels (§7)', () => {
   it('labels a chord-order key compactly', () => {
     expect(setup().resolve('triads', 0).label('0:maj')).toBe('C')
+  })
+
+  it('labels a scale by its name', () => {
+    const pool = setup({ presets: () => builtInScalePresets() }).resolve(
+      'minor-scales',
+      0,
+    )
+    expect(pool.label('s:3:harmonic-minor')).toBe('E♭ harmonic minor')
   })
 
   it('gives back a key it does not contain, so a stale selection survives', () => {

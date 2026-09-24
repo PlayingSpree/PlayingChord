@@ -333,7 +333,7 @@ describe('sanitizeCustomPresets (Phase 9, §4)', () => {
       roots: [0],
       chordTypes: ['maj'],
     })
-    expect(preset?.voicingIds).toEqual(['any'])
+    expect(preset).toMatchObject({ voicingIds: ['any'] })
     // Nothing valid left in a slot → the preset is dropped whole.
     expect(
       sanitizeCustomPresets(
@@ -432,7 +432,7 @@ describe('sanitizeStateV2', () => {
     })
     expect(state.customVoicingRules.map((r) => r.id)).toEqual(['rule-ok'])
     // The garbled rule was dropped, so the reference to it goes too.
-    expect(state.customPresets[0]?.voicingIds).toEqual(['rule-ok'])
+    expect(state.customPresets[0]).toMatchObject({ voicingIds: ['rule-ok'] })
   })
 })
 

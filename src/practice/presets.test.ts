@@ -9,9 +9,11 @@ import { comboKey } from './combos'
 import { createPrompt } from './prompts'
 import {
   builtInPresets,
+  builtInScalePresets,
   expandPreset,
   poolChords,
   type Preset,
+  type ScalePreset,
 } from './presets'
 
 const byId = (id: string): Preset => {
@@ -176,7 +178,9 @@ describe('built-in presets (§4)', () => {
 
   it('inversion drills use the inversion rules, never `any`', () => {
     const voicings = new Set(
-      expandPreset(byId('inversion-drills')).combos.map((c) => c.voicingId),
+      expandPreset(byId('inversion-drills')).combos.map((c) =>
+        'voicingId' in c ? c.voicingId : null,
+      ),
     )
     expect([...voicings].sort()).toEqual([
       'first-inversion',
@@ -200,11 +204,78 @@ describe('built-in presets (§4)', () => {
         const { combos, rootSpellings } = expandPreset(preset)
         for (const combo of combos) {
           const prompt = createPrompt(combo, rootSpellings.get(combo.root))
+          if (prompt.kind !== 'chord') throw new Error('Expected a chord')
           expect(matches(prompt.example, prompt.chord, prompt.voicing)).toBe(
             true,
           )
         }
       }
     }
+  })
+})
+
+describe('scale presets (§4)', () => {
+  it('expands roots × scale types × shapes into scale combos', () => {
+    const preset: ScalePreset = {
+      kind: 'scale',
+      id: 'test',
+      name: 'Test',
+      pool: {
+        kind: 'product',
+        roots: [0, 7],
+        scaleTypes: ['major', 'natural-minor'],
+      },
+      shapeIds: ['up-1', 'block'],
+    }
+    const { combos, rootSpellings } = expandPreset(preset)
+    expect(combos).toHaveLength(2 * 2 * 2)
+    expect(new Set(combos.map(comboKey)).size).toBe(8)
+    expect(combos[0]).toEqual({
+      kind: 'scale',
+      root: 0,
+      scaleTypeId: 'major',
+      shapeId: 'up-1',
+    })
+    expect(rootSpellings.size).toBe(0)
+  })
+
+  it('ships presets 8–15, all 12 roots, in the spec’s shapes', () => {
+    const summary = builtInScalePresets().map((p) => [
+      p.id,
+      p.pool.scaleTypes.length,
+      p.shapeIds.join(),
+    ])
+    expect(summary).toEqual([
+      ['major-scales', 1, 'up-1'],
+      ['natural-minor-scales', 1, 'up-1'],
+      ['harmonic-minor-scales', 1, 'up-1'],
+      ['melodic-minor-scales', 1, 'up-1'],
+      ['minor-scales', 3, 'up-1'],
+      ['major-scales-2-octaves', 1, 'updown-2'],
+      ['minor-scales-2-octaves', 3, 'updown-2'],
+      ['major-block-scales', 1, 'block'],
+    ])
+    for (const preset of builtInScalePresets()) {
+      expect(preset.pool.roots).toHaveLength(12)
+    }
+  })
+
+  it('never collides with a chord preset id', () => {
+    const chordIds = new Set(builtInPresets().map((p) => p.id))
+    for (const preset of builtInScalePresets()) {
+      expect(chordIds.has(preset.id)).toBe(false)
+    }
+  })
+
+  it('reads a preset without a kind as a chord preset', () => {
+    const legacy: Preset = {
+      id: 'old',
+      name: 'Old',
+      pool: { kind: 'product', roots: [0], chordTypes: ['maj'] },
+      voicingIds: ['any'],
+    }
+    expect(expandPreset(legacy).combos).toEqual([
+      { root: 0, typeId: 'maj', voicingId: 'any' },
+    ])
   })
 })

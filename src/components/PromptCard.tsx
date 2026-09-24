@@ -63,8 +63,10 @@ export function PromptCard() {
 
   if (!prompt) return null
 
-  const showStaff = staffEnabled
-  const keySignature = staffKeyEnabled ? prompt.chord.root : null
+  // A scale prompt's own staff and labels (§7.3) aren't drawn yet.
+  const chordPrompt = prompt.kind === 'chord' ? prompt : null
+  const keySignature =
+    staffKeyEnabled && chordPrompt !== null ? chordPrompt.chord.root : null
   const next2 = upcoming.slice(0, 2)
 
   return (
@@ -104,13 +106,15 @@ export function PromptCard() {
         </div>
       )}
 
-      {song === null && prompt.voicing.id !== 'any' && (
-        <p className="text-xl text-ink-muted">{prompt.voicing.name}</p>
-      )}
+      {song === null &&
+        chordPrompt !== null &&
+        chordPrompt.voicing.id !== 'any' && (
+          <p className="text-xl text-ink-muted">{chordPrompt.voicing.name}</p>
+        )}
 
       {/* Grand staff (§3.4). The fallback mirrors the card so the chunk/font
           load never jumps the layout. */}
-      {showStaff && (
+      {staffEnabled && chordPrompt !== null && (
         <Suspense
           fallback={
             <div
@@ -120,8 +124,8 @@ export function PromptCard() {
           }
         >
           <StaffView
-            chord={prompt.chord}
-            notes={prompt.example}
+            chord={chordPrompt.chord}
+            notes={chordPrompt.example}
             keySignature={keySignature}
           />
         </Suspense>

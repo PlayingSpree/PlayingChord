@@ -10,7 +10,7 @@ import {
   type PatternVoicingRule,
   type PitchClass,
 } from '../theory'
-import type { Prompt } from './prompts'
+import type { ChordPrompt } from './prompts'
 
 // Progressive hints (DESIGN.md §6.4): recall first, answer later. Misses 1–2
 // mark the wrong played keys — or, when every played key is a chord tone,
@@ -41,7 +41,7 @@ export function wrongHeldKeys(
 export function computeHint(
   missCount: number,
   held: ReadonlySet<number>,
-  prompt: Prompt,
+  prompt: ChordPrompt,
   settings: MatchSettings,
 ): Hint {
   if (missCount >= REVEAL_AFTER_MISSES) {

@@ -8,6 +8,9 @@ import {
   MAX_DELAY_MS,
   poolChords,
   type ChordNameSize,
+  isScalePreset,
+  poolScales,
+  type ChordPreset,
   type Preset,
 } from '../practice'
 import type { ImportResult } from '../storage'
@@ -28,7 +31,7 @@ import { cx } from './cx'
 
 type Editing =
   | { kind: 'rule'; rule: VoicingRule | null } // null = new
-  | { kind: 'preset'; preset: Preset | null }
+  | { kind: 'preset'; preset: ChordPreset | null }
   | null
 
 export function SettingsView({ onBack }: { onBack: () => void }) {
@@ -377,6 +380,11 @@ function VoicingRulesSection({
 }
 
 function describePreset(preset: Preset): string {
+  if (isScalePreset(preset)) {
+    const scales = poolScales(preset.pool).length
+    const shapes = preset.shapeIds.length
+    return `${scales} scale${scales === 1 ? '' : 's'} × ${shapes} shape${shapes === 1 ? '' : 's'}`
+  }
   const chords = poolChords(preset.pool).length
   const rules = preset.voicingIds.length
   return `${chords} chord${chords === 1 ? '' : 's'} × ${rules} rule${rules === 1 ? '' : 's'}`
@@ -387,8 +395,8 @@ function PresetsSection({
   onEdit,
   onClose,
 }: {
-  editing: { kind: 'preset'; preset: Preset | null } | null
-  onEdit: (preset: Preset | null) => void
+  editing: { kind: 'preset'; preset: ChordPreset | null } | null
+  onEdit: (preset: ChordPreset | null) => void
   onClose: () => void
 }) {
   const customPresets = useLibrary((s) => s.customPresets)
@@ -415,7 +423,9 @@ function PresetsSection({
                 key={preset.id}
                 name={preset.name}
                 detail={describePreset(preset)}
-                onEdit={() => onEdit(preset)}
+                onEdit={
+                  isScalePreset(preset) ? undefined : () => onEdit(preset)
+                }
                 onResetProgress={() => resetProgress(preset.id)}
               />
             ))}

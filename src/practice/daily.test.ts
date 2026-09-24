@@ -1,18 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import { dailyChordCount, dailyPool, type DailyPresetSource } from './daily'
-import type { Combo } from './combos'
+import type { ChordCombo } from './combos'
 import type { PitchClass } from '../theory'
 
 const combo = (
   root: PitchClass,
   typeId: 'maj' | 'min' = 'maj',
   voicingId = 'any',
-): Combo => ({ root, typeId, voicingId })
+): ChordCombo => ({ root, typeId, voicingId })
 
 // A source whose chord order is its combos' chords in order, with the given
 // indices passed — the shape reloadProgress hands the store.
 const source = (
-  combos: readonly Combo[],
+  combos: readonly ChordCombo[],
   masteredIndices: number[],
   setAsideIndices: number[] = [],
 ): DailyPresetSource => {

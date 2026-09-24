@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ALL_PITCH_CLASSES } from '../theory'
+import { ALL_PITCH_CLASSES, type ScaleTypeId } from '../theory'
 import type { Combo } from './combos'
 import { PASS_MIN_GRADE } from './stats'
 import {
@@ -70,6 +70,77 @@ describe('chordOrderOf (§5 unlock order)', () => {
     expect(chordOrderOf(combosOf(12), 'fifths')).toEqual(
       [0, 7, 2, 9, 4, 11, 6, 1, 8, 3, 10, 5].map((root) => `${root}:maj`),
     )
+  })
+
+  it('keys scales by root and scale type, ignoring shape', () => {
+    expect(
+      poolChordKey({
+        kind: 'scale',
+        root: 3,
+        scaleTypeId: 'major',
+        shapeId: 'updown-2',
+      }),
+    ).toBe('s:3:major')
+  })
+
+  it('keys mode orders scale roots by accidental count, per tonality', () => {
+    const scales = (scaleTypeId: ScaleTypeId): Combo[] =>
+      ALL_PITCH_CLASSES.map((root) => ({
+        kind: 'scale',
+        root,
+        scaleTypeId,
+        shapeId: 'up-1',
+      }))
+    const roots = (order: string[]) => order.map((key) => key.split(':')[1])
+    // C G F D B♭ A E♭ E A♭ B D♭ F♯
+    expect(roots(chordOrderOf(scales('major'), 'keys'))).toEqual([
+      '0',
+      '7',
+      '5',
+      '2',
+      '10',
+      '9',
+      '3',
+      '4',
+      '8',
+      '11',
+      '1',
+      '6',
+    ])
+    // A E D B G F♯ C C♯ F G♯ B♭ E♭
+    expect(roots(chordOrderOf(scales('melodic-minor'), 'keys'))).toEqual([
+      '9',
+      '4',
+      '2',
+      '11',
+      '7',
+      '6',
+      '0',
+      '1',
+      '5',
+      '8',
+      '10',
+      '3',
+    ])
+  })
+
+  it('keys mode keeps one root’s scale types together, in pool order', () => {
+    const combos: Combo[] = ([0, 9] as const).flatMap((root) =>
+      (['natural-minor', 'harmonic-minor'] as const).flatMap((scaleTypeId) =>
+        (['up-1', 'block'] as const).map((shapeId) => ({
+          kind: 'scale' as const,
+          root,
+          scaleTypeId,
+          shapeId,
+        })),
+      ),
+    )
+    expect(chordOrderOf(combos, 'keys')).toEqual([
+      's:9:natural-minor',
+      's:9:harmonic-minor',
+      's:0:natural-minor',
+      's:0:harmonic-minor',
+    ])
   })
 
   it('fifths mode keeps one root’s chord types in pool order', () => {

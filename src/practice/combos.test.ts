@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { voicingLibrary } from '../theory'
-import { comboKey, parseComboKey, type Combo } from './combos'
+import { comboKey, parseComboKey, type Combo, type ScaleCombo } from './combos'
 
 describe('parseComboKey', () => {
   it('round-trips comboKey', () => {
@@ -37,5 +37,32 @@ describe('parseComboKey', () => {
     expect(parseComboKey(comboKey(combo), lib)).toEqual(combo)
     // The same key is stale once the rule is gone (default library).
     expect(parseComboKey(comboKey(combo))).toBeNull()
+  })
+})
+
+describe('scale combo keys (§8)', () => {
+  it('keeps chord keys byte-identical to before scales', () => {
+    expect(comboKey({ root: 3, typeId: 'min7', voicingId: 'any' })).toBe(
+      '3:min7:any',
+    )
+  })
+
+  it('prefixes scale keys and round-trips them', () => {
+    const combo: ScaleCombo = {
+      kind: 'scale',
+      root: 3,
+      scaleTypeId: 'harmonic-minor',
+      shapeId: 'updown-2',
+    }
+    expect(comboKey(combo)).toBe('s:3:harmonic-minor:updown-2')
+    expect(parseComboKey(comboKey(combo))).toEqual(combo)
+  })
+
+  it('parses stale or malformed scale keys to null', () => {
+    expect(parseComboKey('s:0:dorian:up-1')).toBeNull() // removed type
+    expect(parseComboKey('s:0:major:up-4')).toBeNull() // removed shape
+    expect(parseComboKey('s:12:major:up-1')).toBeNull()
+    expect(parseComboKey('s:0:major')).toBeNull()
+    expect(parseComboKey('s:0:major:up-1:x')).toBeNull()
   })
 })

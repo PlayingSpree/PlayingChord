@@ -11,12 +11,13 @@ import {
 } from '../theory'
 import {
   builtInPresets,
+  builtInScalePresets,
   expandPreset,
   newLibraryId,
   presetWarnings,
   type ChordPool,
   type PoolChord,
-  type Preset,
+  type ChordPreset,
 } from '../practice'
 import { useLibrary } from '../store/libraryStore'
 import { Chip, SelectField, TextField } from './fields'
@@ -47,13 +48,15 @@ const KEY_OPTIONS = ALL_PITCH_CLASSES.map((pc) => ({
   label: keyDisplayName(pc),
 }))
 
-const BUILT_IN_PRESET_IDS = builtInPresets().map((p) => p.id)
+const BUILT_IN_PRESET_IDS = [...builtInPresets(), ...builtInScalePresets()].map(
+  (p) => p.id,
+)
 
 export function PresetEditor({
   preset,
   onClose,
 }: {
-  preset: Preset | null // null = creating a new preset
+  preset: ChordPreset | null // null = creating a new preset
   onClose: () => void
 }) {
   const customRules = useLibrary((s) => s.customRules)
@@ -87,7 +90,7 @@ export function PresetEditor({
       : kind === 'explicit'
         ? { kind, chords: explicit }
         : { kind, key: diatonicKey }
-  const draft: Preset = {
+  const draft: ChordPreset = {
     id:
       preset?.id ??
       newLibraryId(

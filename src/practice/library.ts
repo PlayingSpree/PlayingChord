@@ -11,7 +11,7 @@ import {
   type VoicingLibrary,
   type VoicingRule,
 } from '../theory'
-import { poolChords, type Preset } from './presets'
+import { isScalePreset, poolChords, type Preset } from './presets'
 
 // Human labels for bass-constraint degrees (index into ChordType.intervals),
 // shared by the voicing builder's picker and rule summaries. The tone a
@@ -147,10 +147,12 @@ const CLUSTER_TONE_COUNT = 5
 // The §4 preset-editor validation: one warning per (chord type × voicing
 // rule) pairing in the preset that can't — or can only awkwardly — be
 // satisfied. Satisfiability is root-independent, so pairs are checked once.
+// A scale preset has nothing to warn about: every scale plays in every shape.
 export function presetWarnings(
   preset: Preset,
   voicings: VoicingLibrary,
 ): PresetWarning[] {
+  if (isScalePreset(preset)) return []
   const typeIds = [...new Set(poolChords(preset.pool).map((c) => c.typeId))]
   const warnings: PresetWarning[] = []
   for (const voicingId of preset.voicingIds) {
