@@ -4,13 +4,15 @@ import {
   isPatternRule,
   pitchClass,
   resolvePattern,
+  scalePitchClasses,
   type Chord,
   type ConstraintVoicingRule,
   type MatchSettings,
   type PatternVoicingRule,
   type PitchClass,
+  type Scale,
 } from '../theory'
-import type { ChordPrompt } from './prompts'
+import type { Prompt } from './prompts'
 
 // Progressive hints (DESIGN.md §6.4): recall first, answer later. Misses 1–2
 // mark the wrong played keys — or, when every played key is a chord tone,
@@ -41,12 +43,14 @@ export function wrongHeldKeys(
 export function computeHint(
   missCount: number,
   held: ReadonlySet<number>,
-  prompt: ChordPrompt,
+  prompt: Prompt,
   settings: MatchSettings,
 ): Hint {
   if (missCount >= REVEAL_AFTER_MISSES) {
     return { kind: 'reveal', notes: [...prompt.example] }
   }
+  // Only a block reaches the held-set machine; runs have computeRunHint.
+  if (prompt.kind === 'scale') return computeBlockHint(held, prompt.scale)
   if (isPatternRule(prompt.voicing)) {
     return computePatternHint(held, prompt.chord, prompt.voicing)
   }
@@ -157,4 +161,70 @@ export function describeFailedConstraint(
 
   // A miss only latches when something above failed; defensive fallback.
   return 'Does not match the voicing rule'
+}
+
+// A block scale (§6.3) is exact like a pattern rule: a foreign key is
+// marked, otherwise the one failed condition is named, in the order that
+// never misleads — a repeat can't be fixed by adding keys, missing degrees
+// come before the root and span, which can't be judged until all are down.
+function computeBlockHint(held: ReadonlySet<number>, scale: Scale): Hint {
+  const notes = [...held].sort((a, b) => a - b)
+  const pcs = scalePitchClasses(scale)
+  const inScale = new Set(pcs)
+  const foreign = notes.filter((note) => !inScale.has(pitchClass(note)))
+  if (foreign.length > 0) return { kind: 'wrong-keys', notes: foreign }
+
+  const low = notes[0]
+  const high = notes.at(-1)
+  // The root an octave over the bass root is the one repeat allowed.
+  const root = pitchClass(scale.root)
+  const topRoot =
+    low !== undefined &&
+    high === low + 12 &&
+    pitchClass(low) === root &&
+    notes.length > 1
+      ? 1
+      : 0
+  const counts = new Map<PitchClass, number>()
+  for (const note of notes.slice(0, notes.length - topRoot)) {
+    const pc = pitchClass(note)
+    counts.set(pc, (counts.get(pc) ?? 0) + 1)
+  }
+  if ([...counts.values()].some((count) => count > 1)) {
+    return {
+      kind: 'constraint',
+      text: 'Each note once — only the root repeats, on top',
+    }
+  }
+  const missing = scale.type.intervals.filter((_, i) => {
+    const pc = pcs[i]
+    return pc !== undefined && !counts.has(pc)
+  })
+  if (missing.length > 0) {
+    return {
+      kind: 'constraint',
+      text: `Missing the ${missing.map((i) => degreeName(i.degree)).join(' and ')}`,
+    }
+  }
+  if (low !== undefined && pitchClass(low) !== root) {
+    return { kind: 'constraint', text: 'Bass must be the root' }
+  }
+  if (low !== undefined && high !== undefined && high - low > 12) {
+    return { kind: 'constraint', text: 'Span too wide' }
+  }
+  return { kind: 'constraint', text: 'Does not match the scale' }
+}
+
+// A run's hint (§6.4, §6.6), staged by misses counted one per position:
+// misses 1–2 mark the wrong keys played at the position the run is waiting
+// on, miss 3+ overlays the rest of the run from there.
+export function computeRunHint(
+  missCount: number,
+  wrong: readonly number[],
+  rest: readonly number[],
+): Hint {
+  if (missCount >= REVEAL_AFTER_MISSES) {
+    return { kind: 'reveal', notes: [...rest] }
+  }
+  return { kind: 'wrong-keys', notes: [...wrong].sort((a, b) => a - b) }
 }

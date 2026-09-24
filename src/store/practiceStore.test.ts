@@ -2355,3 +2355,51 @@ describe('practiceStore — Song mode (§6.5)', () => {
     s.releaseAll()
   })
 })
+
+// The store deals a scale prompt to the machine its shape needs (§6.6) —
+// the same recording path as a chord after that.
+describe('practiceStore — scale runs (§6.6)', () => {
+  const C_UP = [60, 62, 64, 65, 67, 69, 71, 72]
+  const scalePreset = (shapeId: 'up-1' | 'block') => (): readonly Preset[] => [
+    {
+      kind: 'scale',
+      id: 'test-scales',
+      name: 'Test scales',
+      pool: { kind: 'product', roots: [0], scaleTypes: ['major'] },
+      shapeIds: [shapeId],
+    },
+  ]
+
+  it('judges a run note by note and records it under its scale key', () => {
+    const stats = new InMemoryComboStats()
+    const s = setup({ presets: scalePreset('up-1'), stats })
+    expect(s.store.getState().prompt?.kind).toBe('scale')
+    expect(s.store.getState().run).toEqual({ notes: C_UP, played: 0 })
+
+    for (const note of C_UP) {
+      s.press(note)
+      s.release(note)
+    }
+    expect(s.store.getState().phase).toBe('advancing')
+    vi.advanceTimersByTime(ADVANCE)
+    expect(stats.get('s:0:major:up-1')?.firstTrySuccesses).toBe(1)
+  })
+
+  it('never takes the note that answered the Ready panel as the first', () => {
+    const s = setup({ presets: scalePreset('up-1') }, false)
+    s.store.getState().start()
+    s.press(60) // answers the gate
+    expect(s.store.getState().awaitingReady).toBe(false)
+    expect(s.store.getState().run?.played).toBe(0)
+    s.release(60)
+    s.press(60)
+    expect(s.store.getState().run?.played).toBe(1)
+  })
+
+  it('judges a block scale as a held set', () => {
+    const s = setup({ presets: scalePreset('block') })
+    expect(s.store.getState().run).toBeNull()
+    s.press(60, 62, 64, 65, 67, 69, 71)
+    expect(s.store.getState().phase).toBe('advancing')
+  })
+})

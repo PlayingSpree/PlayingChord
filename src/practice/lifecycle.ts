@@ -1,7 +1,10 @@
 import {
   isDefinitivelyUnsatisfiable,
+  isScaleBlockDefinitivelyUnsatisfiable,
   matches,
+  matchesScaleBlock,
   requiredNoteCount,
+  scaleBlockNoteCount,
 } from '../theory'
 import { computeHint, REVEAL_AFTER_MISSES, type Hint } from './hints'
 import type { Prompt } from './prompts'
@@ -9,7 +12,9 @@ import type { PracticeSettings } from './settings'
 
 // The §6.2 attempt lifecycle as an explicit state machine — pure TS, no
 // DOM/MIDI; timers are plain setTimeout/clearTimeout so tests drive it with
-// fake timers.
+// fake timers. It judges the held *set*, so it takes chords and `block`
+// scales; runs have their own machine (runLifecycle.ts, §6.6) reporting the
+// same state, and judge.ts picks between them.
 //
 // - 'awaiting-release': prompt shown, keys still down — arms only once all
 //   keys are released, so held-over notes never judge the new prompt (step 1).
@@ -30,6 +35,16 @@ export interface LifecycleState {
   // Phase 6, first-try accuracy.
   missCount: number
   hint: Hint | null
+  // A run's progress (§6.6); null for anything judged as a set.
+  run: RunProgress | null
+}
+
+// How far a run has got (§6.4, §6.6): the run in the octave its first note
+// fixed — the prompt's example until then — and how many of its notes have
+// been played correctly, so notes[played] is the one it waits on.
+export interface RunProgress {
+  notes: readonly number[]
+  played: number
 }
 
 export interface LifecycleHost {
@@ -68,6 +83,7 @@ export class AttemptLifecycle {
       reactionMs: this.reactionMs,
       missCount: this.missCount,
       hint: this.hint,
+      run: null,
     }
   }
 
@@ -119,14 +135,12 @@ export class AttemptLifecycle {
 
   private judge(held: ReadonlySet<number>): void {
     const prompt = this.prompt
-    // Scale prompts are judged as a block (§6.3) or a run (§6.6), neither
-    // of which is wired in yet; nothing deals one to this machine.
-    if (!prompt || prompt.kind !== 'chord') return
+    if (!prompt) return
     this.clearStall() // any change restarts the stall clock
     if (held.size === 0) return // silent abandon: no judgment, no hint stage
     const settings = this.host.settings()
 
-    if (matches(held, prompt.chord, prompt.voicing, settings)) {
+    if (heldMatches(held, prompt, settings)) {
       this.reactionMs = this.host.now() - this.shownAt
       this.hint = null // the ✔ flash replaces any hint overlay
       this.phase = 'advancing'
@@ -138,18 +152,17 @@ export class AttemptLifecycle {
       return
     }
 
-    if (
-      isDefinitivelyUnsatisfiable(held, prompt.chord, prompt.voicing, settings)
-    ) {
+    if (heldIsDefinitivelyUnsatisfiable(held, prompt, settings)) {
       this.miss(settings)
       return
     }
 
     // Stall (§6.2): enough keys for a full attempt, wrong, and unchanged for
     // the judgment delay. Smaller sets are still being built up — never
-    // stalled. "Full" is the chord's tone count for constraint rules, or the
-    // pattern's own note count for pattern rules (which may differ).
-    if (held.size >= requiredNoteCount(prompt.chord, prompt.voicing)) {
+    // stalled. "Full" is the chord's tone count for constraint rules, the
+    // pattern's own note count for pattern rules (which may differ), or one
+    // note per degree for a block scale.
+    if (held.size >= fullAttemptSize(prompt)) {
       this.stallTimer = setTimeout(() => {
         this.stallTimer = null
         if (this.phase === 'armed') this.miss(this.host.settings())
@@ -158,7 +171,7 @@ export class AttemptLifecycle {
   }
 
   private miss(settings: PracticeSettings): void {
-    if (!this.prompt || this.prompt.kind !== 'chord') return
+    if (!this.prompt) return
     this.missCount += 1
     const stage =
       (this.host.revealOnMisses?.() ?? true)
@@ -186,4 +199,32 @@ export class AttemptLifecycle {
   private emit(): void {
     this.host.onState(this.state)
   }
+}
+
+// The set judged against its prompt: a chord's voicing rule (§6.3), or a
+// block scale's own rule. A run never reaches this machine (judge.ts).
+function heldMatches(
+  held: ReadonlySet<number>,
+  prompt: Prompt,
+  settings: PracticeSettings,
+): boolean {
+  return prompt.kind === 'chord'
+    ? matches(held, prompt.chord, prompt.voicing, settings)
+    : matchesScaleBlock(held, prompt.scale)
+}
+
+function heldIsDefinitivelyUnsatisfiable(
+  held: ReadonlySet<number>,
+  prompt: Prompt,
+  settings: PracticeSettings,
+): boolean {
+  return prompt.kind === 'chord'
+    ? isDefinitivelyUnsatisfiable(held, prompt.chord, prompt.voicing, settings)
+    : isScaleBlockDefinitivelyUnsatisfiable(held, prompt.scale)
+}
+
+function fullAttemptSize(prompt: Prompt): number {
+  return prompt.kind === 'chord'
+    ? requiredNoteCount(prompt.chord, prompt.voicing)
+    : scaleBlockNoteCount(prompt.scale)
 }

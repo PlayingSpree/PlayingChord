@@ -2,7 +2,6 @@ import { createStore } from 'zustand/vanilla'
 import { useStore } from 'zustand'
 import {
   ActiveTimeTracker,
-  AttemptLifecycle,
   builtInPresets,
   isScalePreset,
   judgeCallouts,
@@ -48,6 +47,8 @@ import {
   type ComboStatRecord,
   type LifecycleState,
   type Hint,
+  PromptJudge,
+  type RunProgress,
   type PracticeSettings,
   type Preset,
   type PresetProgressRecord,
@@ -193,7 +194,7 @@ export const JUST_UNLOCKED_FLASH_MS = 2_500
 export const ACTIVE_FLUSH_MS = 5_000
 
 // Thin adapter over the pure practice engine: picks weighted prompts from
-// the selected preset, feeds held-set changes into the §6.2 machine, mirrors
+// the selected preset, feeds held-set changes into the §6.2/§6.6 machines, mirrors
 // machine state out for the UI, and records prompt outcomes into the
 // persisted stats (§7: miss = any miss before the eventual
 // correct). It also owns the §7.2 session layer: Learn/Practice/Song modes,
@@ -220,6 +221,8 @@ export interface PracticeStoreState {
   reactionMs: number | null
   missCount: number
   hint: Hint | null
+  // A scale run's progress (§6.6); null for chords and block scales.
+  run: RunProgress | null
   mode: SessionMode
   // Song mode (§6.5): the engine's live snapshot (null outside Song), the
   // progression display chips derived per progression, and the previous
@@ -774,7 +777,7 @@ export function createPracticeStore({
       if (gradeUp !== null || get().gradeUp !== null) set({ gradeUp })
     }
 
-    const machine = new AttemptLifecycle({
+    const machine = new PromptJudge({
       settings,
       now,
       // Learn mode shows the answer from the start (§7), so misses never
@@ -1060,6 +1063,7 @@ export function createPracticeStore({
       reactionMs: null,
       missCount: 0,
       hint: null,
+      run: null,
       mode: 'free',
       song: null,
       songChords: [],

@@ -5,7 +5,7 @@ import {
   type MatchSettings,
   type PatternVoicingRule,
 } from '../theory'
-import { computeHint, REVEAL_AFTER_MISSES } from './hints'
+import { computeHint, computeRunHint, REVEAL_AFTER_MISSES } from './hints'
 import { createPrompt, type ChordPrompt } from './prompts'
 import type { ChordTypeId } from '../theory'
 
@@ -168,5 +168,60 @@ describe('computeHint — pattern rules (§3.3, §6.4)', () => {
     const p = patternPrompt()
     const h = hint(REVEAL_AFTER_MISSES, [55, 67, 79], p)
     expect(h).toEqual({ kind: 'reveal', notes: p.example })
+  })
+})
+
+describe('computeHint — block scales (§6.3, §6.4)', () => {
+  const block = createPrompt({
+    kind: 'scale',
+    root: 0,
+    scaleTypeId: 'major',
+    shapeId: 'block',
+  })
+  const blockHint = (notes: number[]) =>
+    computeHint(1, new Set(notes), block, DEFAULT_MATCH_SETTINGS)
+
+  it('marks keys outside the scale', () => {
+    expect(blockHint([60, 61, 63])).toEqual({
+      kind: 'wrong-keys',
+      notes: [61, 63],
+    })
+  })
+
+  it('names a repeated degree before anything else', () => {
+    expect(blockHint([62, 64, 74])).toEqual({
+      kind: 'constraint',
+      text: 'Each note once — only the root repeats, on top',
+    })
+  })
+
+  it('names the missing degrees', () => {
+    expect(blockHint([60, 62, 64, 67, 69])).toEqual({
+      kind: 'constraint',
+      text: 'Missing the 4th and 7th',
+    })
+  })
+
+  it('names the bass once every degree is down', () => {
+    expect(blockHint([62, 64, 65, 67, 69, 71, 72])).toEqual({
+      kind: 'constraint',
+      text: 'Bass must be the root',
+    })
+  })
+})
+
+describe('computeRunHint (§6.4, §6.6)', () => {
+  it('marks the wrong keys at the position before the reveal', () => {
+    expect(computeRunHint(2, [65, 63], [64, 65, 67])).toEqual({
+      kind: 'wrong-keys',
+      notes: [63, 65],
+    })
+  })
+
+  it('overlays the rest of the run from miss 3', () => {
+    expect(computeRunHint(REVEAL_AFTER_MISSES, [63], [64, 65, 67])).toEqual({
+      kind: 'reveal',
+      notes: [64, 65, 67],
+    })
   })
 })

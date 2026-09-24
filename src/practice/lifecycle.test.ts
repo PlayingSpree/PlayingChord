@@ -362,6 +362,7 @@ describe('lifecycle — next prompt resets per-prompt state', () => {
       reactionMs: null,
       missCount: 0,
       hint: null,
+      run: null,
     })
   })
 
@@ -395,6 +396,7 @@ describe('lifecycle — stop (Phase 7: leaving the practice flow)', () => {
       reactionMs: null,
       missCount: 0,
       hint: null,
+      run: null,
     })
 
     vi.advanceTimersByTime(ADVANCE)
@@ -427,5 +429,66 @@ describe('lifecycle — stop (Phase 7: leaving the practice flow)', () => {
     machine.stop()
     press(60, 64, 67) // would be correct — but nothing is judging
     expect(machine.state.phase).toBe('idle')
+  })
+})
+
+describe('lifecycle — block scales (§6.3)', () => {
+  const block = () =>
+    createPrompt({
+      kind: 'scale',
+      root: 0,
+      scaleTypeId: 'major',
+      shapeId: 'block',
+    })
+  const C_MAJOR = [60, 62, 64, 65, 67, 69, 71]
+
+  it('is correct on every degree once, the root lowest', () => {
+    const { machine, press } = setup()
+    machine.promptShown(block())
+    press(...C_MAJOR)
+    expect(machine.state.phase).toBe('advancing')
+    expect(machine.state.run).toBeNull()
+  })
+
+  it('is correct with the root on top too', () => {
+    const { machine, press } = setup()
+    machine.promptShown(block())
+    press(...C_MAJOR, 72)
+    expect(machine.state.phase).toBe('advancing')
+  })
+
+  it('misses a foreign key at once, whatever the strict setting', () => {
+    const { machine, press } = setup({ strictExtraNotes: false })
+    machine.promptShown(block())
+    press(60, 61)
+    expect(machine.state.phase).toBe('missed')
+    expect(machine.state.hint).toEqual({ kind: 'wrong-keys', notes: [61] })
+  })
+
+  it('stalls a full set that has the wrong bass', () => {
+    const { machine, press } = setup()
+    machine.promptShown(block())
+    press(62, 64, 65, 67, 69, 71, 72) // D in the bass
+    expect(machine.state.phase).toBe('armed')
+    vi.advanceTimersByTime(STALL)
+    expect(machine.state.phase).toBe('missed')
+    expect(machine.state.hint).toEqual({
+      kind: 'constraint',
+      text: 'Bass must be the root',
+    })
+  })
+
+  it('reveals the one octave at miss 3', () => {
+    const { machine, press, releaseAll } = setup()
+    machine.promptShown(block())
+    for (let i = 0; i < 3; i++) {
+      press(61)
+      releaseAll()
+    }
+    press(61)
+    expect(machine.state.hint).toEqual({
+      kind: 'reveal',
+      notes: [...C_MAJOR, 72],
+    })
   })
 })
