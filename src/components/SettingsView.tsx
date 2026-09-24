@@ -235,8 +235,8 @@ function MatchingSection() {
         />
       </Row>
       <p className="text-xs text-ink-muted">
-        Doubling, extra notes and the judgment delay are for chords — scales are
-        matched exactly, and a run never stalls
+        Doubling and extra notes are for chords — scales are matched exactly,
+        and a scale run never stalls
       </p>
     </SettingsCard>
   )
