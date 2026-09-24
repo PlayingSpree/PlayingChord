@@ -14,6 +14,7 @@ import {
   type Chord,
   type Clef,
   type PitchClass,
+  type ScaleStaffLine,
   type StaffNote,
 } from '../theory'
 
@@ -134,6 +135,70 @@ export default function StaffView({
       role="img"
       aria-label="Example voicing on a grand staff"
       className="h-[240px] w-[320px] rounded-lg bg-slate-100 shadow-inner"
+    />
+  )
+}
+
+// A scale prompt's staff (§3.6, §7.3): the one-octave ascending line on a
+// treble stave, one quarter note per degree, spelled by degree — the
+// spelling is what the staff is for. Same card, same ink as the chord staff.
+const LINE_WIDTH = 360
+const LINE_HEIGHT = 130
+
+function drawLine(host: HTMLDivElement, line: ScaleStaffLine) {
+  host.replaceChildren()
+  const renderer = new Renderer(host, Renderer.Backends.SVG)
+  renderer.resize(LINE_WIDTH, LINE_HEIGHT)
+  const context = renderer.getContext()
+
+  const stave = new Stave(STAVE_X, 20, LINE_WIDTH - 2 * STAVE_X).addClef(
+    'treble',
+  )
+  if (line.keySignature !== null) stave.addKeySignature(line.keySignature)
+  stave.setContext(context).draw()
+
+  const notes = line.notes.map((note) => {
+    const staveNote = new StaveNote({
+      keys: [note.key],
+      duration: 'q',
+      clef: 'treble',
+    })
+    staveNote.setStyle(NOTE_STYLE)
+    if (note.accidental !== null) {
+      staveNote.addModifier(
+        new Accidental(note.accidental).setStyle(NOTE_STYLE),
+      )
+    }
+    return staveNote
+  })
+  const voice = new Voice({ numBeats: notes.length, beatValue: 4 })
+  voice.addTickables(notes)
+  new Formatter().joinVoices([voice]).formatToStave([voice], stave)
+  voice.draw(context, stave)
+}
+
+export function ScaleStaffView({ line }: { line: ScaleStaffLine }) {
+  const host = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const element = host.current
+    if (!element) return
+    let stale = false
+    void fontsReady().then(() => {
+      if (!stale) drawLine(element, line)
+    })
+    return () => {
+      stale = true
+      element.replaceChildren()
+    }
+  }, [line])
+
+  return (
+    <div
+      ref={host}
+      role="img"
+      aria-label="The scale's ascending octave on a treble staff"
+      className="h-[130px] w-[360px] rounded-lg bg-slate-100 shadow-inner"
     />
   )
 }

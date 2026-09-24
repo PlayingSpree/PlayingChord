@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useMemo } from 'react'
 import { usePractice } from '../store/practiceStore'
 import { useSettings } from '../store/settingsStore'
 import {
@@ -10,12 +10,18 @@ import {
   slowTimeMs,
   type ChordNameSize,
   type Hint,
+  type Prompt,
+  type ScalePrompt,
 } from '../practice'
+import { scaleFingering, scaleStaffLine } from '../theory'
 import { cx } from './cx'
 
 // VexFlow + music font are a heavy chunk; staff-off users (a first-class
 // way to run the app, §3.4) never download it.
 const StaffView = lazy(() => import('./StaffView'))
+const ScaleStaffView = lazy(() =>
+  import('./StaffView').then((m) => ({ default: m.ScaleStaffView })),
+)
 
 // Tailwind classes per chord-name size setting (§7); 'lg' matches the
 // original fixed size.
@@ -53,7 +59,9 @@ const CHIP_SIZE_CLASSES: Record<ChordNameSize, string> = {
 // readable from a distance, with the next 2 upcoming combos inline at
 // decreasing sizes. The voicing being drilled appears as a separate label
 // (omitted for the `any` rule). Song mode swaps the preview for its
-// left-to-right progression display.
+// left-to-right progression display. A scale prompt (§7.3) carries a small
+// *scale* tag, its shape where a chord shows its voicing (omitted for
+// `up-1`), the fingering line for runs, and its one-octave staff line.
 export function PromptCard() {
   const prompt = usePractice((s) => s.prompt)
   const upcoming = usePractice((s) => s.upcoming)
@@ -62,9 +70,18 @@ export function PromptCard() {
   const staffKeyEnabled = useSettings((s) => s.settings.staffKeyEnabled)
   const chordNameSize = useSettings((s) => s.settings.chordNameSize)
 
+  const scalePrompt = prompt?.kind === 'scale' ? prompt : null
+  // Memoized: the staff redraws whenever the line's identity changes.
+  const scaleLine = useMemo(
+    () =>
+      scalePrompt === null
+        ? null
+        : scaleStaffLine(scalePrompt.scale, staffKeyEnabled),
+    [scalePrompt, staffKeyEnabled],
+  )
+
   if (!prompt) return null
 
-  // A scale prompt's own staff and labels (§7.3) aren't drawn yet.
   const chordPrompt = prompt.kind === 'chord' ? prompt : null
   const keySignature =
     staffKeyEnabled && chordPrompt !== null ? chordPrompt.chord.root : null
@@ -83,6 +100,11 @@ export function PromptCard() {
             )}
           >
             {prompt.displayName}
+            {scalePrompt !== null && (
+              <span className="ml-4 inline-block -translate-y-[0.35em] rounded-full border-2 border-info-border px-3 py-0.5 align-middle text-base font-bold uppercase tracking-wide text-info-light">
+                scale
+              </span>
+            )}
           </h2>
           {next2[0] && (
             <span
@@ -113,6 +135,11 @@ export function PromptCard() {
           <p className="text-xl text-ink-muted">{chordPrompt.voicing.name}</p>
         )}
 
+      {scalePrompt !== null && scalePrompt.shape.id !== 'up-1' && (
+        <p className="text-xl text-ink-muted">{scalePrompt.shape.name}</p>
+      )}
+      {scalePrompt !== null && <FingeringLine prompt={scalePrompt} />}
+
       {/* Grand staff (§3.4). The fallback mirrors the card so the chunk/font
           load never jumps the layout. */}
       {staffEnabled && chordPrompt !== null && (
@@ -129,6 +156,18 @@ export function PromptCard() {
             notes={chordPrompt.example}
             keySignature={keySignature}
           />
+        </Suspense>
+      )}
+      {staffEnabled && scaleLine !== null && (
+        <Suspense
+          fallback={
+            <div
+              aria-hidden="true"
+              className="h-[130px] w-[360px] rounded-lg bg-slate-100 shadow-inner"
+            />
+          }
+        >
+          <ScaleStaffView line={scaleLine} />
         </Suspense>
       )}
 
@@ -219,7 +258,7 @@ function FeedbackPill() {
   } else if (hint !== null) {
     content = (
       <span className={cx(base, 'bg-danger-tint text-lg text-danger')}>
-        ✕ {hintText(hint)}
+        ✕ {hintText(hint, prompt)}
       </span>
     )
   } else if (MODE_POLICY[mode].revealsAnswer && song === null) {
@@ -227,7 +266,7 @@ function FeedbackPill() {
       <span
         className={cx(base, 'bg-track text-base font-semibold text-ink-soft')}
       >
-        ◎ shape shown below — any matching voicing counts
+        ◎ {learnLine(prompt)}
       </span>
     )
   }
@@ -404,13 +443,44 @@ function SongCountIn() {
   )
 }
 
-function hintText(hint: Hint): string {
+function hintText(hint: Hint, prompt: Prompt | null): string {
+  // A run waits on the note it missed (§6.6) — there is nothing to lift.
+  const run = prompt?.kind === 'scale' && prompt.shape.kind === 'run'
   switch (hint.kind) {
     case 'wrong-keys':
-      return 'wrong keys marked — lift and retry'
+      return run
+        ? 'wrong key marked — play the right one'
+        : 'wrong keys marked — lift and retry'
     case 'constraint':
       return hint.text
     case 'reveal':
-      return 'answer shown on the keyboard'
+      return run
+        ? 'rest of the run shown on the keyboard'
+        : 'answer shown on the keyboard'
   }
+}
+
+// What Learn's overlay is showing (§6.4, §6.6).
+function learnLine(prompt: Prompt | null): string {
+  if (prompt?.kind !== 'scale') {
+    return 'shape shown below — any matching voicing counts'
+  }
+  return prompt.shape.kind === 'run'
+    ? 'run shown below — play the marked key next'
+    : 'notes shown below — hold them all at once'
+}
+
+// The standard fingering per hand (§3.6, §7.3): shown, never judged, and
+// absent for `block`, which has none. The run's ascending fingers — the
+// descent plays them back in reverse.
+function FingeringLine({ prompt }: { prompt: ScalePrompt }) {
+  if (prompt.shape.kind !== 'run') return null
+  const { octaves } = prompt.shape
+  const hand = (id: 'rh' | 'lh') =>
+    scaleFingering(prompt.scale, id, octaves).join(' ')
+  return (
+    <p className="font-mono text-lg tracking-wide text-ink-soft">
+      RH {hand('rh')} · LH {hand('lh')}
+    </p>
+  )
 }
