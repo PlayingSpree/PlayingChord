@@ -1122,9 +1122,12 @@ counts a new progression in).
   label where a chord shows its voicing ("2 octaves ↕", "block"; omitted for
   `up-1`, as `any` is for chords) led by a small *scale* tag — on that line, not
   beside the name, so the name row stays name + preview and the tag stands alone
-  there for `up-1` — and the **fingering** as a
-  line under it — `RH 1 2 3 1 2 3 4 5 · LH 5 4 3 2 1 3 2 1` — always shown, never
-  judged (§3.6), and absent for `block`. The staff, when on, draws the one-octave
+  there for `up-1` — and the **fingering** under it, each hand's ascending
+  fingers (`RH 1 2 3 1 2 3 4 5`, `LH 5 4 3 2 1 3 2 1`) — always shown, never
+  judged (§3.6), and absent for `block`. Each finger sits over the name of the note
+  it plays, spelled by degree as on the staff, and every `1` is filled like the
+  keyboard's thumb mark, so the thumb crossings read at a glance whatever the
+  Thumb marks setting. The staff, when on, draws the one-octave
   ascending line in the treble clef near middle C, spelled by degree (§3.6). The
   upcoming preview labels scales the same way.
 - **Keyboard visual**: shows currently held notes live; in Practice, after misses,

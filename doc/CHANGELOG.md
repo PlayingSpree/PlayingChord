@@ -15,6 +15,15 @@ artifact and are not recoverable.
 
 ---
 
+## 10.3.0 — 2026-09-24
+
+**Fingering names its notes.** A scale run's fingering line now sets each finger
+over the name of the note it plays (spelled by degree, as on the staff), and fills
+every `1` like the keyboard's thumb mark, so where the thumb crosses reads at a
+glance — for both hands, whatever the Thumb marks setting (§7.3).
+
+---
+
 ## 10.2.1 — 2026-09-24
 
 **The scale tag moves off the name.** No behavior change: a scale prompt's small

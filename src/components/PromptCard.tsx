@@ -13,7 +13,12 @@ import {
   type Prompt,
   type ScalePrompt,
 } from '../practice'
-import { scaleFingering, scaleStaffLine } from '../theory'
+import {
+  formatSpelling,
+  scaleFingering,
+  scaleStaffLine,
+  spellScale,
+} from '../theory'
 import { cx } from './cx'
 
 // VexFlow + music font are a heavy chunk; staff-off users (a first-class
@@ -475,15 +480,41 @@ function learnLine(prompt: Prompt | null): string {
 
 // The standard fingering per hand (§3.6, §7.3): shown, never judged, and
 // absent for `block`, which has none. The run's ascending fingers — the
-// descent plays them back in reverse.
+// descent plays them back in reverse — each over the note it plays, with
+// the thumb's 1 filled like the keyboard's thumb mark.
 function FingeringLine({ prompt }: { prompt: ScalePrompt }) {
   if (prompt.shape.kind !== 'run') return null
   const { octaves } = prompt.shape
+  const names = spellScale(prompt.scale).map(formatSpelling)
   const hand = (id: 'rh' | 'lh') =>
     scaleFingering(prompt.scale, id, octaves).join(' ')
   return (
-    <p className="font-mono text-lg tracking-wide text-ink-soft">
-      RH {hand('rh')} · LH {hand('lh')}
-    </p>
+    <div
+      aria-label={`RH ${hand('rh')} · LH ${hand('lh')}`}
+      className="flex flex-wrap justify-center gap-x-8 gap-y-3 font-mono text-lg text-ink-soft"
+    >
+      {(['rh', 'lh'] as const).map((id) => (
+        <div key={id} aria-hidden="true" className="flex flex-wrap">
+          <span className="mr-1 w-8 text-left leading-6">
+            {id.toUpperCase()}
+          </span>
+          {scaleFingering(prompt.scale, id, octaves).map((finger, i) => (
+            <span key={i} className="flex w-7 flex-col items-center gap-0.5">
+              <span
+                className={cx(
+                  'flex h-6 w-6 items-center justify-center rounded-full leading-none',
+                  finger === 1 && 'bg-slate-100 font-extrabold text-slate-900',
+                )}
+              >
+                {finger}
+              </span>
+              <span className="font-sans text-sm text-ink-muted">
+                {names[i % names.length]}
+              </span>
+            </span>
+          ))}
+        </div>
+      ))}
+    </div>
   )
 }
