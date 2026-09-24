@@ -830,7 +830,7 @@ run exactly as they take a chord.
   still held from the previous note, are ignored — legato is fine, overlapping
   notes are fine.
 - **The first note must be the root**, in any octave; that note fixes where the run
-  sits. After it, each note-on must be the **exact next MIDI note** of the run — the
+  is judged — the keyboard keeps drawing it where it was shown (§7.3). After it, each note-on must be the **exact next MIDI note** of the run — the
   scale's notes upward, and for up-and-down shapes back down, the top note played
   once. Anything else is a miss.
 - **A miss doesn't end the attempt.** The run waits on the expected note and
@@ -1133,9 +1133,11 @@ counts a new progression in).
   as one shape, the answer overlay as another — so the voicing's shape stays intact; a
   shape wider than the drawn range folds the leftover notes per note. A **scale
   run** never folds — folding would scramble the very order being drilled — so a
-  three-octave shape (37 keys) widens the drawn keyboard to fit it instead. Runs
-  also show the run's progress and, in Learn, the next key, and a shown run's
-  thumb keys carry a `1` (§6.6).
+  three-octave shape (37 keys) widens the drawn keyboard to fit it instead. A run
+  stays drawn in the octave it was **shown** in even when it's played in another:
+  its progress and marks, and the held keys, map back into it, so the keyboard
+  never jumps mid-rep. Runs also show the run's progress and, in Learn, the next
+  key, and a shown run's thumb keys carry a `1` (§6.6).
 - **Feedback**: a pill under the prompt — correct flash + reaction time + optional
   chime, auto-advance (default 800 ms). A Practice-mode answer past the **slow
   bar** turns the flash amber and adds a **`· slow`** chip. The bar is not a

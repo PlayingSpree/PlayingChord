@@ -15,6 +15,16 @@ artifact and are not recoverable.
 
 ---
 
+## 10.2.0 — 2026-09-24
+
+**Runs stay put.** A scale run played in a different octave from the one shown is
+still judged there, but the keyboard keeps drawing it where it was shown: the
+run's progress, Learn's next key, a reveal, thumb marks and the held keys all map
+back into the shown octave, so the display never jumps or widens mid-rep (§6.6,
+§7.3).
+
+---
+
 ## 10.1.0 — 2026-09-24
 
 **Thumb marks.** Where the keyboard shows a scale run — Learn's overlay, a Practice

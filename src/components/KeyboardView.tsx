@@ -106,34 +106,47 @@ export function KeyboardView() {
   const songShowExample = useSettings((s) => s.settings.songShowExample)
   const thumbHand = useSettings((s) => s.settings.scaleThumbHand)
 
-  const range = rangeFor(run?.notes ?? null)
+  // A run is judged in the octave its first note picked but drawn in the one
+  // it was shown in (§7.3), so the keyboard never jumps mid-rep: everything
+  // played — the run's progress, its marks and the held keys — maps back by
+  // this shift. Zero for anything judged as a set, and before a run's first
+  // note, while its notes are still the example.
+  const shift =
+    run !== null && prompt?.kind === 'scale'
+      ? (run.notes[0] ?? 0) - (prompt.example[0] ?? 0)
+      : 0
+  const shown = (notes: readonly number[]) => notes.map((n) => n - shift)
+  const runNotes = run !== null ? shown(run.notes) : null
+
+  const range = rangeFor(runNotes)
   const learn = MODE_POLICY[mode].revealsAnswer
 
   // Wrong marks sit on (recently) held keys, so they share the held set's
   // shift; the answer overlay is its own shape and folds independently.
-  const wrongNotes = hint?.kind === 'wrong-keys' ? hint.notes : []
-  const playedOffset = foldOffset([...heldNotes, ...wrongNotes], range)
+  const wrongNotes = hint?.kind === 'wrong-keys' ? shown(hint.notes) : []
+  const heldShown = shown([...heldNotes])
+  const playedOffset = foldOffset([...heldShown, ...wrongNotes], range)
   const wrong =
     wrongNotes.length > 0 ? foldSet(wrongNotes, playedOffset, range) : NO_NOTES
-  const held = foldSet([...heldNotes], playedOffset, range)
+  const held = foldSet(heldShown, playedOffset, range)
 
-  // A run is drawn where it is played, never shifted: the range already
-  // holds it. It shows how far it has got throughout, without previewing the
-  // next note — except in Learn, which overlays the whole run from the start
-  // and marks the next key as it advances (§6.6).
-  if (run !== null) {
-    const next = run.notes[run.played]
+  // A run is never folded: the range already holds it. It shows how far it
+  // has got throughout, without previewing the next note — except in Learn,
+  // which overlays the whole run from the start and marks the next key as it
+  // advances (§6.6).
+  if (run !== null && runNotes !== null) {
+    const next = runNotes[run.played]
     const expected =
       hint?.kind === 'reveal'
-        ? new Set(hint.notes)
+        ? new Set(shown(hint.notes))
         : learn
-          ? new Set(run.notes)
+          ? new Set(runNotes)
           : NO_NOTES
     const marks: Marks = {
       held,
       wrong,
       next: learn && next !== undefined ? new Set([next]) : NO_NOTES,
-      done: new Set(run.notes.slice(0, run.played)),
+      done: new Set(runNotes.slice(0, run.played)),
       expected,
     }
     // Thumb marks ride the answer overlay (§6.6): the whole run in Learn, the
@@ -149,7 +162,7 @@ export function KeyboardView() {
                 prompt.scale,
                 thumbHand,
                 prompt.shape.octaves,
-                run.notes,
+                runNotes,
               ),
             ].filter((note) => expected.has(note)),
           )
