@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { BUILT_IN_VOICING_RULES, type VoicingRule } from '../theory'
 import {
   builtInPresets,
+  builtInScalePresets,
   CHORD_NAME_SIZES,
   describeVoicingRule,
   MAX_DAILY_GOAL_MINUTES,
@@ -10,7 +11,6 @@ import {
   type ChordNameSize,
   isScalePreset,
   poolScales,
-  type ChordPreset,
   type Preset,
 } from '../practice'
 import type { ImportResult } from '../storage'
@@ -31,7 +31,7 @@ import { cx } from './cx'
 
 type Editing =
   | { kind: 'rule'; rule: VoicingRule | null } // null = new
-  | { kind: 'preset'; preset: ChordPreset | null }
+  | { kind: 'preset'; preset: Preset | null }
   | null
 
 export function SettingsView({ onBack }: { onBack: () => void }) {
@@ -159,7 +159,7 @@ function NotationSection() {
           aria-label="Show staff notation"
         />
       </Row>
-      <Row label="Key signature (chord root)">
+      <Row label="Key signature (chord root / scale key)">
         <Toggle
           checked={settings.staffKeyEnabled}
           onChange={(v) => update({ staffKeyEnabled: v })}
@@ -234,6 +234,10 @@ function MatchingSection() {
           }
         />
       </Row>
+      <p className="text-xs text-ink-muted">
+        Doubling, extra notes and the judgment delay are for chords — scales are
+        matched exactly, and a run never stalls
+      </p>
     </SettingsCard>
   )
 }
@@ -272,8 +276,8 @@ function GoalSection() {
         />
       </Row>
       <p className="text-xs text-ink-muted">
-        C → G → D → A … for root-ordered pools; diatonic and custom lists keep
-        their own order
+        C → G → D → A … for root-ordered chord pools; diatonic and custom lists
+        keep their own order, and scales always open by key signature
       </p>
     </SettingsCard>
   )
@@ -300,7 +304,7 @@ function LibraryRow({
         {onResetProgress && (
           <SmallButton
             onClick={onResetProgress}
-            title="Restart this preset's chord unlocks at the first few chords"
+            title="Restart this preset's unlocks at the first few"
           >
             Reset progress
           </SmallButton>
@@ -395,13 +399,28 @@ function PresetsSection({
   onEdit,
   onClose,
 }: {
-  editing: { kind: 'preset'; preset: ChordPreset | null } | null
-  onEdit: (preset: ChordPreset | null) => void
+  editing: { kind: 'preset'; preset: Preset | null } | null
+  onEdit: (preset: Preset | null) => void
   onClose: () => void
 }) {
   const customPresets = useLibrary((s) => s.customPresets)
   const resetProgress = (presetId: string) =>
     practiceStore.getState().resetPresetProgress(presetId)
+  // Both kinds, under their own headings, whichever side Home is on (§7.6):
+  // Settings is where everything is managed, and a filtered list would make
+  // a scale preset seem to vanish while the app sits on Chords.
+  const groups = [
+    {
+      title: 'Chords',
+      builtIns: builtInPresets() as readonly Preset[],
+      customs: customPresets.filter((p) => !isScalePreset(p)),
+    },
+    {
+      title: 'Scales',
+      builtIns: builtInScalePresets() as readonly Preset[],
+      customs: customPresets.filter(isScalePreset),
+    },
+  ]
 
   return (
     <SettingsCard title="Presets" hint="what the generator draws from (§4)">
@@ -409,27 +428,32 @@ function PresetsSection({
         <PresetEditor preset={editing.preset} onClose={onClose} />
       ) : (
         <>
-          <ul className="flex flex-col">
-            {builtInPresets().map((preset) => (
-              <LibraryRow
-                key={preset.id}
-                name={preset.name}
-                detail={describePreset(preset)}
-                onResetProgress={() => resetProgress(preset.id)}
-              />
-            ))}
-            {customPresets.map((preset) => (
-              <LibraryRow
-                key={preset.id}
-                name={preset.name}
-                detail={describePreset(preset)}
-                onEdit={
-                  isScalePreset(preset) ? undefined : () => onEdit(preset)
-                }
-                onResetProgress={() => resetProgress(preset.id)}
-              />
-            ))}
-          </ul>
+          {groups.map((group) => (
+            <div key={group.title} className="flex flex-col">
+              <span className="pt-2 text-xs font-bold uppercase tracking-wide text-ink-muted">
+                {group.title}
+              </span>
+              <ul className="flex flex-col">
+                {group.builtIns.map((preset) => (
+                  <LibraryRow
+                    key={preset.id}
+                    name={preset.name}
+                    detail={describePreset(preset)}
+                    onResetProgress={() => resetProgress(preset.id)}
+                  />
+                ))}
+                {group.customs.map((preset) => (
+                  <LibraryRow
+                    key={preset.id}
+                    name={preset.name}
+                    detail={describePreset(preset)}
+                    onEdit={() => onEdit(preset)}
+                    onResetProgress={() => resetProgress(preset.id)}
+                  />
+                ))}
+              </ul>
+            </div>
+          ))}
           <SmallButton onClick={() => onEdit(null)}>+ New preset</SmallButton>
         </>
       )}

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import {
   ALL_PITCH_CLASSES,
   CHORD_TYPES,
@@ -13,14 +13,17 @@ import {
   builtInPresets,
   builtInScalePresets,
   expandPreset,
+  isScalePreset,
   newLibraryId,
   presetWarnings,
   type ChordPool,
   type PoolChord,
   type ChordPreset,
+  type Preset,
 } from '../practice'
 import { useLibrary } from '../store/libraryStore'
 import { Chip, SelectField, TextField } from './fields'
+import { ScalePresetEditor } from './ScalePresetEditor'
 
 // The §4/§7 preset editor: name + chord pool + voicing-rule references,
 // with live rule-compatibility warnings. Unsatisfiable combos are dropped
@@ -52,11 +55,57 @@ const BUILT_IN_PRESET_IDS = [...builtInPresets(), ...builtInScalePresets()].map(
   (p) => p.id,
 )
 
+const KIND_OPTIONS = [
+  { value: 'chord', label: 'Chords' },
+  { value: 'scale', label: 'Scales' },
+] as const
+
+// A new preset picks its kind first (§4) — a preset is chords or scales,
+// never both; an existing one keeps the kind it has.
 export function PresetEditor({
   preset,
   onClose,
 }: {
+  preset: Preset | null // null = creating a new preset
+  onClose: () => void
+}) {
+  const [kind, setKind] = useState<'chord' | 'scale'>(
+    preset !== null && isScalePreset(preset) ? 'scale' : 'chord',
+  )
+  const kindPicker =
+    preset === null ? (
+      <SelectField
+        label="Kind"
+        value={kind}
+        options={KIND_OPTIONS}
+        onChange={setKind}
+      />
+    ) : null
+  if (kind === 'scale') {
+    return (
+      <ScalePresetEditor
+        preset={preset !== null && isScalePreset(preset) ? preset : null}
+        kindPicker={kindPicker}
+        onClose={onClose}
+      />
+    )
+  }
+  return (
+    <ChordPresetEditor
+      preset={preset !== null && !isScalePreset(preset) ? preset : null}
+      kindPicker={kindPicker}
+      onClose={onClose}
+    />
+  )
+}
+
+function ChordPresetEditor({
+  preset,
+  kindPicker,
+  onClose,
+}: {
   preset: ChordPreset | null // null = creating a new preset
+  kindPicker: ReactNode
   onClose: () => void
 }) {
   const customRules = useLibrary((s) => s.customRules)
@@ -127,6 +176,7 @@ export function PresetEditor({
       <h4 className="text-sm font-semibold text-slate-100">
         {preset ? `Edit “${preset.name}”` : 'New preset'}
       </h4>
+      {kindPicker}
       <TextField
         label="Name"
         value={name}
