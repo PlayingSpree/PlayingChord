@@ -181,7 +181,7 @@ function NotationSection() {
           ))}
         </div>
       </Row>
-      <Row label="Scale thumb marks (finger 1)">
+      <Row label="Scale fingering hand">
         <ThumbHandChips />
       </Row>
     </SettingsCard>

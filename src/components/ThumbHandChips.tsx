@@ -8,7 +8,8 @@ const LABELS: Record<ScaleThumbHand, string> = {
   lh: 'LH',
 }
 
-// Whose thumb the keyboard marks on a shown scale run (§6.6). Offered in the
+// Fingering hand (§6.6): whose fingering the prompt shows and whose thumb the
+// keyboard marks on a shown scale run. Offered in the
 // session sheet and Settings alike, writing straight through to the one
 // persisted setting.
 export function ThumbHandChips() {

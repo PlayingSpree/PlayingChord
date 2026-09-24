@@ -6,8 +6,9 @@ import type { MatchSettings } from '../theory'
 export const CHORD_NAME_SIZES = ['sm', 'md', 'lg', 'xl'] as const
 export type ChordNameSize = (typeof CHORD_NAME_SIZES)[number]
 
-// Whose thumb the keyboard marks on a shown scale run (§6.6): the two hands'
-// thumbs land on different keys, and hands are never checked, so it's a pick.
+// Fingering hand (§6.6): whose fingering the prompt shows and whose thumb the
+// keyboard marks on a shown scale run — the two hands' thumbs land on
+// different keys, and hands are never checked, so it's a pick.
 export const SCALE_THUMB_HANDS = ['off', 'rh', 'lh'] as const
 export type ScaleThumbHand = (typeof SCALE_THUMB_HANDS)[number]
 
@@ -51,7 +52,7 @@ export interface PracticeSettings extends MatchSettings {
   songTempoBpm: number
   songChordCount: number // 2–4 chords per progression
   songShowExample: boolean // overlay each bar's example voicing, Learn-style
-  // Thumb marks (§6.6) — set in the session sheet as well as Settings.
+  // Fingering hand (§6.6) — set in the session sheet as well as Settings.
   scaleThumbHand: ScaleThumbHand
 }
 

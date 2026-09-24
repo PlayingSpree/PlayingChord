@@ -66,8 +66,8 @@ const CHIP_SIZE_CLASSES: Record<ChordNameSize, string> = {
 // (omitted for the `any` rule). Song mode swaps the preview for its
 // left-to-right progression display. A scale prompt (§7.3) carries its shape
 // where a chord shows its voicing (omitted for `up-1`), led by a small
-// *scale* tag, then the fingering line for runs and its one-octave staff
-// line.
+// *scale* tag, then the fingering line for runs (the fingering hand's)
+// and its one-octave staff line.
 export function PromptCard() {
   const prompt = usePractice((s) => s.prompt)
   const upcoming = usePractice((s) => s.upcoming)
@@ -493,42 +493,42 @@ function learnLine(prompt: Prompt | null): string {
     : 'notes shown below — hold them all at once'
 }
 
-// The standard fingering per hand (§3.6, §7.3): shown, never judged, and
-// absent for `block`, which has none. The run's ascending fingers — the
-// descent plays them back in reverse — each over the note it plays, with
-// the thumb's 1 filled like the keyboard's thumb mark.
+// The standard fingering (§3.6, §7.3) for the fingering hand (§6.6):
+// shown, never judged, and absent for `block`, which has none, or with the
+// setting off. The run's ascending fingers — the descent plays them back in
+// reverse — each over the note it plays, with the thumb's 1 filled like the
+// keyboard's thumb mark.
 function FingeringLine({ prompt }: { prompt: ScalePrompt }) {
-  if (prompt.shape.kind !== 'run') return null
-  const { octaves } = prompt.shape
+  const hand = useSettings((s) => s.settings.scaleThumbHand)
+  if (prompt.shape.kind !== 'run' || hand === 'off') return null
+  const fingers = scaleFingering(prompt.scale, hand, prompt.shape.octaves)
   const names = spellScale(prompt.scale).map(formatSpelling)
-  const hand = (id: 'rh' | 'lh') =>
-    scaleFingering(prompt.scale, id, octaves).join(' ')
   return (
     <div
-      aria-label={`RH ${hand('rh')} · LH ${hand('lh')}`}
-      className="flex flex-wrap justify-center gap-x-8 gap-y-3 font-mono text-lg text-ink-soft"
+      aria-label={`${hand.toUpperCase()} ${fingers.join(' ')}`}
+      className="flex flex-wrap justify-center font-mono text-lg text-ink-soft"
     >
-      {(['rh', 'lh'] as const).map((id) => (
-        <div key={id} aria-hidden="true" className="flex flex-wrap">
-          <span className="mr-1 w-8 text-left leading-6">
-            {id.toUpperCase()}
+      <span aria-hidden="true" className="mr-1 w-8 text-left leading-6">
+        {hand.toUpperCase()}
+      </span>
+      {fingers.map((finger, i) => (
+        <span
+          key={i}
+          aria-hidden="true"
+          className="flex w-7 flex-col items-center gap-0.5"
+        >
+          <span
+            className={cx(
+              'flex h-6 w-6 items-center justify-center rounded-full leading-none',
+              finger === 1 && 'bg-slate-100 font-extrabold text-slate-900',
+            )}
+          >
+            {finger}
           </span>
-          {scaleFingering(prompt.scale, id, octaves).map((finger, i) => (
-            <span key={i} className="flex w-7 flex-col items-center gap-0.5">
-              <span
-                className={cx(
-                  'flex h-6 w-6 items-center justify-center rounded-full leading-none',
-                  finger === 1 && 'bg-slate-100 font-extrabold text-slate-900',
-                )}
-              >
-                {finger}
-              </span>
-              <span className="font-sans text-sm text-ink-muted">
-                {names[i % names.length]}
-              </span>
-            </span>
-          ))}
-        </div>
+          <span className="font-sans text-sm text-ink-muted">
+            {names[i % names.length]}
+          </span>
+        </span>
       ))}
     </div>
   )

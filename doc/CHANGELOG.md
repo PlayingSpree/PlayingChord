@@ -15,6 +15,15 @@ artifact and are not recoverable.
 
 ---
 
+## 10.4.0 — 2026-09-24
+
+**Fingering follows the fingering hand.** The *Thumb marks* setting is renamed
+*Fingering hand* and now picks the fingering line as well: a scale run's line under
+the prompt shows only that hand — RH or LH — instead of both, and is hidden with the
+setting off, so it is the one being played (§6.6, §7.3).
+
+---
+
 ## 10.3.1 — 2026-09-24
 
 **The upcoming preview stacks its label.** No behavior change: each of the next two

@@ -857,8 +857,9 @@ run exactly as they take a chord.
   after a Practice reveal — the keys the chosen hand's thumb plays carry a `1`
   (§3.6 fingering), on top of whatever other mark the key shows. Never before the
   run is shown: marking a key before then would give away a note being recalled.
-  The hand is **Thumb marks**: Off / RH / LH, default RH, a persisted preference
-  set in the session sheet on the Scales side and in Settings (§7.2, §7.6).
+  The hand is **Fingering hand**: Off / RH / LH, default RH, a persisted preference
+  set in the session sheet on the Scales side and in Settings (§7.2, §7.6). The
+  prompt's fingering line follows the same pick (§7.3).
 
 ---
 
@@ -973,7 +974,7 @@ session config, so they take effect as they're set.
   (§7.3) appear under the row while that mode is selected: Learn's *Chords to
   learn*, Daily's *Cap*, Free's *Worst chords only*, Song's *Tempo* / *Chords per
   progression* / *Show example*. Daily is disabled until something is learned.
-  On the Scales side a *Thumb marks* row (Off / RH / LH, §6.6) sits under the
+  On the Scales side a *Fingering hand* row (Off / RH / LH, §6.6) sits under the
   mode in every mode — like Song's settings a persisted preference, set as it's
   picked.
 - **Chords to learn** (Learn, §5.4): a chip per chord in play in the drafted
@@ -1124,12 +1125,13 @@ counts a new progression in).
   label where a chord shows its voicing ("2 octaves ↕", "block"; omitted for
   `up-1`, as `any` is for chords) led by a small *scale* tag — on that line, not
   beside the name, so the name row stays name + preview and the tag stands alone
-  there for `up-1` — and the **fingering** under it, each hand's ascending
-  fingers (`RH 1 2 3 1 2 3 4 5`, `LH 5 4 3 2 1 3 2 1`) — always shown, never
-  judged (§3.6), and absent for `block`. Each finger sits over the name of the note
-  it plays, spelled by degree as on the staff, and every `1` is filled like the
-  keyboard's thumb mark, so the thumb crossings read at a glance whatever the
-  Thumb marks setting. The staff, when on, draws the one-octave
+  there for `up-1` — and the **fingering** under it, the ascending fingers of the
+  *Fingering hand* (§6.6: `RH 1 2 3 1 2 3 4 5`, or `LH 5 4 3 2 1 3 2 1`) —
+  never judged (§3.6), and absent for `block` or with the setting off: one hand's
+  line is the one being played, and the other's would only crowd it. Each finger
+  sits over the name of the note it plays, spelled by degree as on the staff, and
+  every `1` is filled like the keyboard's thumb mark, so the thumb crossings read at
+  a glance. The staff, when on, draws the one-octave
   ascending line in the treble clef near middle C, spelled by degree (§3.6). The
   upcoming preview labels scales the same way.
 - **Keyboard visual**: shows currently held notes live; in Practice, after misses,
@@ -1345,8 +1347,8 @@ all sessions, for the side Home is switched to (§7.1), titled *Chord progress* 
   on/off, staff key signature on/off (chord root as key, §3.5; a scale's own key,
   §3.6), correct-chime on/off,
   piano sound on key press on/off (§9), judgment delay, auto-advance delay, daily
-  goal minutes, circle-of-fifths unlock order on/off (§5.1), scale thumb marks
-  Off / RH / LH (§6.6; also in the session sheet). (Mode sub-settings —
+  goal minutes, circle-of-fifths unlock order on/off (§5.1), scale fingering
+  hand Off / RH / LH (§6.6; also in the session sheet). (Mode sub-settings —
   worst-chords-only, the learn set, Song's tempo / chords-per-progression /
   show-example — live in the session sheet, §7.2, not the settings panel; the
   session length lives there too.) Doubling and strict extra notes are chord

@@ -251,10 +251,10 @@ export function SessionSheet({
             />
           )}
           {draft.mode === 'song' && <SongSettings />}
-          {/* Every scale mode: Learn shows the run from the start and a
-              Practice reveal shows the rest of it (§6.6). */}
+          {/* Every scale mode: the prompt's fingering line, and the thumb
+              marks on a shown run (§6.6, §7.3). */}
           {side === 'scales' && (
-            <SettingRow label="Thumb marks">
+            <SettingRow label="Fingering hand">
               <ThumbHandChips />
             </SettingRow>
           )}
