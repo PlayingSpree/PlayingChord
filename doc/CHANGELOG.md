@@ -15,6 +15,18 @@ artifact and are not recoverable.
 
 ---
 
+## 10.4.1 — 2026-09-24
+
+**Terms.** No behavior change: §3 opens with the five words for the layers of what
+the app deals — side, kind, **item**, combo, prompt. *Item* is new: a chord or a
+scale, the pool entry that unlocks, passes, is set aside and is picked for a learn
+set. §5–§5.4 now say *item* wherever they meant either kind, rather than saying
+*chord* and asking scale presets to read *scale*; §5.1 and §5.2 are retitled
+*Unlocking* and *Setting items aside*, and the per-combo *chord score* is the
+*combo score*.
+
+---
+
 ## 10.4.0 — 2026-09-24
 
 **Fingering follows the fingering hand.** The *Thumb marks* setting is renamed
