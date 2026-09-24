@@ -5,7 +5,8 @@ import {
   type ChordType,
   type ChordTypeId,
 } from './chordTypes'
-import { grandStaffLayout } from './staff'
+import { getScaleType, type ScaleTypeId } from './scaleTypes'
+import { grandStaffLayout, scaleStaffLine } from './staff'
 
 const chord = (root: number, typeId: ChordTypeId): Chord => ({
   root,
@@ -113,5 +114,50 @@ describe('grandStaffLayout', () => {
     const layout = grandStaffLayout({ root: 10, type: weird }, [60])
     expect(keys(layout.treble)).toEqual(['c/4'])
     expect(layout.treble[0]?.accidental).toBeNull()
+  })
+})
+
+describe('scaleStaffLine (§3.6)', () => {
+  const line = (root: number, id: ScaleTypeId, withKey: boolean) =>
+    scaleStaffLine({ root, type: getScaleType(id) }, withKey)
+
+  it('draws the one-octave ascending line from the tonic near middle C', () => {
+    const c = line(0, 'major', false)
+    expect(keys(c.notes)).toEqual([
+      'c/4',
+      'd/4',
+      'e/4',
+      'f/4',
+      'g/4',
+      'a/4',
+      'b/4',
+      'c/5',
+    ])
+    expect(c.keySignature).toBeNull()
+  })
+
+  it('writes G♯ harmonic minor’s F𝄪 as a double sharp', () => {
+    const gSharp = line(8, 'harmonic-minor', false)
+    expect(gSharp.notes[6]).toEqual({ key: 'f##/5', accidental: '##' })
+  })
+
+  it('draws a minor scale under its relative major, raised degrees marked', () => {
+    const a = line(9, 'harmonic-minor', true)
+    expect(a.keySignature).toBe('C')
+    expect(a.notes.map((n) => n.accidental)).toEqual([
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      '#',
+      null,
+    ])
+    const eFlat = line(3, 'natural-minor', true)
+    expect(eFlat.keySignature).toBe('Gb')
+    expect(eFlat.notes.every((n) => n.accidental === null)).toBe(true)
+    // C♭ follows its letter into octave 5, though it sounds as B4.
+    expect(keys(eFlat.notes)[5]).toBe('cb/5')
   })
 })

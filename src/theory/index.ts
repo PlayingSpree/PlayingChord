@@ -1,4 +1,5 @@
-// Pure chord-theory core (DESIGN.md §3, §6.3): no DOM or MIDI dependencies.
+// Pure chord- and scale-theory core (DESIGN.md §3, §6.3): no DOM or MIDI
+// dependencies.
 export * from './notes'
 export * from './chordTypes'
 export * from './voicingRules'
@@ -7,3 +8,5 @@ export * from './matcher'
 export * from './realize'
 export * from './spelling'
 export * from './staff'
+export * from './scaleTypes'
+export * from './scaleShapes'

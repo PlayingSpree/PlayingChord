@@ -1,10 +1,18 @@
 import { MIDDLE_C, pitchClass, type PitchClass } from './notes'
 import type { Chord } from './chordTypes'
+import type { Scale } from './scaleTypes'
+import { getScaleShape } from './scaleShapes'
+import { realizeScale } from './realize'
 import {
-  keySignatureAlteration,
+  keySignatureAlterations,
+  scaleKeySignatureTonic,
+  spellMajorKeyTonic,
   spellMidiNote,
   spellRoot,
+  spellScale,
   spellVoicing,
+  vexflowKeySpec,
+  type Letter,
   type SpelledNote,
 } from './spelling'
 
@@ -38,12 +46,15 @@ function renderable(note: SpelledNote): SpelledNote {
   return spellMidiNote(note.midi, spellRoot(pitchClass(note.midi)))
 }
 
-// `key`, when given, is the major key whose signature is drawn on the
-// stave (§3.5 option): a note's glyph is then only what's *not* already
-// implied by that signature — dropped entirely when it matches, a
-// courtesy natural when the note is plain but the signature alters its
-// letter, otherwise the note's own sharps/flats as usual.
-function toStaffNote(spelled: SpelledNote, key?: PitchClass): StaffNote {
+// `signature`, when given, is the letter → accidental map of the key
+// signature drawn on the stave (§3.5 option): a note's glyph is then only
+// what's *not* already implied by that signature — dropped entirely when it
+// matches, a courtesy natural when the note is plain but the signature
+// alters its letter, otherwise the note's own sharps/flats as usual.
+function toStaffNote(
+  spelled: SpelledNote,
+  signature?: ReadonlyMap<Letter, number>,
+): StaffNote {
   const note = renderable(spelled)
   const marks =
     note.accidental > 0
@@ -52,13 +63,13 @@ function toStaffNote(spelled: SpelledNote, key?: PitchClass): StaffNote {
         ? 'b'.repeat(-note.accidental)
         : ''
   const noteKey = `${note.letter.toLowerCase()}${marks}/${note.octave}`
-  if (key === undefined) {
+  if (signature === undefined) {
     return {
       key: noteKey,
       accidental: marks === '' ? null : (marks as StaffNote['accidental']),
     }
   }
-  const keyAlteration = keySignatureAlteration(key, note.letter)
+  const keyAlteration = signature.get(note.letter) ?? 0
   if (note.accidental === keyAlteration) {
     return { key: noteKey, accidental: null }
   }
@@ -76,9 +87,43 @@ export function grandStaffLayout(
   key?: PitchClass,
 ): GrandStaffLayout {
   const layout: GrandStaffLayout = { treble: [], bass: [] }
+  const signature =
+    key === undefined
+      ? undefined
+      : keySignatureAlterations(spellMajorKeyTonic(key))
   for (const spelled of spellVoicing(chord, notes)) {
     const clef = spelled.midi < MIDDLE_C ? layout.bass : layout.treble
-    clef.push(toStaffNote(spelled, key))
+    clef.push(toStaffNote(spelled, signature))
   }
   return layout
+}
+
+// A scale prompt's staff (§3.6, §7.3): whatever the shape, the one-octave
+// ascending line in the treble clef near middle C, spelled by degree. With
+// the key-signature setting on, `keySignature` is the VexFlow key to draw —
+// the relative major's for a minor scale — and the raised degrees of
+// harmonic/melodic minor keep their accidentals.
+export interface ScaleStaffLine {
+  notes: StaffNote[]
+  keySignature: string | null
+}
+
+export function scaleStaffLine(
+  scale: Scale,
+  withKeySignature: boolean,
+): ScaleStaffLine {
+  const spellings = spellScale(scale)
+  const signatureTonic = scaleKeySignatureTonic(scale)
+  const signature = withKeySignature
+    ? keySignatureAlterations(signatureTonic)
+    : undefined
+  const notes = realizeScale(scale, getScaleShape('up-1')).map((midi, i) => {
+    const spelling = spellings[i % spellings.length]
+    if (!spelling) throw new Error(`No spelling for scale note ${i}`)
+    return toStaffNote(spellMidiNote(midi, spelling), signature)
+  })
+  return {
+    notes,
+    keySignature: withKeySignature ? vexflowKeySpec(signatureTonic) : null,
+  }
 }

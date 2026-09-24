@@ -7,6 +7,8 @@ import {
 } from './voicingRules'
 import { matches } from './matcher'
 import { resolvePattern } from './pattern'
+import type { Scale } from './scaleTypes'
+import type { ScaleShape } from './scaleShapes'
 
 // Picks one concrete, playable example voicing near middle C (DESIGN.md
 // §3.4). Deterministic; illustrative only — matching is always against the
@@ -94,4 +96,26 @@ function realizePattern(
   const shifted = notes.map((n) => n + shift)
 
   return matches(shifted, chord, rule) ? shifted : null
+}
+
+// A scale prompt's example (DESIGN.md §3.6): the full run as MIDI notes, in
+// playing order — up-and-down plays the top note once (C…C′…C). A `block`
+// gives its one octave ascending, tonic to tonic, which is also the line the
+// staff draws for every shape. The lowest tonic sits in the octave from
+// middle C for one octave, an octave lower for two or three, so longer runs
+// stay centred on the keyboard.
+export function realizeScale(scale: Scale, shape: ScaleShape): number[] {
+  const octaves = shape.kind === 'run' ? shape.octaves : 1
+  const start = MIDDLE_C - 12 * Math.floor(octaves / 2) + pitchClass(scale.root)
+  const up: number[] = []
+  for (let octave = 0; octave < octaves; octave++) {
+    for (const interval of scale.type.intervals) {
+      up.push(start + 12 * octave + interval.semitones)
+    }
+  }
+  up.push(start + 12 * octaves)
+  if (shape.kind === 'run' && shape.updown) {
+    return [...up, ...up.slice(0, -1).reverse()]
+  }
+  return up
 }

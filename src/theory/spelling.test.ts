@@ -1,10 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import { getChordType, type Chord, type ChordTypeId } from './chordTypes'
+import { ALL_PITCH_CLASSES } from './notes'
+import { SCALE_TYPES, getScaleType, type ScaleTypeId } from './scaleTypes'
 import {
   chordDisplayName,
   formatSpelling,
   keyDisplayName,
   keySignatureAlteration,
+  keySignatureAlterations,
+  scaleDisplayName,
+  scaleKeySignatureTonic,
+  spellScale,
+  vexflowKeySpec,
   spellChord,
   spellMajorScaleDegree,
   spellMidiNote,
@@ -212,5 +219,112 @@ describe('vexflowKeySignature', () => {
     expect(vexflowKeySignature(7)).toBe('G')
     expect(vexflowKeySignature(1)).toBe('Db')
     expect(vexflowKeySignature(6)).toBe('F#')
+  })
+})
+
+describe('scale spelling (§3.6)', () => {
+  const spellScaleAs = (root: number, id: ScaleTypeId) =>
+    spellScale({ root, type: getScaleType(id) }).map(formatSpelling)
+  const nameOf = (root: number, id: ScaleTypeId) =>
+    scaleDisplayName({ root, type: getScaleType(id) })
+
+  it('uses every letter exactly once in all 48 scales', () => {
+    for (const type of SCALE_TYPES) {
+      for (const root of ALL_PITCH_CLASSES) {
+        const letters = spellScale({ root, type }).map((n) => n.letter)
+        expect(new Set(letters).size, `${type.id} root=${root}`).toBe(7)
+      }
+    }
+  })
+
+  it('names major scales by the major-key rule', () => {
+    const names = ALL_PITCH_CLASSES.map((pc) => nameOf(pc, 'major'))
+    expect(names).toEqual(ALL_PITCH_CLASSES.map((pc) => keyDisplayName(pc)))
+  })
+
+  it('names minor scales by the fewest-accidental minor key', () => {
+    const tonics = ALL_PITCH_CLASSES.map(
+      (pc) => nameOf(pc, 'natural-minor').split(' ')[0],
+    )
+    expect(tonics).toEqual([
+      'C',
+      'C♯',
+      'D',
+      'E♭',
+      'E',
+      'F',
+      'F♯',
+      'G',
+      'G♯',
+      'A',
+      'B♭',
+      'B',
+    ])
+    expect(nameOf(8, 'harmonic-minor')).toBe('G♯ harmonic minor')
+  })
+
+  it('spells G♯ harmonic minor with F𝄪', () => {
+    expect(spellScaleAs(8, 'harmonic-minor')).toEqual([
+      'G♯',
+      'A♯',
+      'B',
+      'C♯',
+      'D♯',
+      'E',
+      'F♯♯',
+    ])
+  })
+
+  it('spells E♭ natural minor with C♭', () => {
+    expect(spellScaleAs(3, 'natural-minor')).toEqual([
+      'E♭',
+      'F',
+      'G♭',
+      'A♭',
+      'B♭',
+      'C♭',
+      'D♭',
+    ])
+  })
+
+  it('raises melodic minor’s 6th and 7th', () => {
+    expect(spellScaleAs(9, 'melodic-minor')).toEqual([
+      'A',
+      'B',
+      'C',
+      'D',
+      'E',
+      'F♯',
+      'G♯',
+    ])
+  })
+})
+
+describe('scale key signatures (§3.6)', () => {
+  const tonicOf = (root: number, id: ScaleTypeId) =>
+    formatSpelling(scaleKeySignatureTonic({ root, type: getScaleType(id) }))
+
+  it('is the major scale’s own key', () => {
+    expect(tonicOf(1, 'major')).toBe('D♭')
+  })
+
+  it('is the relative major’s key for every minor form', () => {
+    expect(tonicOf(9, 'natural-minor')).toBe('C')
+    expect(tonicOf(8, 'harmonic-minor')).toBe('B')
+    expect(tonicOf(1, 'melodic-minor')).toBe('E')
+    // G♭, not the major-key policy's F♯ — the signature must agree with
+    // the flats E♭ minor is spelled in.
+    expect(tonicOf(3, 'natural-minor')).toBe('G♭')
+  })
+
+  it('computes alterations and VexFlow keys from a spelled tonic', () => {
+    const gFlat = scaleKeySignatureTonic({
+      root: 3,
+      type: getScaleType('natural-minor'),
+    })
+    expect(vexflowKeySpec(gFlat)).toBe('Gb')
+    const alterations = keySignatureAlterations(gFlat)
+    expect(alterations.get('C')).toBe(-1)
+    expect(alterations.get('F')).toBe(0)
   })
 })

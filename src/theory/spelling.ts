@@ -1,5 +1,6 @@
 import { pitchClass, type PitchClass } from './notes'
 import { chordPitchClasses, type Chord, type ChordInterval } from './chordTypes'
+import type { Scale } from './scaleTypes'
 
 // Notation spelling (DESIGN.md §3.5): pitch classes alone can't drive the
 // staff — the third of B major is D♯, not E♭. Letters and accidentals are
@@ -133,19 +134,31 @@ export function keySignatureAlteration(
   key: PitchClass,
   letter: Letter,
 ): number {
+  return keySignatureAlterations(spellMajorKeyTonic(key)).get(letter) ?? 0
+}
+
+// The same, from a spelled major tonic — needed where the tonic's spelling
+// isn't the major-key policy's: E♭ minor's relative major is G♭, which the
+// policy would name F♯ (§3.6).
+export function keySignatureAlterations(
+  tonic: NoteSpelling,
+): ReadonlyMap<Letter, number> {
   const byLetter = new Map<Letter, number>()
-  for (let degree = 0; degree < 7; degree++) {
-    const spelling = spellMajorScaleDegree(key, degree)
+  MAJOR_SCALE_SEMITONES.forEach((semitones, i) => {
+    const spelling = spellChordTone(tonic, { semitones, degree: i + 1 })
     byLetter.set(spelling.letter, spelling.accidental)
-  }
-  return byLetter.get(letter) ?? 0
+  })
+  return byLetter
 }
 
 // VexFlow's Stave.addKeySignature() string for a major key rooted at `pc` —
 // matches VexFlow's supported set (Db/Ab/Eb/Bb over C#/G#/D#/A#) one-for-one
 // with the KEY_TONIC_POLICY above.
 export function vexflowKeySignature(pc: PitchClass): string {
-  const tonic = spellMajorKeyTonic(pc)
+  return vexflowKeySpec(spellMajorKeyTonic(pc))
+}
+
+export function vexflowKeySpec(tonic: NoteSpelling): string {
   const mark = tonic.accidental > 0 ? '#' : tonic.accidental < 0 ? 'b' : ''
   return `${tonic.letter}${mark}`
 }
@@ -195,4 +208,53 @@ export function spellVoicing(
     const pc = pitchClass(midi)
     return spellMidiNote(midi, byPc.get(pc) ?? spellRoot(pc))
   })
+}
+
+// Scale spelling (DESIGN.md §3.6): strictly by degree, each letter once, so
+// harmonic and melodic minor can need a double sharp (G♯ harmonic minor's
+// F𝄪). Tonics follow the key with the fewest accidentals — major scales the
+// major-key policy above, minor scales this one: C♯ F♯ G♯ E♭ B♭ minor. The
+// six-each tie at pc 3 goes to E♭ minor, the one met in print; the chord
+// root policy would give A♭ minor, seven flats, at pc 8.
+const MINOR_KEY_TONIC_POLICY: readonly (readonly [Letter, number])[] = [
+  ['C', 0],
+  ['C', 1],
+  ['D', 0],
+  ['E', -1],
+  ['E', 0],
+  ['F', 0],
+  ['F', 1],
+  ['G', 0],
+  ['G', 1],
+  ['A', 0],
+  ['B', -1],
+  ['B', 0],
+]
+
+export function spellScaleTonic(scale: Scale): NoteSpelling {
+  if (scale.type.tonality === 'major') return spellMajorKeyTonic(scale.root)
+  const entry = MINOR_KEY_TONIC_POLICY[pitchClass(scale.root)]
+  if (!entry) throw new Error(`Invalid pitch class: ${scale.root}`)
+  const [letter, accidental] = entry
+  return { letter, accidental, pc: pitchClass(scale.root) }
+}
+
+// One spelling per scale degree, tonic first.
+export function spellScale(scale: Scale): NoteSpelling[] {
+  const tonic = spellScaleTonic(scale)
+  return scale.type.intervals.map((interval) => spellChordTone(tonic, interval))
+}
+
+// "E♭ major", "G♯ harmonic minor" (§7.3).
+export function scaleDisplayName(scale: Scale): string {
+  return `${formatSpelling(spellScaleTonic(scale))} ${scale.type.name}`
+}
+
+// The major tonic whose signature a scale is drawn under (§3.6): its own for
+// a major scale, the relative major's for every minor form — harmonic and
+// melodic minor's raised degrees then appear as accidentals, as in print.
+export function scaleKeySignatureTonic(scale: Scale): NoteSpelling {
+  const tonic = spellScaleTonic(scale)
+  if (scale.type.tonality === 'major') return tonic
+  return spellChordTone(tonic, { semitones: 3, degree: 3 })
 }
