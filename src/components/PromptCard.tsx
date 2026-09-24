@@ -59,9 +59,10 @@ const CHIP_SIZE_CLASSES: Record<ChordNameSize, string> = {
 // readable from a distance, with the next 2 upcoming combos inline at
 // decreasing sizes. The voicing being drilled appears as a separate label
 // (omitted for the `any` rule). Song mode swaps the preview for its
-// left-to-right progression display. A scale prompt (§7.3) carries a small
-// *scale* tag, its shape where a chord shows its voicing (omitted for
-// `up-1`), the fingering line for runs, and its one-octave staff line.
+// left-to-right progression display. A scale prompt (§7.3) carries its shape
+// where a chord shows its voicing (omitted for `up-1`), led by a small
+// *scale* tag, then the fingering line for runs and its one-octave staff
+// line.
 export function PromptCard() {
   const prompt = usePractice((s) => s.prompt)
   const upcoming = usePractice((s) => s.upcoming)
@@ -100,11 +101,6 @@ export function PromptCard() {
             )}
           >
             {prompt.displayName}
-            {scalePrompt !== null && (
-              <span className="ml-4 inline-block -translate-y-[0.35em] rounded-full border-2 border-info-border px-3 py-0.5 align-middle text-base font-bold uppercase tracking-wide text-info-light">
-                scale
-              </span>
-            )}
           </h2>
           {next2[0] && (
             <span
@@ -135,8 +131,15 @@ export function PromptCard() {
           <p className="text-xl text-ink-muted">{chordPrompt.voicing.name}</p>
         )}
 
-      {scalePrompt !== null && scalePrompt.shape.id !== 'up-1' && (
-        <p className="text-xl text-ink-muted">{scalePrompt.shape.name}</p>
+      {/* The tag rides the shape's line rather than the name, so the name
+          row stays name + preview; for `up-1` it stands alone there. */}
+      {scalePrompt !== null && (
+        <p className="flex items-center gap-3 text-xl text-ink-muted">
+          <span className="rounded-full border-2 border-info-border px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide text-info-light">
+            scale
+          </span>
+          {scalePrompt.shape.id !== 'up-1' && scalePrompt.shape.name}
+        </p>
       )}
       {scalePrompt !== null && <FingeringLine prompt={scalePrompt} />}
 

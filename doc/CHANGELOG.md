@@ -15,6 +15,14 @@ artifact and are not recoverable.
 
 ---
 
+## 10.2.1 — 2026-09-24
+
+**The scale tag moves off the name.** No behavior change: a scale prompt's small
+*scale* tag now leads the shape line under the name instead of sitting beside the
+name, where it widened the name row and pushed the upcoming preview aside (§7.3).
+
+---
+
 ## 10.2.0 — 2026-09-24
 
 **Runs stay put.** A scale run played in a different octave from the one shown is

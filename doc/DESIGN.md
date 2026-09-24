@@ -1118,9 +1118,11 @@ counts a new progression in).
   voicing unless it's the `any` rule); Song mode's progression display (§6.5)
   keeps a left-to-right row instead, since it reads in time. Both scale with the
   chord-name size setting so they stay readable from the same distance as the name.
-- **Scale prompts**: the name large as ever ("E♭ major") with a small *scale* tag,
-  the shape as the text label where a chord shows its voicing ("2 octaves ↕",
-  "block"; omitted for `up-1`, as `any` is for chords), and the **fingering** as a
+- **Scale prompts**: the name large as ever ("E♭ major"), the shape as the text
+  label where a chord shows its voicing ("2 octaves ↕", "block"; omitted for
+  `up-1`, as `any` is for chords) led by a small *scale* tag — on that line, not
+  beside the name, so the name row stays name + preview and the tag stands alone
+  there for `up-1` — and the **fingering** as a
   line under it — `RH 1 2 3 1 2 3 4 5 · LH 5 4 3 2 1 3 2 1` — always shown, never
   judged (§3.6), and absent for `block`. The staff, when on, draws the one-octave
   ascending line in the treble clef near middle C, spelled by degree (§3.6). The
