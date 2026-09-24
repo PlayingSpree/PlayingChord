@@ -1321,15 +1321,18 @@ all sessions, for the side Home is switched to (§7.1), titled *Chord progress* 
   Goal & unlocks / Voicing rules / Presets): preset editor, voicing builder,
   doubling toggle, strict-extra-notes
   toggle, chord name size (small/medium/large/extra-large, default large), staff
-  on/off, staff key signature on/off (chord root as key, §3.5), correct-chime on/off,
+  on/off, staff key signature on/off (chord root as key, §3.5; a scale's own key,
+  §3.6), correct-chime on/off,
   piano sound on key press on/off (§9), judgment delay, auto-advance delay, daily
   goal minutes, circle-of-fifths unlock order on/off (§5.1). (Mode sub-settings —
   worst-chords-only, the learn set, Song's tempo / chords-per-progression /
   show-example — live in the session sheet, §7.2, not the settings panel; the
-  session length lives there too.) Doubling, strict extra notes and the judgment
-  delay are chord settings: scale matching is exact and runs have no stall (§6.3,
-  §6.6), so none of the three touches a scale prompt. Circle-of-fifths order is
-  a chord setting too (§5.1).
+  session length lives there too.) Doubling and strict extra notes are chord
+  settings: scale matching is exact (§6.3), so neither touches a scale prompt. The
+  judgment delay serves chords and `block` scales alike — a block is judged by the
+  §6.2 machine, and without the stall a full block over the wrong bass would never
+  miss — while runs have no stall at all (§6.6). Circle-of-fifths order is a chord
+  setting (§5.1).
 
 ---
 
