@@ -2,17 +2,20 @@ import { useMemo } from 'react'
 import {
   appStorage,
   computeBestStreak,
+  dailyCounts,
   computeStreak,
   lastDateKeys,
   localDateKey,
   meetsGoal,
   parseDateKey,
   PersistedComboStats,
+  recordsForSide,
   type DailyRecord,
 } from '../storage'
 import {
   allComboRows,
   comboKey,
+  comboSide,
   comboLabel,
   rankMostImproved,
   rankWorstCombos,
@@ -20,6 +23,8 @@ import {
 import { voicingLibrary } from '../theory'
 import { useSettings } from '../store/settingsStore'
 import { useLibrary } from '../store/libraryStore'
+import { usePractice } from '../store/practiceStore'
+import { noun, Noun } from './sides'
 import { Card, RaisedButton, SectionLabel } from './ui'
 import { cx } from './cx'
 
@@ -27,7 +32,10 @@ import { cx } from './cx'
 // across all sessions — the header stat cards, accuracy and time-to-correct
 // per day, the streak calendar, most-improved / needs-work chords, and the
 // lifetime best combo streak. Reads the persisted records once per mount;
-// practice is paused while it's open.
+// practice is paused while it's open. It is the switched-to side's (§7.1),
+// titled so the side is never a guess: the header's streak, time and days are
+// shared — they come from the shared goal — and everything else, total
+// prompts included, is the side's own.
 
 const TREND_DAYS = 30
 const CALENDAR_WEEKS = 12
@@ -60,17 +68,19 @@ export function ProgressView({
 }) {
   const goalMinutes = useSettings((s) => s.settings.dailyGoalMinutes)
   const customRules = useLibrary((s) => s.customRules)
+  const side = usePractice((s) => s.side)
 
   const data = useMemo(() => {
     const library = voicingLibrary(customRules)
-    const { dailyRecords, comboStats, bestComboStreak } = appStorage.state
+    const { dailyRecords, comboStats } = appStorage.state
+    const sideRecords = recordsForSide(dailyRecords, side)
     const todayKey = localDateKey(new Date())
     const trendKeys = lastDateKeys(todayKey, TREND_DAYS)
 
     const accuracyDays: TrendDay[] = []
     const timeDays: TrendDay[] = []
     for (const key of trendKeys) {
-      const record = dailyRecords[key]
+      const record = sideRecords[key]
       const hasPrompts = record !== undefined && record.prompts > 0
       // Time-to-correct divides by the *timed* prompts: a day's Song bars are
       // prompts, but clock-paced ones with no span to average (§6.5). A day of
@@ -96,7 +106,9 @@ export function ProgressView({
       })
     }
 
-    const combos = allComboRows(comboStats, library).map((row) => row.combo)
+    const combos = allComboRows(comboStats, library)
+      .map((row) => row.combo)
+      .filter((combo) => comboSide(combo) === side)
     const stats = new PersistedComboStats(appStorage)
     const allRecords = Object.values(dailyRecords)
     return {
@@ -106,12 +118,21 @@ export function ProgressView({
       dailyRecords,
       streak: computeStreak(dailyRecords, goalMinutes, todayKey),
       bestStreak: computeBestStreak(dailyRecords, goalMinutes),
-      bestComboStreak,
+      bestComboStreak:
+        side === 'scales'
+          ? appStorage.state.bestScaleComboStreak
+          : appStorage.state.bestComboStreak,
       totalMinutes: allRecords.reduce((sum, r) => sum + r.activeMinutes, 0),
       daysPracticed: allRecords.filter(
-        (r) => r.prompts > 0 || r.activeMinutes > 0,
+        (r) =>
+          r.prompts > 0 ||
+          r.activeMinutes > 0 ||
+          dailyCounts(r, 'scales').prompts > 0,
       ).length,
-      totalPrompts: allRecords.reduce((sum, r) => sum + r.prompts, 0),
+      totalPrompts: Object.values(sideRecords).reduce(
+        (sum, r) => sum + r.prompts,
+        0,
+      ),
       improved: rankMostImproved(combos, stats).map((entry) => ({
         key: comboKey(entry.combo),
         label: comboLabel(entry.combo, undefined, library),
@@ -124,7 +145,7 @@ export function ProgressView({
       })),
       empty: allRecords.length === 0 && combos.length === 0,
     }
-  }, [goalMinutes, customRules])
+  }, [goalMinutes, customRules, side])
 
   return (
     <main className="min-h-screen bg-surface px-6 py-6 text-ink">
@@ -133,7 +154,9 @@ export function ProgressView({
           <RaisedButton variant="outline" size="sm" onClick={onBack}>
             ← Home
           </RaisedButton>
-          <span className="text-2xl font-extrabold">Progress</span>
+          <span className="text-2xl font-extrabold">
+            {Noun(side, 1)} progress
+          </span>
           <span className="flex-1" />
           <span className="flex items-center gap-2 rounded-[14px] border-2 border-card-border bg-card px-3.5 py-1.5 text-sm font-extrabold">
             🔥 {data.streak}
@@ -206,7 +229,7 @@ export function ProgressView({
                 className="text-primary-light"
                 onClick={onChordStats}
               >
-                Every chord's stats →
+                Every {noun(side, 1)}&rsquo;s stats →
               </RaisedButton>
               <span className="text-sm text-ink-muted">
                 Best combo streak:{' '}

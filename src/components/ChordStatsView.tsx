@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { appStorage } from '../storage'
 import {
   allComboRows,
+  comboKeySide,
   comboLabel,
   comboMetrics,
   displayGrade,
@@ -15,6 +16,8 @@ import {
 } from '../practice'
 import { voicingLibrary } from '../theory'
 import { useLibrary } from '../store/libraryStore'
+import { usePractice } from '../store/practiceStore'
+import { noun, Noun } from './sides'
 import { Card, RaisedButton } from './ui'
 import { cx } from './cx'
 import { gradeTint } from './grades'
@@ -23,7 +26,7 @@ import { gradeTint } from './grades'
 // practiced, not just the top-3 worst/most-improved lists — sortable so any
 // axis (accuracy, speed, volume) can lead. Lifetime and recent figures sit
 // side by side per metric, both "recent" windows being the last 10
-// (comboMetrics).
+// (comboMetrics). Lists the switched-to side's combos only (§7.5).
 
 interface Row {
   key: string
@@ -123,6 +126,7 @@ function compareRows(
 
 export function ChordStatsView({ onBack }: { onBack: () => void }) {
   const customRules = useLibrary((s) => s.customRules)
+  const side = usePractice((s) => s.side)
   const [sort, setSort] = useState<{ column: ColumnId; dir: 'asc' | 'desc' }>({
     column: 'recentAccuracy',
     dir: 'asc',
@@ -131,13 +135,15 @@ export function ChordStatsView({ onBack }: { onBack: () => void }) {
   const rows = useMemo(() => {
     const library = voicingLibrary(customRules)
     const { comboStats } = appStorage.state
-    return allComboRows(comboStats, library).map((row): Row => ({
-      key: row.key,
-      label: comboLabel(row.combo, undefined, library),
-      metrics: comboMetrics(row.record, gradeScaleOf(row.key)),
-      grade: displayGrade(row.record, gradeScaleOf(row.key)),
-    }))
-  }, [customRules])
+    return allComboRows(comboStats, library)
+      .filter((row) => comboKeySide(row.key) === side)
+      .map((row): Row => ({
+        key: row.key,
+        label: comboLabel(row.combo, undefined, library),
+        metrics: comboMetrics(row.record, gradeScaleOf(row.key)),
+        grade: displayGrade(row.record, gradeScaleOf(row.key)),
+      }))
+  }, [customRules, side])
 
   const column = COLUMNS.find((c) => c.id === sort.column) ?? COLUMNS[0]!
   const sorted = useMemo(
@@ -163,7 +169,7 @@ export function ChordStatsView({ onBack }: { onBack: () => void }) {
           <RaisedButton variant="outline" size="sm" onClick={onBack}>
             ← Progress
           </RaisedButton>
-          <span className="text-2xl font-extrabold">Chord stats</span>
+          <span className="text-2xl font-extrabold">{Noun(side, 1)} stats</span>
           <span className="flex-1" />
           <span className="text-[13px] text-ink-muted">
             tap a column to sort
@@ -172,7 +178,8 @@ export function ChordStatsView({ onBack }: { onBack: () => void }) {
 
         {rows.length === 0 ? (
           <Card className="p-10 text-center text-ink-muted">
-            No practiced chords yet. Play a few prompts and this page fills up.
+            No practiced {noun(side)} yet. Play a few prompts and this page
+            fills up.
           </Card>
         ) : (
           <>
@@ -181,7 +188,7 @@ export function ChordStatsView({ onBack }: { onBack: () => void }) {
                 <thead>
                   <tr className="border-b-2 border-track">
                     <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                      Chord
+                      {Noun(side, 1)}
                     </th>
                     {COLUMNS.map((col) => (
                       <th
@@ -244,12 +251,14 @@ export function ChordStatsView({ onBack }: { onBack: () => void }) {
               accuracy is the last {RECENT_OUTCOME_WINDOW} attempts (the same
               window that drives weighting); recent avg time is the last{' '}
               {RECENT_TIME_WINDOW}. Grade (S–F) folds recent accuracy and speed
-              into one figure — the same one that drives which chords come up
-              more often, and that gates new unlocks. On a clean window the
+              into one figure — the same one that drives which {noun(side)} come
+              up more often, and that gates new unlocks. On a clean window the
               letters are seconds — S within {GRADE_TIME_MS.S / 1000}s, A{' '}
               {GRADE_TIME_MS.A / 1000}s, B {GRADE_TIME_MS.B / 1000}s, C{' '}
-              {GRADE_TIME_MS.C / 1000}s, D {GRADE_TIME_MS.D / 1000}s — and
-              accuracy costs a letter just as a second does: one miss in{' '}
+              {GRADE_TIME_MS.C / 1000}s, D {GRADE_TIME_MS.D / 1000}s
+              {side === 'scales' &&
+                ', each times the shape’s multiplier, so a one-octave run is S within 2s and D within 10s'}{' '}
+              — and accuracy costs a letter just as a second does: one miss in{' '}
               {RECENT_OUTCOME_WINDOW} can't grade S, however fast. Under{' '}
               {GRADE_EVIDENCE_FLOOR} recent attempts the reps you haven't played
               count against the grade, so a combo that has only ever been missed

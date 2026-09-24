@@ -1,10 +1,16 @@
 import { useEffect, useState } from 'react'
 import { usePractice } from '../store/practiceStore'
 import { useSettings } from '../store/settingsStore'
-import { MODE_POLICY, type ComboGrade, type SessionReport } from '../practice'
+import {
+  MODE_POLICY,
+  type ComboGrade,
+  type SessionReport,
+  type Side,
+} from '../practice'
 import { Card, RaisedButton, SectionLabel } from './ui'
 import { cx } from './cx'
 import { gradeRing } from './grades'
+import { noun, Noun } from './sides'
 
 // The end-of-session Report (DESIGN.md §7.4): a full screen replacing the
 // Draft-v5 summary modal. Headline + grade, the four stat cards with
@@ -21,6 +27,9 @@ export function ReportView({
   onHome: () => void
 }) {
   const report = usePractice((s) => s.report)
+  // A session runs on one side and the Report shows before Home can switch
+  // it, so the store's side is the session's (§7.4).
+  const side = usePractice((s) => s.side)
   const goalMinutes = useSettings((s) => s.settings.dailyGoalMinutes)
 
   useEffect(() => {
@@ -100,7 +109,7 @@ export function ReportView({
         )}
 
         {report.unlocked !== null && (
-          <UnlockBanner unlocked={report.unlocked} />
+          <UnlockBanner side={side} unlocked={report.unlocked} />
         )}
 
         {report.suggestion !== null && (
@@ -132,7 +141,7 @@ export function ReportView({
             </div>
             <p className="col-span-2 text-[13px] text-ink-muted">
               Rehearsing is not passing — play these in Free practice, with the
-              example hidden, to unlock the next chords.
+              example hidden, to unlock the next {noun(side)}.
             </p>
           </div>
         )}
@@ -140,7 +149,7 @@ export function ReportView({
         {!learn && (
           <div className="grid grid-cols-2 gap-3 text-[15px]">
             <div>
-              <SectionLabel>Chords passed</SectionLabel>
+              <SectionLabel>{Noun(side)} passed</SectionLabel>
               <div className="mt-1 font-semibold text-ink-soft">
                 {report.passedLabels.length > 0
                   ? report.passedLabels.join(' · ')
@@ -218,8 +227,10 @@ function StatCard({
 }
 
 function UnlockBanner({
+  side,
   unlocked,
 }: {
+  side: Side
   unlocked: NonNullable<SessionReport['unlocked']>
 }) {
   const pct =
@@ -238,8 +249,8 @@ function UnlockBanner({
             style={{ width: `${pct}%` }}
           />
         </div>
-        {unlocked.unlocked} / {unlocked.total} — bring every unlocked chord to a
-        good grade to open more
+        {unlocked.unlocked} / {unlocked.total} — bring every unlocked{' '}
+        {noun(side, 1)} to a good grade to open more
       </div>
     </Card>
   )
