@@ -81,6 +81,7 @@ describe('sanitizeSettings', () => {
       songTempoBpm: 90,
       songChordCount: 3,
       songShowExample: false,
+      scaleThumbHand: 'lh',
     }
     expect(sanitizeSettings(valid)).toEqual(valid)
   })
@@ -156,5 +157,17 @@ describe('sanitizeSettings', () => {
     }
     expect(sanitizeSettings({ chordNameSize: 'huge' }).chordNameSize).toBe('lg')
     expect(sanitizeSettings({ chordNameSize: 3 }).chordNameSize).toBe('lg')
+  })
+
+  it('defaults the scale thumb marks to the right hand', () => {
+    expect(sanitizeSettings({}).scaleThumbHand).toBe('rh')
+    for (const hand of ['off', 'rh', 'lh']) {
+      expect(sanitizeSettings({ scaleThumbHand: hand }).scaleThumbHand).toBe(
+        hand,
+      )
+    }
+    expect(sanitizeSettings({ scaleThumbHand: 'both' }).scaleThumbHand).toBe(
+      'rh',
+    )
   })
 })

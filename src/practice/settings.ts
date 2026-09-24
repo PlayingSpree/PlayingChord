@@ -6,6 +6,11 @@ import type { MatchSettings } from '../theory'
 export const CHORD_NAME_SIZES = ['sm', 'md', 'lg', 'xl'] as const
 export type ChordNameSize = (typeof CHORD_NAME_SIZES)[number]
 
+// Whose thumb the keyboard marks on a shown scale run (§6.6): the two hands'
+// thumbs land on different keys, and hands are never checked, so it's a pick.
+export const SCALE_THUMB_HANDS = ['off', 'rh', 'lh'] as const
+export type ScaleThumbHand = (typeof SCALE_THUMB_HANDS)[number]
+
 // Tunable practice behavior (DESIGN.md §6.2, §6.3): the two matcher toggles
 // plus the two lifecycle delays. Lives in practice/ so the lifecycle machine
 // stays pure; the store layer owns persistence (plain localStorage for now,
@@ -46,6 +51,8 @@ export interface PracticeSettings extends MatchSettings {
   songTempoBpm: number
   songChordCount: number // 2–4 chords per progression
   songShowExample: boolean // overlay each bar's example voicing, Learn-style
+  // Thumb marks (§6.6) — set in the session sheet as well as Settings.
+  scaleThumbHand: ScaleThumbHand
 }
 
 export const DEFAULT_PRACTICE_SETTINGS: PracticeSettings = {
@@ -64,6 +71,7 @@ export const DEFAULT_PRACTICE_SETTINGS: PracticeSettings = {
   songTempoBpm: 60,
   songChordCount: 4,
   songShowExample: true,
+  scaleThumbHand: 'rh',
 }
 
 export const MAX_DELAY_MS = 10_000
@@ -105,6 +113,15 @@ function asChordNameSize(
 ): ChordNameSize {
   return CHORD_NAME_SIZES.includes(value as ChordNameSize)
     ? (value as ChordNameSize)
+    : fallback
+}
+
+function asScaleThumbHand(
+  value: unknown,
+  fallback: ScaleThumbHand,
+): ScaleThumbHand {
+  return SCALE_THUMB_HANDS.includes(value as ScaleThumbHand)
+    ? (value as ScaleThumbHand)
     : fallback
 }
 
@@ -163,5 +180,9 @@ export function sanitizeSettings(value: unknown): PracticeSettings {
       defaults.songChordCount,
     ),
     songShowExample: asBoolean(raw.songShowExample, defaults.songShowExample),
+    scaleThumbHand: asScaleThumbHand(
+      raw.scaleThumbHand,
+      defaults.scaleThumbHand,
+    ),
   }
 }

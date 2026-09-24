@@ -2,12 +2,13 @@ import { useMidi } from '../store/midiStore'
 import { usePractice } from '../store/practiceStore'
 import { useSettings } from '../store/settingsStore'
 import { MODE_POLICY } from '../practice'
-import { pitchClass } from '../theory'
+import { pitchClass, scaleThumbNotes } from '../theory'
 
 // On-screen keyboard (~3 octaves, DESIGN.md §7) showing currently held notes
 // live, plus the §6.4 hint overlays. Every state pairs color with a shape:
 // held = filled dot, wrong = ✕, expected (reveal) = hollow ring, and for a
-// scale run (§6.6) played-so-far = ✓ and Learn's next key = ▲.
+// scale run (§6.6) played-so-far = ✓ and Learn's next key = ▲. A shown run's
+// thumb keys also carry a `1` above whichever of those they show.
 const LOW = 48 // C3
 const HIGH = 84 // C6
 
@@ -103,6 +104,7 @@ export function KeyboardView() {
   const prompt = usePractice((s) => s.prompt)
   const run = usePractice((s) => s.run)
   const songShowExample = useSettings((s) => s.settings.songShowExample)
+  const thumbHand = useSettings((s) => s.settings.scaleThumbHand)
 
   const range = rangeFor(run?.notes ?? null)
   const learn = MODE_POLICY[mode].revealsAnswer
@@ -134,7 +136,25 @@ export function KeyboardView() {
       done: new Set(run.notes.slice(0, run.played)),
       expected,
     }
-    return <Keys range={range} marks={marks} />
+    // Thumb marks ride the answer overlay (§6.6): the whole run in Learn, the
+    // rest of it after a reveal, and nothing before — they would give away
+    // the very notes being recalled.
+    const thumbs =
+      prompt?.kind === 'scale' &&
+      prompt.shape.kind === 'run' &&
+      thumbHand !== 'off'
+        ? new Set(
+            [
+              ...scaleThumbNotes(
+                prompt.scale,
+                thumbHand,
+                prompt.shape.octaves,
+                run.notes,
+              ),
+            ].filter((note) => expected.has(note)),
+          )
+        : NO_NOTES
+    return <Keys range={range} marks={marks} thumbs={thumbs} />
   }
 
   // Learn mode shows the example voicing from the start (§7) — the same
@@ -157,10 +177,18 @@ export function KeyboardView() {
     done: NO_NOTES,
     expected,
   }
-  return <Keys range={range} marks={marks} />
+  return <Keys range={range} marks={marks} thumbs={NO_NOTES} />
 }
 
-function Keys({ range, marks }: { range: Range; marks: Marks }) {
+function Keys({
+  range,
+  marks,
+  thumbs,
+}: {
+  range: Range
+  marks: Marks
+  thumbs: ReadonlySet<number>
+}) {
   // The keyboard is a visual instrument display; its per-key marks are
   // redundant with the feedback line's role="status" text, so screen
   // readers get one labeled image instead of ~60 unlabeled divs.
@@ -177,11 +205,17 @@ function Keys({ range, marks }: { range: Range; marks: Marks }) {
             HAS_SHARP.has(pitchClass(midi)) && sharp <= range.high
           return (
             <div key={midi} className="relative">
-              <Key midi={midi} state={keyState(midi, marks)} color="white" />
+              <Key
+                midi={midi}
+                state={keyState(midi, marks)}
+                thumb={thumbs.has(midi)}
+                color="white"
+              />
               {hasSharp && (
                 <Key
                   midi={sharp}
                   state={keyState(sharp, marks)}
+                  thumb={thumbs.has(sharp)}
                   color="black"
                 />
               )}
@@ -197,6 +231,7 @@ function Keys({ range, marks }: { range: Range; marks: Marks }) {
 // pale-green expected; a run's played notes a muted green and Learn's next
 // key sky, the expected-key accent the staff uses too. Feedback never rides
 // on color alone — each state also carries a mark (dot / ✕ / ring / ✓ / ▲).
+// The thumb `1` is fingering, not a state, so it stacks over the mark.
 const KEY_BG = {
   white: {
     idle: 'bg-[#eceaf6]',
@@ -219,10 +254,12 @@ const KEY_BG = {
 function Key({
   midi,
   state,
+  thumb,
   color,
 }: {
   midi: number
   state: KeyState
+  thumb: boolean
   color: 'white' | 'black'
 }) {
   const base =
@@ -235,11 +272,21 @@ function Key({
   const text = `text-xs font-bold leading-none ${onWhite ? 'text-slate-900' : 'text-slate-100'}`
   return (
     <div
-      className={`${base} flex items-end justify-center pb-1.5`}
+      className={`${base} flex flex-col items-center justify-end gap-1 pb-1.5`}
       data-midi={midi}
       data-state={state === 'idle' ? undefined : state}
       data-held={state === 'held' || undefined}
+      data-thumb={thumb || undefined}
     >
+      {/* Filled, where the run's own marks are hollow, so the thumb keys
+          stand out along a fully overlaid run. */}
+      {thumb && (
+        <span
+          className={`flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-extrabold leading-none ${onWhite ? 'bg-slate-900 text-slate-100' : 'bg-slate-100 text-slate-900'}`}
+        >
+          1
+        </span>
+      )}
       {state === 'held' && (
         <span
           className={`block h-2 w-2 rounded-full ${onWhite ? 'bg-slate-900' : 'bg-slate-100'}`}

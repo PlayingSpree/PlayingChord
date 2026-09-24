@@ -240,3 +240,21 @@ export function scaleFingering(
   fingers.push(last)
   return fingers
 }
+
+// The keys of a run the thumb plays, for the keyboard's thumb marks (§6.6).
+// `notes` is the run as played, up and possibly back down; only its ascending
+// part needs reading, since the descent revisits the same keys with the same
+// fingers in reverse.
+export function scaleThumbNotes(
+  scale: Scale,
+  hand: Hand,
+  octaves: number,
+  notes: readonly number[],
+): Set<number> {
+  const thumbs = new Set<number>()
+  scaleFingering(scale, hand, octaves).forEach((finger, i) => {
+    const note = notes[i]
+    if (finger === 1 && note !== undefined) thumbs.add(note)
+  })
+  return thumbs
+}

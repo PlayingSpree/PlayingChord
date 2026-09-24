@@ -299,7 +299,9 @@ raised degrees appear as accidentals — which is how a player meets them in pri
 **Fingering** is shown, never judged: the standard (ABRSM) fingering per root, scale
 type, hand and octave count, as data on the scale type. Minor forms that finger
 differently from the natural minor carry their own entry. `block` has none — there
-is no standard one.
+is no standard one. Where the keyboard shows a run, it also marks the keys the
+**thumb** plays (§6.6), for one hand at a time — the two thumbs land on different
+keys, and hands are never checked, so which one is a setting.
 
 **Example.** A scale prompt's example is its full run from a root near middle C (for
 `block`, the one octave), used by the keyboard overlays exactly as a chord's example
@@ -851,6 +853,12 @@ run exactly as they take a chord.
 - **Learn** overlays the whole run from the start and marks the **next expected
   key** as the run advances — the example, followed along. Practice shows only the
   progress so far and escalates per §6.4.
+- **Thumb marks.** Wherever the run is overlaid — all of it in Learn, the rest of it
+  after a Practice reveal — the keys the chosen hand's thumb plays carry a `1`
+  (§3.6 fingering), on top of whatever other mark the key shows. Never before the
+  run is shown: marking a key before then would give away a note being recalled.
+  The hand is **Thumb marks**: Off / RH / LH, default RH, a persisted preference
+  set in the session sheet on the Scales side and in Settings (§7.2, §7.6).
 
 ---
 
@@ -965,6 +973,9 @@ session config, so they take effect as they're set.
   (§7.3) appear under the row while that mode is selected: Learn's *Chords to
   learn*, Daily's *Cap*, Free's *Worst chords only*, Song's *Tempo* / *Chords per
   progression* / *Show example*. Daily is disabled until something is learned.
+  On the Scales side a *Thumb marks* row (Off / RH / LH, §6.6) sits under the
+  mode in every mode — like Song's settings a persisted preference, set as it's
+  picked.
 - **Chords to learn** (Learn, §5.4): a chip per chord in play in the drafted
   preset, the not-yet-passed ones pre-ticked, with a line saying what the loop
   will deal — how many chords must reach D, and which learned chords come along
@@ -1123,7 +1134,8 @@ counts a new progression in).
   shape wider than the drawn range folds the leftover notes per note. A **scale
   run** never folds — folding would scramble the very order being drilled — so a
   three-octave shape (37 keys) widens the drawn keyboard to fit it instead. Runs
-  also show the run's progress and, in Learn, the next key (§6.6).
+  also show the run's progress and, in Learn, the next key, and a shown run's
+  thumb keys carry a `1` (§6.6).
 - **Feedback**: a pill under the prompt — correct flash + reaction time + optional
   chime, auto-advance (default 800 ms). A Practice-mode answer past the **slow
   bar** turns the flash amber and adds a **`· slow`** chip. The bar is not a
@@ -1324,7 +1336,8 @@ all sessions, for the side Home is switched to (§7.1), titled *Chord progress* 
   on/off, staff key signature on/off (chord root as key, §3.5; a scale's own key,
   §3.6), correct-chime on/off,
   piano sound on key press on/off (§9), judgment delay, auto-advance delay, daily
-  goal minutes, circle-of-fifths unlock order on/off (§5.1). (Mode sub-settings —
+  goal minutes, circle-of-fifths unlock order on/off (§5.1), scale thumb marks
+  Off / RH / LH (§6.6; also in the session sheet). (Mode sub-settings —
   worst-chords-only, the learn set, Song's tempo / chords-per-progression /
   show-example — live in the session sheet, §7.2, not the settings panel; the
   session length lives there too.) Doubling and strict extra notes are chord

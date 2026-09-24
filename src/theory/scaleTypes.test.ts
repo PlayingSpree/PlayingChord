@@ -6,6 +6,7 @@ import {
   isScaleTypeId,
   scaleFingering,
   scalePitchClasses,
+  scaleThumbNotes,
   type Hand,
   type Scale,
   type ScaleTypeId,
@@ -146,5 +147,29 @@ describe('fingering (§3.6)', () => {
     expect(rh(1, 'harmonic-minor')).toEqual([3, 4, 1, 2, 3, 1, 2, 3])
     expect(rh(1, 'melodic-minor')).toEqual([2, 3, 1, 2, 3, 4, 1, 2])
     expect(rh(6, 'melodic-minor')).toEqual([2, 3, 1, 2, 3, 4, 1, 2])
+  })
+})
+
+describe('thumb notes (§6.6)', () => {
+  const c = scale(0, 'major')
+  const run = (shape: 'up-1' | 'up-2' | 'updown-2') =>
+    realizeScale(c, getScaleShape(shape))
+
+  it('marks the keys finger 1 plays, per hand', () => {
+    expect(scaleThumbNotes(c, 'rh', 1, run('up-1'))).toEqual(new Set([60, 65]))
+    expect(scaleThumbNotes(c, 'lh', 1, run('up-1'))).toEqual(new Set([67, 72]))
+  })
+
+  it('picks up the inner-tonic crossing of a longer run', () => {
+    // Two octaves start an octave down: C3 F3 C4 F4.
+    expect(scaleThumbNotes(c, 'rh', 2, run('up-2'))).toEqual(
+      new Set([48, 53, 60, 65]),
+    )
+  })
+
+  it('gives an up-and-down run the same keys as its ascent', () => {
+    expect(scaleThumbNotes(c, 'lh', 2, run('updown-2'))).toEqual(
+      scaleThumbNotes(c, 'lh', 2, run('up-2')),
+    )
   })
 })

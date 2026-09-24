@@ -20,6 +20,7 @@ import { practiceStore } from '../store/practiceStore'
 import { DevicePicker } from './DevicePicker'
 import { VoicingBuilder } from './VoicingBuilder'
 import { PresetEditor } from './PresetEditor'
+import { ThumbHandChips } from './ThumbHandChips'
 import { Card, Chip, RaisedButton, Stepper, Toggle } from './ui'
 import { cx } from './cx'
 
@@ -179,6 +180,9 @@ function NotationSection() {
             </Chip>
           ))}
         </div>
+      </Row>
+      <Row label="Scale thumb marks (finger 1)">
+        <ThumbHandChips />
       </Row>
     </SettingsCard>
   )

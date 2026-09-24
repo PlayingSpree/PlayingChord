@@ -21,6 +21,7 @@ import {
 import { ALL_PITCH_CLASSES, keyDisplayName, type PitchClass } from '../theory'
 import { Chip, RaisedButton, SectionLabel, Toggle } from './ui'
 import { MODE_LABELS } from './modes'
+import { ThumbHandChips } from './ThumbHandChips'
 import { counted, noun, Noun, sideModes } from './sides'
 import { cx } from './cx'
 
@@ -250,6 +251,13 @@ export function SessionSheet({
             />
           )}
           {draft.mode === 'song' && <SongSettings />}
+          {/* Every scale mode: Learn shows the run from the start and a
+              Practice reveal shows the rest of it (§6.6). */}
+          {side === 'scales' && (
+            <SettingRow label="Thumb marks">
+              <ThumbHandChips />
+            </SettingRow>
+          )}
         </div>
 
         {/* Song runs until ended, daily runs to its own cap (§5.3) and Learn

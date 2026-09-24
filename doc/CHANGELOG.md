@@ -15,6 +15,16 @@ artifact and are not recoverable.
 
 ---
 
+## 10.1.0 — 2026-09-24
+
+**Thumb marks.** Where the keyboard shows a scale run — Learn's overlay, a Practice
+reveal — the keys the thumb plays carry a `1`, for the hand picked in a new
+*Thumb marks* setting (Off / RH / LH, default RH), offered in the session sheet on
+the Scales side and in Settings. Still shown, never judged, and never before the
+run itself is shown (§3.6, §6.6, §7.2, §7.3, §7.6).
+
+---
+
 ## 10.0.0 — 2026-09-23
 
 **Scales.** The app gains a second kind of drill, and the "chords only" non-goal
