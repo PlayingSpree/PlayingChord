@@ -134,9 +134,12 @@ function sanitizeDiatonicKey(value: unknown): PitchClass {
 }
 
 // A §5/§7 upcoming-preview entry: the next combos to be dealt, in order.
+// The voicing or shape is drawn under the name (§7.3); null where the
+// label omits it.
 export interface UpcomingChord {
   key: string
-  label: string
+  name: string
+  variant: string | null
 }
 
 // One chip of the §6.5 Song-mode progression display: compact chord label
@@ -712,7 +715,7 @@ export function createPracticeStore({
         justLearned: false,
         upcoming: queue.map((c) => ({
           key: comboKey(c),
-          label: pool.comboLabel(c),
+          ...pool.comboLabelParts(c),
         })),
       })
       machine.promptShown(prompt)

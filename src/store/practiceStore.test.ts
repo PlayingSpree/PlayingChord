@@ -327,7 +327,7 @@ describe('practiceStore — upcoming queue (§5/§7)', () => {
     expect(s.store.getState().upcoming).toHaveLength(4)
     s.store.getState().upcoming.forEach((u) => {
       expect(u.key).toBeTruthy()
-      expect(u.label).toBeTruthy()
+      expect(u.name).toBeTruthy()
     })
   })
 

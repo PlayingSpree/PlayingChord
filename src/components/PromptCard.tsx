@@ -1,5 +1,5 @@
 import { lazy, Suspense, useMemo } from 'react'
-import { usePractice } from '../store/practiceStore'
+import { usePractice, type UpcomingChord } from '../store/practiceStore'
 import { useSettings } from '../store/settingsStore'
 import {
   FIRST_TRY_STREAK_DISPLAY_MIN,
@@ -40,16 +40,16 @@ const CHORD_NAME_SIZE_CLASSES: Record<ChordNameSize, string> = {
 // The inline next-2 preview (§7.3) scales with the name so it stays readable
 // from the same distance — the next one larger than the one after it.
 const PREVIEW_NEXT: Record<ChordNameSize, string> = {
-  sm: 'text-2xl',
-  md: 'text-3xl',
-  lg: 'text-4xl',
-  xl: 'text-5xl',
+  sm: 'text-3xl',
+  md: 'text-4xl',
+  lg: 'text-5xl',
+  xl: 'text-6xl',
 }
 const PREVIEW_AFTER: Record<ChordNameSize, string> = {
-  sm: 'text-lg',
-  md: 'text-xl',
-  lg: 'text-2xl',
-  xl: 'text-3xl',
+  sm: 'text-xl',
+  md: 'text-2xl',
+  lg: 'text-3xl',
+  xl: 'text-4xl',
 }
 
 // The chip row size for Song's progression display, keyed to the same setting.
@@ -108,24 +108,16 @@ export function PromptCard() {
             {prompt.displayName}
           </h2>
           {next2[0] && (
-            <span
-              className={cx(
-                'font-extrabold text-ink-muted',
-                PREVIEW_NEXT[chordNameSize],
-              )}
-            >
-              {next2[0].label}
-            </span>
+            <UpcomingLabel
+              entry={next2[0]}
+              className={cx('text-ink-muted', PREVIEW_NEXT[chordNameSize])}
+            />
           )}
           {next2[1] && (
-            <span
-              className={cx(
-                'font-extrabold text-ink-faint',
-                PREVIEW_AFTER[chordNameSize],
-              )}
-            >
-              {next2[1].label}
-            </span>
+            <UpcomingLabel
+              entry={next2[1]}
+              className={cx('text-ink-faint', PREVIEW_AFTER[chordNameSize])}
+            />
           )}
         </div>
       )}
@@ -447,6 +439,29 @@ function SongCountIn() {
           {entry.label} {entry.hits}/{entry.loops}
         </span>
       ))}
+    </span>
+  )
+}
+
+// One upcoming combo (§7.3): its name, with the voicing or shape on a
+// smaller line under it rather than trailing it, so the preview stays as
+// narrow as its name. The column's baseline is the name's, so it still
+// lines up with the prompt beside it.
+function UpcomingLabel({
+  entry,
+  className,
+}: {
+  entry: UpcomingChord
+  className: string
+}) {
+  return (
+    <span className={cx('inline-flex flex-col items-center', className)}>
+      <span className="font-extrabold">{entry.name}</span>
+      {entry.variant !== null && (
+        <span className="text-[0.5em] font-bold leading-tight">
+          {entry.variant}
+        </span>
+      )}
     </span>
   )
 }

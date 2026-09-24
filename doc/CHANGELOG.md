@@ -15,6 +15,16 @@ artifact and are not recoverable.
 
 ---
 
+## 10.3.1 — 2026-09-24
+
+**The upcoming preview stacks its label.** No behavior change: each of the next two
+combos beside the prompt now shows its voicing or shape on a smaller line under the
+name ("C major" over "2 octaves ↕") instead of trailing it, so the preview is only
+as wide as its name — and, with the room that frees, one text size larger at every
+chord-name size setting (§7.3).
+
+---
+
 ## 10.3.0 — 2026-09-24
 
 **Fingering names its notes.** A scale run's fingering line now sets each finger

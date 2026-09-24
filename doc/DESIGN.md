@@ -1115,7 +1115,9 @@ counts a new progression in).
   practice first-class for users who don't read notation. Beside the name, the
   **next 2** upcoming combos in dealing order (§5) render inline at decreasing
   sizes and muted colors, each labeled like the worst-chords list (name, plus
-  voicing unless it's the `any` rule); Song mode's progression display (§6.5)
+  voicing unless it's the `any` rule) but with the voicing — or a scale's shape —
+  on a smaller line under the name rather than trailing it, so a preview is only
+  as wide as its name; Song mode's progression display (§6.5)
   keeps a left-to-right row instead, since it reads in time. Both scale with the
   chord-name size setting so they stay readable from the same distance as the name.
 - **Scale prompts**: the name large as ever ("E♭ major"), the shape as the text

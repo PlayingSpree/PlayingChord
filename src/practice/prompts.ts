@@ -129,14 +129,26 @@ export function comboLabel(
   rootSpelling?: NoteSpelling,
   voicings: VoicingLibrary = BUILT_IN_VOICING_LIBRARY,
 ): string {
+  const { name, variant } = comboLabelParts(combo, rootSpelling, voicings)
+  return variant === null ? name : `${name} — ${variant}`
+}
+
+// The label's two halves, for displays that set them apart (the §7.3
+// upcoming preview stacks the variant under the name): the voicing or shape
+// is null where the label omits it.
+export function comboLabelParts(
+  combo: Combo,
+  rootSpelling?: NoteSpelling,
+  voicings: VoicingLibrary = BUILT_IN_VOICING_LIBRARY,
+): { name: string; variant: string | null } {
   if (isScaleCombo(combo)) {
     const name = scaleDisplayName(scaleOf(combo))
-    if (combo.shapeId === 'up-1') return name
-    return `${name} — ${getScaleShape(combo.shapeId).name}`
+    if (combo.shapeId === 'up-1') return { name, variant: null }
+    return { name, variant: getScaleShape(combo.shapeId).name }
   }
   const chord: Chord = { root: combo.root, type: getChordType(combo.typeId) }
   const name = chordDisplayName(chord, rootSpelling ?? spellRoot(combo.root))
-  if (combo.voicingId === 'any') return name
+  if (combo.voicingId === 'any') return { name, variant: null }
   const voicingName = voicings.get(combo.voicingId)?.name ?? combo.voicingId
-  return `${name} — ${voicingName}`
+  return { name, variant: voicingName }
 }

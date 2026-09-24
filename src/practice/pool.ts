@@ -46,6 +46,7 @@ import {
 } from './learnLoop'
 import {
   comboLabel,
+  comboLabelParts,
   createPrompt,
   type ChordPrompt,
   type Prompt,
@@ -184,6 +185,15 @@ export class Pool {
   // A combo's full display name, voicing included (§7 prompt area).
   comboLabel(combo: Combo): string {
     return comboLabel(
+      combo,
+      this.#rootSpellings.get(combo.root),
+      this.#voicings,
+    )
+  }
+
+  // The same label split into name and voicing/shape (§7.3 preview).
+  comboLabelParts(combo: Combo): { name: string; variant: string | null } {
+    return comboLabelParts(
       combo,
       this.#rootSpellings.get(combo.root),
       this.#voicings,

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { matches, spellMajorScaleDegree, type ScaleShapeId } from '../theory'
 import type { ScaleCombo } from './combos'
-import { comboLabel, createPrompt } from './prompts'
+import { comboLabel, comboLabelParts, createPrompt } from './prompts'
 
 describe('createPrompt', () => {
   it('builds a full prompt for a combo', () => {
@@ -71,5 +71,22 @@ describe('scale prompts (§3.4, §3.6)', () => {
     expect(comboLabel(dMajor('up-1'))).toBe('D major')
     expect(comboLabel(dMajor('updown-2'))).toBe('D major — 2 octaves ↕')
     expect(comboLabel(dMajor('block'))).toBe('D major — block')
+  })
+
+  it('splits the label into name and shape for the upcoming preview', () => {
+    const dMajor = (shapeId: ScaleShapeId): ScaleCombo => ({
+      kind: 'scale',
+      root: 2,
+      scaleTypeId: 'major',
+      shapeId,
+    })
+    expect(comboLabelParts(dMajor('up-1'))).toEqual({
+      name: 'D major',
+      variant: null,
+    })
+    expect(comboLabelParts(dMajor('updown-2'))).toEqual({
+      name: 'D major',
+      variant: '2 octaves ↕',
+    })
   })
 })
