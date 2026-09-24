@@ -7,6 +7,7 @@ import {
   displayGrade,
   GRADE_EVIDENCE_FLOOR,
   GRADE_TIME_MS,
+  gradeScaleOf,
   RECENT_OUTCOME_WINDOW,
   RECENT_TIME_WINDOW,
   type ComboMetrics,
@@ -133,8 +134,8 @@ export function ChordStatsView({ onBack }: { onBack: () => void }) {
     return allComboRows(comboStats, library).map((row): Row => ({
       key: row.key,
       label: comboLabel(row.combo, undefined, library),
-      metrics: comboMetrics(row.record),
-      grade: displayGrade(row.record),
+      metrics: comboMetrics(row.record, gradeScaleOf(row.key)),
+      grade: displayGrade(row.record, gradeScaleOf(row.key)),
     }))
   }, [customRules])
 

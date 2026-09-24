@@ -115,6 +115,12 @@ function scaleOf(combo: ScaleCombo): Scale {
   return { root: combo.root, type: getScaleType(combo.scaleTypeId) }
 }
 
+// The prompt's grade scale (§3.6): every grade second, the §6.2 ceiling and
+// the §7.3 slow/fast bars are this many times a chord's.
+export function promptGradeScale(prompt: Prompt): number {
+  return prompt.kind === 'scale' ? prompt.shape.gradeMultiplier : 1
+}
+
 // Compact display label for a combo outside a live prompt (stats bar, the
 // Phase 7 review lists): the name plus the voicing or shape — omitted for
 // the `any` rule and the `up-1` shape, same as the prompt area (§7.3).

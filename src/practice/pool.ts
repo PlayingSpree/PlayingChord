@@ -60,6 +60,7 @@ import {
   type ComboStatRecord,
   type ComboStatsSource,
   type DisplayGrade,
+  type KeyedRecord,
 } from './stats'
 import type { ReportChord } from './report'
 import type { SessionEvent } from './session'
@@ -220,13 +221,13 @@ export class Pool {
   // with none at all the chord has no grade.
   chordGrade(chordKey: string, lens: GradeLens = {}): ComboGrade | null {
     const source = lens.source ?? this.#stats
-    const records: ComboStatRecord[] = []
+    const records: KeyedRecord[] = []
     for (const combo of this.combos) {
       if (poolChordKey(combo) !== chordKey) continue
       const key = comboKey(combo)
       const record =
         lens.projected?.key === key ? lens.projected.record : source.get(key)
-      if (record !== null) records.push(record)
+      if (record !== null) records.push([key, record])
     }
     return worstChordGrade(records)
   }
@@ -235,11 +236,12 @@ export class Pool {
   // `new`, not F. What the §5.2 suggestion judges on: a chord that has barely
   // been played needs reps, not a bench.
   displayGrade(chordKey: string): DisplayGrade | null {
-    const records: ComboStatRecord[] = []
+    const records: KeyedRecord[] = []
     for (const combo of this.combos) {
       if (poolChordKey(combo) !== chordKey) continue
-      const record = this.#stats.get(comboKey(combo))
-      if (record !== null) records.push(record)
+      const key = comboKey(combo)
+      const record = this.#stats.get(key)
+      if (record !== null) records.push([key, record])
     }
     return worstChordDisplayGrade(records)
   }

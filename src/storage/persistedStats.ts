@@ -5,6 +5,7 @@
 
 import {
   applyOutcome,
+  gradeScaleOf,
   recentHistoryOf,
   type ComboRecentHistory,
   type ComboStatRecord,
@@ -65,7 +66,7 @@ export class PersistedComboStats implements ComboStatsSource {
   }
 
   recentHistory(comboKey: string): ComboRecentHistory | null {
-    return recentHistoryOf(this.get(comboKey))
+    return recentHistoryOf(this.get(comboKey), gradeScaleOf(comboKey))
   }
 
   record(
@@ -82,6 +83,7 @@ export class PersistedComboStats implements ComboStatsSource {
           state.comboStats[comboKey] ?? null,
           outcome,
           timeToCorrectMs,
+          gradeScaleOf(comboKey),
         ),
       },
       // Every judged prompt ticks the day, Song bars (a null time) included —

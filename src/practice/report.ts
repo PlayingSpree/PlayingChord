@@ -219,11 +219,12 @@ export function buildSessionReport(input: SessionReportInput): SessionReport {
   const avgTimeMs = summary.avgTimeToCorrectMs
 
   // Learn is stats-neutral (§5): no grade. Otherwise the §5 chord-score math
-  // — a null avgTime (Song) gets full speed credit inside sessionScore.
+  // — a null avgTime (Song) gets full speed credit inside sessionScore — over
+  // times in chord seconds (§7.4); the card above still shows plain ones.
   const grade =
     MODE_POLICY[input.mode].hasLearnLoop || accuracy === null
       ? null
-      : comboGrade(sessionScore(accuracy, avgTimeMs))
+      : comboGrade(sessionScore(accuracy, summary.avgGradedTimeMs))
 
   // Still shaky: chords with ≥ 1 missed prompt this session, most misses first.
   const missesByLabel = new Map<string, number>()

@@ -3,10 +3,11 @@ import { usePractice } from '../store/practiceStore'
 import { useSettings } from '../store/settingsStore'
 import {
   FIRST_TRY_STREAK_DISPLAY_MIN,
-  FAST_TIME_MS,
-  MAX_TIME_TO_CORRECT_MS,
+  fastTimeMs,
+  maxTimeToCorrectMs,
   MODE_POLICY,
-  SLOW_TIME_MS,
+  promptGradeScale,
+  slowTimeMs,
   type ChordNameSize,
   type Hint,
 } from '../practice'
@@ -140,10 +141,12 @@ export function PromptCard() {
 // color with an icon (§6.4); misses are visual-only (§9). The combo streak
 // rides the ✔ flash once it reaches 10; a Practice answer past the §7.5 D/F
 // speed boundary turns the flash amber with a `· slow` chip, and one at or
-// under A's second earns `· fast`. The grade news of the rep — a combo that
+// under A's second earns `· fast` — both, like the cap, in the prompt's own
+// grade seconds (§3.6). The grade news of the rep — a combo that
 // climbed a letter (§7.3), a chord that reached a passing grade (§5.1) — rides
 // a second line beneath, so the pill itself stays the speed report.
 function FeedbackPill() {
+  const prompt = usePractice((s) => s.prompt)
   const phase = usePractice((s) => s.phase)
   const reactionMs = usePractice((s) => s.reactionMs)
   const firstTryStreak = usePractice((s) => s.firstTryStreak)
@@ -174,13 +177,14 @@ function FeedbackPill() {
     // F's red: this is one rep, a warning about pace, while the red letter is a
     // verdict on a whole window of them.
     const graded = MODE_POLICY[mode].graded && song === null
-    const slow = graded && reactionMs > SLOW_TIME_MS
+    const gradeScale = prompt === null ? 1 : promptGradeScale(prompt)
+    const slow = graded && reactionMs > slowTimeMs(gradeScale)
     // Fast is the same idea from the other end (§7.3): A's second, so the chip
     // fires on exactly the reps that would grade the combo A on speed alone.
-    const fast = graded && reactionMs <= FAST_TIME_MS
+    const fast = graded && reactionMs <= fastTimeMs(gradeScale)
     // At the cap the pill reports what was actually recorded (§6.2), so the
     // number the player sees is the number their stats moved by.
-    const capped = Math.min(reactionMs, MAX_TIME_TO_CORRECT_MS)
+    const capped = Math.min(reactionMs, maxTimeToCorrectMs(gradeScale))
     content = (
       <span
         className={cx(

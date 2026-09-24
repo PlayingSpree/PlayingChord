@@ -5,16 +5,20 @@ import {
   applyOutcome,
   comboGrade,
   comboMetrics,
+  comboGradeScale,
   comboScore,
   COMBO_GRADE_ORDER,
   displayGrade,
   FAST_TIME_MS,
+  fastTimeMs,
+  gradeScaleOf,
   GRADE_EVIDENCE_FLOOR,
   gradeRank,
   IMPROVED_MIN_ATTEMPTS,
   InMemoryComboStats,
   isPassingGrade,
   MAX_TIME_TO_CORRECT_MS,
+  maxTimeToCorrectMs,
   NO_HISTORY,
   gradingOutcome,
   PASS_MIN_GRADE,
@@ -24,10 +28,12 @@ import {
   RECENT_OUTCOME_WINDOW,
   RECENT_TIME_WINDOW,
   SLOW_TIME_MS,
+  slowTimeMs,
   TIME_TO_CORRECT_SAMPLE_CAP,
   worstChordDisplayGrade,
   worstChordGrade,
   type ComboStatRecord,
+  type KeyedRecord,
 } from './stats'
 
 // Build a record of N first-try successes at the given time-to-correct.
@@ -36,6 +42,10 @@ const cleanRecord = (n: number, timeMs: number): ComboStatRecord => {
   for (let i = 0; i < n; i++) record = applyOutcome(record, 'first-try', timeMs)
   return record!
 }
+
+// Chord records under chord keys, as a pool or Home hands them over.
+const keyed = (...records: ComboStatRecord[]): KeyedRecord[] =>
+  records.map((record, i) => [`${i}:maj:any`, record])
 
 describe('gradingOutcome (§6.2 ceiling, §7.5)', () => {
   it('passes an ordinary outcome through', () => {
@@ -64,7 +74,7 @@ describe('gradingOutcome (§6.2 ceiling, §7.5)', () => {
 
 describe('worstChordGrade (§7.1 In play)', () => {
   it('is null with no history', () => {
-    expect(worstChordGrade([])).toBeNull()
+    expect(worstChordGrade(keyed())).toBeNull()
   })
 
   it('takes the lowest-scoring combo grade, not the average', () => {
@@ -76,7 +86,7 @@ describe('worstChordGrade (§7.1 In play)', () => {
     ) // several recent misses → low grade
     expect(comboGrade(comboMetrics(strong).score)).toBe('S')
     // The chord's grade is the weaker of the two, matching the weak combo.
-    expect(worstChordGrade([strong, weakRecord])).toBe(
+    expect(worstChordGrade(keyed(strong, weakRecord))).toBe(
       comboGrade(comboMetrics(weakRecord).score),
     )
   })
@@ -121,7 +131,7 @@ describe('the evidence floor (§5, §7.5)', () => {
   it('cannot pass a chord that has only ever been missed (§5.1)', () => {
     const missedOnce = applyOutcome(null, 'missed', 3000)
     expect(comboMetrics(missedOnce).grade).toBe('F')
-    expect(isPassingGrade(worstChordGrade([missedOnce]))).toBe(false)
+    expect(isPassingGrade(worstChordGrade(keyed(missedOnce)))).toBe(false)
   })
 })
 
@@ -152,14 +162,14 @@ describe('displayGrade / worstChordDisplayGrade (§7.5 `new`)', () => {
     const provenF = missedRecord(GRADE_EVIDENCE_FLOOR)
     const passing = cleanRecord(GRADE_EVIDENCE_FLOOR, 2000)
 
-    expect(worstChordDisplayGrade([unprovenF])).toBe('new')
+    expect(worstChordDisplayGrade(keyed(unprovenF))).toBe('new')
     // A proven F drags the chord red however many unproven combos sit beside it.
-    expect(worstChordDisplayGrade([unprovenF, provenF])).toBe('F')
+    expect(worstChordDisplayGrade(keyed(unprovenF, provenF))).toBe('F')
     // An unproven F still outranks a passing combo — the chord isn't passed,
     // it just has nothing to show yet.
-    expect(worstChordDisplayGrade([unprovenF, passing])).toBe('new')
-    expect(worstChordDisplayGrade([passing])).toBe('A')
-    expect(worstChordDisplayGrade([])).toBeNull()
+    expect(worstChordDisplayGrade(keyed(unprovenF, passing))).toBe('new')
+    expect(worstChordDisplayGrade(keyed(passing))).toBe('A')
+    expect(worstChordDisplayGrade(keyed())).toBeNull()
   })
 })
 
@@ -603,5 +613,94 @@ describe('allComboRows (§7 chord stats page)', () => {
       [comboKey(combo(1))]: record,
     })
     expect(rows.map((r) => r.key)).toEqual([comboKey(combo(1))])
+  })
+})
+
+describe('grade scale (§3.6 per-combo grade multiplier)', () => {
+  const UP_1 = 's:0:major:up-1'
+  const UPDOWN_2 = 's:0:major:updown-2'
+
+  // A clean, fully proven window at one time, graded under a key.
+  const gradeAt = (key: string, timeMs: number) => {
+    const scale = gradeScaleOf(key)
+    let record: ComboStatRecord | null = null
+    for (let i = 0; i < RECENT_OUTCOME_WINDOW; i++) {
+      record = applyOutcome(record, 'first-try', timeMs, scale)
+    }
+    return comboMetrics(record!, scale).grade
+  }
+
+  it('reads the shape’s multiplier off a scale key, 1 off anything else', () => {
+    expect(gradeScaleOf('0:maj:any')).toBe(1)
+    expect(gradeScaleOf(UP_1)).toBe(2)
+    expect(gradeScaleOf(UPDOWN_2)).toBe(7)
+    expect(gradeScaleOf('s:0:major:up-9')).toBe(1) // stale shape
+    expect(
+      comboGradeScale({
+        kind: 'scale',
+        root: 0,
+        scaleTypeId: 'major',
+        shapeId: 'updown-3',
+      }),
+    ).toBe(11)
+    expect(comboGradeScale({ root: 0, typeId: 'maj', voicingId: 'any' })).toBe(
+      1,
+    )
+  })
+
+  it('grades an up-1 run S at 2 s through D at 10 s', () => {
+    expect(gradeAt(UP_1, 2000)).toBe('S')
+    expect(gradeAt(UP_1, 4000)).toBe('A')
+    expect(gradeAt(UP_1, 6000)).toBe('B')
+    expect(gradeAt(UP_1, 8000)).toBe('C')
+    expect(gradeAt(UP_1, 10_000)).toBe('D')
+    expect(gradeAt(UP_1, 10_001)).toBe('F')
+  })
+
+  it('leaves chord grades on their round seconds', () => {
+    expect(gradeAt('0:maj:any', 1000)).toBe('S')
+    expect(gradeAt('0:maj:any', 2000)).toBe('A')
+    expect(gradeAt('0:maj:any', 5000)).toBe('D')
+    expect(gradeAt('0:maj:any', 5001)).toBe('F')
+  })
+
+  it('scales the recording ceiling: 20 s for up-1', () => {
+    expect(maxTimeToCorrectMs()).toBe(MAX_TIME_TO_CORRECT_MS)
+    expect(maxTimeToCorrectMs(2)).toBe(20_000)
+    // Past a chord's ceiling but inside the run's: still a first-try rep.
+    expect(gradingOutcome('first-try', 15_000, 2)).toBe('first-try')
+    expect(gradingOutcome('first-try', 20_000, 2)).toBe('missed')
+  })
+
+  it('scales the slow and fast bars (§7.3)', () => {
+    expect(slowTimeMs()).toBe(SLOW_TIME_MS)
+    expect(fastTimeMs()).toBe(FAST_TIME_MS)
+    expect(slowTimeMs(7)).toBe(35_000)
+    expect(fastTimeMs(7)).toBe(14_000)
+  })
+
+  it('weights a scale combo by its own ramp (§5)', () => {
+    const stats = new InMemoryComboStats()
+    for (let i = 0; i < RECENT_OUTCOME_WINDOW; i++) {
+      stats.record(UP_1, 'first-try', 2000)
+      stats.record('0:maj:any', 'first-try', 2000)
+    }
+    // Two seconds is S pace for a one-octave run, A pace for a chord.
+    expect(comboScore(stats.recentHistory(UP_1))).toBe(1)
+    expect(comboScore(stats.recentHistory('0:maj:any'))).toBeCloseTo(0.8, 6)
+  })
+
+  it('folds a scale chord’s shapes each on its own scale', () => {
+    const at = (key: string, timeMs: number): KeyedRecord => {
+      let record: ComboStatRecord | null = null
+      for (let i = 0; i < RECENT_OUTCOME_WINDOW; i++) {
+        record = applyOutcome(record, 'first-try', timeMs, gradeScaleOf(key))
+      }
+      return [key, record!]
+    }
+    // 14 s is A pace for updown-2 (×7) and past the ceiling for up-1 (×2).
+    expect(worstChordGrade([at(UPDOWN_2, 14_000)])).toBe('A')
+    expect(worstChordGrade([at(UPDOWN_2, 14_000), at(UP_1, 4000)])).toBe('A')
+    expect(worstChordGrade([at(UPDOWN_2, 14_000), at(UP_1, 6000)])).toBe('B')
   })
 })

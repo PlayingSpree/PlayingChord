@@ -22,7 +22,8 @@ import {
   gradeRank,
   IMPROVED_MIN_ATTEMPTS,
   isPassingGrade,
-  MAX_TIME_TO_CORRECT_MS,
+  gradeScaleOf,
+  maxTimeToCorrectMs,
   type ComboGrade,
   type ComboStatRecord,
   type ComboStatsSource,
@@ -33,14 +34,18 @@ import {
 // took more than one try, and the time clamped at the ceiling. One place, so
 // the rep the ✔ pill projects and the rep recordOutcome writes can't drift —
 // they are the same two lines a window apart otherwise. A rep at the ceiling is
-// demoted for grading only, inside applyOutcome.
-export function repOutcome(state: {
-  missCount: number
-  reactionMs: number | null
-}): { outcome: PromptOutcome; timeToCorrectMs: number } {
+// demoted for grading only, inside applyOutcome. The ceiling is the combo's
+// own (§3.6), so pass its grade scale.
+export function repOutcome(
+  state: { missCount: number; reactionMs: number | null },
+  gradeScale = 1,
+): { outcome: PromptOutcome; timeToCorrectMs: number } {
   return {
     outcome: state.missCount > 0 ? 'missed' : 'first-try',
-    timeToCorrectMs: Math.min(state.reactionMs ?? 0, MAX_TIME_TO_CORRECT_MS),
+    timeToCorrectMs: Math.min(
+      state.reactionMs ?? 0,
+      maxTimeToCorrectMs(gradeScale),
+    ),
   }
 }
 
@@ -112,13 +117,14 @@ function project(
   const source = statsSource === 'session' ? ctx.learnStats : ctx.stats
   const key = comboKey(ctx.combo)
   const before = source.get(key)
-  const { outcome, timeToCorrectMs } = repOutcome(state)
+  const gradeScale = gradeScaleOf(key)
+  const { outcome, timeToCorrectMs } = repOutcome(state, gradeScale)
   return {
     key,
     combo: ctx.combo,
     source,
     before,
-    record: applyOutcome(before, outcome, timeToCorrectMs),
+    record: applyOutcome(before, outcome, timeToCorrectMs, gradeScale),
   }
 }
 
@@ -167,8 +173,9 @@ function judgeClimb(rep: ProjectedRep, ctx: CalloutContext): Climb | null {
   if (rep.before === null || rep.before.attempts < IMPROVED_MIN_ATTEMPTS) {
     return null
   }
-  const from = comboMetrics(rep.before).grade
-  const to = comboMetrics(rep.record).grade
+  const gradeScale = gradeScaleOf(rep.key)
+  const from = comboMetrics(rep.before, gradeScale).grade
+  const to = comboMetrics(rep.record, gradeScale).grade
   if (gradeRank(to) <= gradeRank(from)) return null
   return { key: rep.key, label: ctx.pool.comboLabel(rep.combo), from, to }
 }

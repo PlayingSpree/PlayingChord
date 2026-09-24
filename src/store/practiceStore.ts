@@ -11,7 +11,7 @@ import {
   createPoolResolver,
   songChordLabel,
   comboKey,
-  MAX_TIME_TO_CORRECT_MS,
+  comboGradeScale,
   poolChordKey,
   dailyChordCount,
   dailyPool,
@@ -683,11 +683,11 @@ export function createPracticeStore({
     // selection is ever asked whether it's rehearsed.
     const recordLearnRep = () => {
       if (currentCombo === null) return
-      learnStats.record(
-        comboKey(currentCombo),
-        machine.state.missCount > 0 ? 'missed' : 'first-try',
-        Math.min(machine.state.reactionMs ?? 0, MAX_TIME_TO_CORRECT_MS),
+      const { outcome, timeToCorrectMs } = repOutcome(
+        machine.state,
+        comboGradeScale(currentCombo),
       )
+      learnStats.record(comboKey(currentCombo), outcome, timeToCorrectMs)
       currentCombo = null
       publishLearnProgress()
     }
@@ -708,7 +708,10 @@ export function createPracticeStore({
       // is why it is one function: from here it reaches combo stats and
       // weighting, unlock progress, the session tallies, the Report log and —
       // through stats.record — the day's summed time.
-      const { outcome, timeToCorrectMs } = repOutcome(machine.state)
+      const { outcome, timeToCorrectMs } = repOutcome(
+        machine.state,
+        comboGradeScale(currentCombo),
+      )
       const key = comboKey(currentCombo)
       const label = pool.comboLabel(currentCombo)
       stats.record(key, outcome, timeToCorrectMs)

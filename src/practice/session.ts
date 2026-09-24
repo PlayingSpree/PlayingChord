@@ -1,4 +1,4 @@
-import type { PromptOutcome } from './stats'
+import { gradeScaleOf, type PromptOutcome } from './stats'
 
 // Session modes (DESIGN.md §7): Learn shows the example voicing from the
 // start and is stats-neutral — completed prompts feed neither the per-combo
@@ -226,6 +226,11 @@ export interface SessionSummary {
   // Sum / mean over prompts that carry a time sample (Song bars excluded).
   totalTimeToCorrectMs: number
   avgTimeToCorrectMs: number | null
+  // The same mean with each prompt's time divided by its combo's grade scale
+  // (§3.6) — what the session grade reads (§7.4), so a session of mixed
+  // shapes grades on the footing its combos do. Equal to the plain mean for
+  // chords.
+  avgGradedTimeMs: number | null
 }
 
 export function summarizeSession(
@@ -233,10 +238,12 @@ export function summarizeSession(
 ): SessionSummary {
   let firstTrySuccesses = 0
   let totalTimeToCorrectMs = 0
+  let totalGradedTimeMs = 0
   let timedCount = 0
   for (const event of events) {
     if (event.timeToCorrectMs !== null) {
       totalTimeToCorrectMs += event.timeToCorrectMs
+      totalGradedTimeMs += event.timeToCorrectMs / gradeScaleOf(event.key)
       timedCount += 1
     }
     firstTrySuccesses += event.outcome === 'first-try' ? 1 : 0
@@ -248,5 +255,6 @@ export function summarizeSession(
     totalTimeToCorrectMs,
     avgTimeToCorrectMs:
       timedCount > 0 ? totalTimeToCorrectMs / timedCount : null,
+    avgGradedTimeMs: timedCount > 0 ? totalGradedTimeMs / timedCount : null,
   }
 }

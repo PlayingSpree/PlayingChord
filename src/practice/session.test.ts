@@ -23,6 +23,7 @@ describe('summarizeSession (§7 end-of-session summary)', () => {
       firstTrySuccesses: 0,
       totalTimeToCorrectMs: 0,
       avgTimeToCorrectMs: null,
+      avgGradedTimeMs: null,
     })
   })
 
@@ -169,5 +170,25 @@ describe('sessionLengthReached (§7.2)', () => {
   it('counts active time against a minute length', () => {
     expect(sessionLengthReached(minutes(10), 999, 9 * 60_000)).toBe(false)
     expect(sessionLengthReached(minutes(10), 0, 10 * 60_000)).toBe(true)
+  })
+})
+
+describe('summarizeSession grade time (§7.4)', () => {
+  it('divides each scale prompt’s time by its shape before averaging', () => {
+    const summary = summarizeSession([
+      event('0:maj:any', 'first-try', 1000),
+      event('s:0:major:up-1', 'first-try', 4000), // ×2 → 2000
+      event('s:0:major:updown-2', 'first-try', 21_000), // ×7 → 3000
+    ])
+    expect(summary.avgTimeToCorrectMs).toBeCloseTo(26_000 / 3, 6)
+    expect(summary.avgGradedTimeMs).toBeCloseTo(2000, 6)
+  })
+
+  it('matches the plain mean for chords', () => {
+    const summary = summarizeSession([
+      event('a', 'first-try', 1000),
+      event('b', 'first-try', 3000),
+    ])
+    expect(summary.avgGradedTimeMs).toBe(summary.avgTimeToCorrectMs)
   })
 })

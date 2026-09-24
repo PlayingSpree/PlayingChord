@@ -3,8 +3,8 @@
 // in-memory source serves tests, the persisted one (Phase 6) lives in
 // storage/ behind the same interface.
 
-import { comboKey, parseComboKey, type Combo } from './combos'
-import type { VoicingLibrary } from '../theory'
+import { comboKey, isScaleCombo, parseComboKey, type Combo } from './combos'
+import { getScaleShape, type VoicingLibrary } from '../theory'
 
 export type PromptOutcome = 'first-try' | 'missed'
 
@@ -47,6 +47,29 @@ export const RECENT_TIME_WINDOW = TIME_TO_CORRECT_SAMPLE_CAP / 2
 // already flagged slow; the ceiling only decides how far past counts.
 export const MAX_TIME_TO_CORRECT_MS = 10_000
 
+// A combo's grade scale (§3.6): the multiplier its every grade second — the
+// speed ramp's cut points and the ceiling above — is stretched by, so a
+// letter costs the same *fraction* of a 29-note run as of a chord. Chords
+// are 1; a scale combo takes its shape's multiplier. It is a property of the
+// combo, so it is read off the key wherever a record is, and nothing about it
+// is persisted.
+export function gradeScaleOf(key: string): number {
+  if (!key.startsWith('s:')) return 1
+  const combo = parseComboKey(key)
+  return combo !== null && isScaleCombo(combo)
+    ? getScaleShape(combo.shapeId).gradeMultiplier
+    : 1
+}
+
+export function comboGradeScale(combo: Combo): number {
+  return isScaleCombo(combo) ? getScaleShape(combo.shapeId).gradeMultiplier : 1
+}
+
+// The §6.2 recording ceiling for a combo of this grade scale.
+export function maxTimeToCorrectMs(gradeScale = 1): number {
+  return MAX_TIME_TO_CORRECT_MS * gradeScale
+}
+
 // One stat record per combo (§8), keyed by comboKey. `attempts` counts
 // completed prompts; time-to-correct is prompt shown →
 // correct match, retries included (§7).
@@ -64,6 +87,9 @@ export interface ComboRecentHistory {
   // window (RECENT_TIME_WINDOW). Null when every sample is a Song-mode bar,
   // or there's no time history yet.
   avgTimeToCorrectMs: number | null
+  // The combo's grade scale (gradeScaleOf), which the score reads that
+  // average against. Absent means 1, a chord's.
+  gradeScale?: number
 }
 
 export interface RecentStatsSource {
@@ -97,13 +123,16 @@ export const NO_HISTORY: RecentStatsSource = { recentHistory: () => null }
 // grade, the Report log, the daily figures, the §7.3 streak), because they did
 // play it correctly on the first attempt. Clamped times arrive exactly at the
 // ceiling, so the comparison is `>=`; a null time is a clock-paced Song bar
-// (§6.5), which has no span to judge.
+// (§6.5), which has no span to judge. The ceiling is the combo's own, scaled
+// by its grade scale (§3.6).
 export function gradingOutcome(
   outcome: PromptOutcome,
   timeToCorrectMs: number | null,
+  gradeScale = 1,
 ): PromptOutcome {
   if (outcome === 'missed') return 'missed'
-  return timeToCorrectMs !== null && timeToCorrectMs >= MAX_TIME_TO_CORRECT_MS
+  return timeToCorrectMs !== null &&
+    timeToCorrectMs >= maxTimeToCorrectMs(gradeScale)
     ? 'missed'
     : 'first-try'
 }
@@ -112,6 +141,7 @@ export function applyOutcome(
   record: ComboStatRecord | null,
   outcome: PromptOutcome,
   timeToCorrectMs: number | null,
+  gradeScale = 1,
 ): ComboStatRecord {
   const base = record ?? {
     attempts: 0,
@@ -127,7 +157,7 @@ export function applyOutcome(
     // (gradingOutcome); the lifetime counters above keep what was played.
     recentOutcomes: [
       ...base.recentOutcomes,
-      gradingOutcome(outcome, timeToCorrectMs),
+      gradingOutcome(outcome, timeToCorrectMs, gradeScale),
     ].slice(-RECENT_OUTCOME_WINDOW),
     timeToCorrectMs:
       timeToCorrectMs === null
@@ -141,6 +171,7 @@ export function applyOutcome(
 
 export function recentHistoryOf(
   record: ComboStatRecord | null,
+  gradeScale = 1,
 ): ComboRecentHistory | null {
   if (record === null || record.recentOutcomes.length === 0) return null
   return {
@@ -149,6 +180,7 @@ export function recentHistoryOf(
     avgTimeToCorrectMs: average(
       record.timeToCorrectMs.slice(-RECENT_TIME_WINDOW),
     ),
+    ...(gradeScale === 1 ? {} : { gradeScale }),
   }
 }
 
@@ -194,7 +226,9 @@ export const GRADE_TIME_MS: Record<Exclude<ComboGrade, 'F'>, number> = {
 // threshold exactly at that letter's second. At or under S's second it is full
 // credit — faster is never a bonus, which is what keeps a well-drilled combo
 // from out-weighing an untouched one in §5 generation; past D's it runs down to
-// zero at the §6.2 recording ceiling, as slow as a recorded time can be.
+// zero at the §6.2 recording ceiling, as slow as a recorded time can be. A
+// scale combo's ramp is this one with every second multiplied by its grade
+// scale (§3.6), which is the same as reading its time divided by it.
 const SPEED_ANCHORS: readonly (readonly [number, number])[] = [
   [GRADE_TIME_MS.S, GRADE_MIN_SCORE.S],
   [GRADE_TIME_MS.A, GRADE_MIN_SCORE.A],
@@ -204,9 +238,9 @@ const SPEED_ANCHORS: readonly (readonly [number, number])[] = [
   [MAX_TIME_TO_CORRECT_MS, 0],
 ]
 
-function speedFactor(avgTimeToCorrectMs: number): number {
+function speedFactor(avgTimeToCorrectMs: number, gradeScale: number): number {
   const t = Math.min(
-    Math.max(avgTimeToCorrectMs, 0),
+    Math.max(avgTimeToCorrectMs / gradeScale, 0),
     MAX_TIME_TO_CORRECT_MS, // recorded times are clamped here too (§6.2)
   )
   let fromMs = 0
@@ -228,10 +262,16 @@ function speedFactor(avgTimeToCorrectMs: number): number {
 // what makes the letter fit to gate §5.1's pass. No time data (Song-mode-only combos, or no
 // history at all) gets full speed credit — never penalize for data that isn't
 // there.
-function scoreOf(accuracy: number, avgTimeToCorrectMs: number | null): number {
+function scoreOf(
+  accuracy: number,
+  avgTimeToCorrectMs: number | null,
+  gradeScale = 1,
+): number {
   return (
     accuracy *
-    (avgTimeToCorrectMs === null ? 1 : speedFactor(avgTimeToCorrectMs))
+    (avgTimeToCorrectMs === null
+      ? 1
+      : speedFactor(avgTimeToCorrectMs, gradeScale))
   )
 }
 
@@ -246,7 +286,11 @@ function scoreOf(accuracy: number, avgTimeToCorrectMs: number | null): number {
 // the chord* (§5.1), which is the bar 9.2.0 was trying to raise.
 export function comboScore(history: ComboRecentHistory | null): number {
   if (history === null || history.total === 0) return 1
-  return scoreOf(recentAccuracyOf(history), history.avgTimeToCorrectMs)
+  return scoreOf(
+    recentAccuracyOf(history),
+    history.avgTimeToCorrectMs,
+    history.gradeScale ?? 1,
+  )
 }
 
 // (total − misses) / divisor, not 1 − misses/divisor: the cut points sit
@@ -262,7 +306,8 @@ function recentAccuracyOf(history: ComboRecentHistory): number {
 // as the per-combo score, fed a whole session's first-try accuracy and mean
 // time-to-correct — so a session grade and a chord grade mean the same thing.
 // A null time (a Song-only session) gets full speed credit, exactly as §5
-// scores such combos.
+// scores such combos. The time is already in chord seconds: a scale session
+// divides each prompt's time by its grade scale before averaging (§7.4).
 export function sessionScore(
   accuracy: number,
   avgTimeToCorrectMs: number | null,
@@ -285,7 +330,8 @@ export function comboGrade(score: number): ComboGrade {
 // The §7.3 slow bar: D's second, the last one that still grades. A rep past it,
 // repeated, grades the combo F on speed alone — so the in-the-moment chip and
 // the letter can't drift apart, and the chip's threshold is a number the player
-// already knows from the grade.
+// already knows from the grade. Times the combo's grade scale, like every
+// grade second (§3.6).
 export const SLOW_TIME_MS = GRADE_TIME_MS.D
 
 // The §7.3 fast bar, the same idea from the other end: A's second, the tightest
@@ -293,6 +339,14 @@ export const SLOW_TIME_MS = GRADE_TIME_MS.D
 // to grade A — so the `· fast` chip means "that one was A pace", not a number
 // invented for the chip.
 export const FAST_TIME_MS = GRADE_TIME_MS.A
+
+export function slowTimeMs(gradeScale = 1): number {
+  return SLOW_TIME_MS * gradeScale
+}
+
+export function fastTimeMs(gradeScale = 1): number {
+  return FAST_TIME_MS * gradeScale
+}
 
 // Grades worst-to-best, so "went up" is a comparison rather than string
 // trivia — what the §7.3 grade-up toast tests.
@@ -320,16 +374,20 @@ export function isPassingGrade(grade: ComboGrade | null): boolean {
   return grade !== null && gradeRank(grade) >= gradeRank(PASS_MIN_GRADE)
 }
 
+// A combo's record beside the key it is filed under — what grading a record
+// needs, since the key says how its seconds scale (gradeScaleOf).
+export type KeyedRecord = readonly [key: string, record: ComboStatRecord]
+
 // A chord's grade for Home's "In play" row (§7.1) when it spans several
 // voicing combos: the *worst* (lowest-scoring) combo's grade, surfacing the
 // weakest voicing rather than averaging it away. null when no combo has any
 // history yet (the chord reads as "learning" instead of graded).
 export function worstChordGrade(
-  records: readonly ComboStatRecord[],
+  records: readonly KeyedRecord[],
 ): ComboGrade | null {
   let worstScore: number | null = null
-  for (const record of records) {
-    const { score } = comboMetrics(record)
+  for (const [key, record] of records) {
+    const { score } = comboMetrics(record, gradeScaleOf(key))
     worstScore = worstScore === null ? score : Math.min(worstScore, score)
   }
   return worstScore === null ? null : comboGrade(worstScore)
@@ -360,8 +418,11 @@ function average(samples: readonly number[]): number | null {
     : null
 }
 
-export function comboMetrics(record: ComboStatRecord): ComboMetrics {
-  const recent = recentHistoryOf(record)
+export function comboMetrics(
+  record: ComboStatRecord,
+  gradeScale = 1,
+): ComboMetrics {
+  const recent = recentHistoryOf(record, gradeScale)
   const score = comboScore(recent)
   return {
     attempts: record.attempts,
@@ -394,8 +455,11 @@ function isProven(record: ComboStatRecord): boolean {
 // and the pass gate keeps seeing the real letter.
 export type DisplayGrade = ComboGrade | 'new'
 
-export function displayGrade(record: ComboStatRecord): DisplayGrade {
-  const { grade } = comboMetrics(record)
+export function displayGrade(
+  record: ComboStatRecord,
+  gradeScale = 1,
+): DisplayGrade {
+  const { grade } = comboMetrics(record, gradeScale)
   return grade === 'F' && !isProven(record) ? 'new' : grade
 }
 
@@ -403,11 +467,15 @@ export function displayGrade(record: ComboStatRecord): DisplayGrade {
 // `new` only when nothing proven is failing. A chord with one proven F still
 // reads F however many unproven combos sit beside it.
 export function worstChordDisplayGrade(
-  records: readonly ComboStatRecord[],
+  records: readonly KeyedRecord[],
 ): DisplayGrade | null {
   const worst = worstChordGrade(records)
   if (worst !== 'F') return worst
-  return records.some((record) => displayGrade(record) === 'F') ? 'F' : 'new'
+  return records.some(
+    ([key, record]) => displayGrade(record, gradeScaleOf(key)) === 'F',
+  )
+    ? 'F'
+    : 'new'
 }
 
 export interface ComboRow {
@@ -438,7 +506,7 @@ export class InMemoryComboStats implements ComboStatsSource {
   }
 
   recentHistory(comboKey: string): ComboRecentHistory | null {
-    return recentHistoryOf(this.get(comboKey))
+    return recentHistoryOf(this.get(comboKey), gradeScaleOf(comboKey))
   }
 
   record(
@@ -448,7 +516,12 @@ export class InMemoryComboStats implements ComboStatsSource {
   ): void {
     this.records.set(
       comboKey,
-      applyOutcome(this.get(comboKey), outcome, timeToCorrectMs),
+      applyOutcome(
+        this.get(comboKey),
+        outcome,
+        timeToCorrectMs,
+        gradeScaleOf(comboKey),
+      ),
     )
   }
 }
@@ -479,7 +552,7 @@ export function rankWorstCombos(
   const scored = pool.flatMap((combo) => {
     const record = stats.get(comboKey(combo))
     if (record === null || record.attempts === 0) return []
-    const recent = recentHistoryOf(record)
+    const recent = recentHistoryOf(record, comboGradeScale(combo))
     const recentMissRate = recent === null ? 0 : recent.misses / recent.total
     const lifetimeMissRate = 1 - record.firstTrySuccesses / record.attempts
     if (recentMissRate === 0 && lifetimeMissRate === 0) return []

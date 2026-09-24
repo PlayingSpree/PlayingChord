@@ -144,6 +144,17 @@ describe('buildSessionReport (§7.4)', () => {
     expect(report.grade).toBe(comboGrade(sessionScore(0.8, 1400)))
   })
 
+  it('grades a scale session in chord seconds, shows plain ones (§7.4)', () => {
+    const events = [
+      timed('s:0:major:up-1', 'first-try', 2000),
+      timed('s:7:major:up-1', 'first-try', 2000),
+    ]
+    const report = buildSessionReport(input({ events, promptsPlayed: 2 }))
+    expect(report.avgTimeMs).toBeCloseTo(2000, 6)
+    // Two seconds is S pace for a one-octave run.
+    expect(report.grade).toBe('S')
+  })
+
   it('gives a Song session full speed credit (no time samples)', () => {
     const events = [
       bar('a', 'first-try'),

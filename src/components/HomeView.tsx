@@ -74,9 +74,9 @@ export function HomeView({
     const comboStats = appStorage.state.comboStats
     const entries = chordPassStatus()
     const withGrade = (chord: (typeof entries)[number]) => {
-      const records = Object.entries(comboStats)
-        .filter(([key]) => key.startsWith(`${chord.key}:`))
-        .map(([, record]) => record)
+      const records = Object.entries(comboStats).filter(([key]) =>
+        key.startsWith(`${chord.key}:`),
+      )
       return {
         key: chord.key,
         label: chord.label,
