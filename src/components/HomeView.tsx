@@ -4,14 +4,21 @@ import { useSettings } from '../store/settingsStore'
 import { useLibrary } from '../store/libraryStore'
 import {
   appStorage,
+  dailyCounts,
   lastDateKeys,
   localDateKey,
   meetsGoal,
+  recordsForSide,
   weekFirstTryDelta,
 } from '../storage'
-import { worstChordDisplayGrade, type DisplayGrade } from '../practice'
+import {
+  worstChordDisplayGrade,
+  type DisplayGrade,
+  type Side,
+} from '../practice'
 import { DevicePicker } from './DevicePicker'
-import { MODE_LABELS, MODE_ORDER, START_LABEL } from './modes'
+import { MODE_LABELS, START_LABEL } from './modes'
+import { counted, noun, SIDE_LABELS, SIDES, sideModes } from './sides'
 import { Card, Chip, RaisedButton, SectionLabel } from './ui'
 import { cx } from './cx'
 import { gradeText } from './grades'
@@ -27,6 +34,10 @@ import { gradeText } from './grades'
 // Daily practice doesn't (§5.3: every preset's learned chords under a time
 // cap), so selecting it adds a line saying what it will deal instead; the
 // preset controls stay put, still configuring the other three.
+// Everything on the card is the switched-to side's (§7.1): the Chords |
+// Scales switch above it picks the side, and with it the preset, the pool,
+// the modes and the records the Progress button reads. The goal ring, the
+// calendar and the streak are about time, so they stay shared.
 
 export function HomeView({
   onStart,
@@ -39,6 +50,8 @@ export function HomeView({
   onSettings: () => void
   onProgress: () => void
 }) {
+  const side = usePractice((s) => s.side)
+  const setSide = usePractice((s) => s.setSide)
   const presets = usePractice((s) => s.presets)
   const presetId = usePractice((s) => s.presetId)
   const mode = usePractice((s) => s.mode)
@@ -127,14 +140,19 @@ export function HomeView({
     [presetId, progress, customRules],
   )
 
-  // 14-day mini calendar + this-week delta, read once per mount.
+  // 14-day mini calendar + this-week delta, read once per mount. The
+  // calendar is shared — any practice counts — while the week's accuracy is
+  // the side's own: a combined figure would move with the mix (§7.1).
   const { calendar, week } = useMemo(() => {
     const { dailyRecords } = appStorage.state
     const todayKey = localDateKey(new Date())
     const days = lastDateKeys(todayKey, 14).map((key) => {
       const record = dailyRecords[key]
       const practiced =
-        record !== undefined && (record.activeMinutes > 0 || record.prompts > 0)
+        record !== undefined &&
+        (record.activeMinutes > 0 ||
+          record.prompts > 0 ||
+          dailyCounts(record, 'scales').prompts > 0)
       return {
         key,
         today: key === todayKey,
@@ -144,9 +162,9 @@ export function HomeView({
     })
     return {
       calendar: days,
-      week: weekFirstTryDelta(dailyRecords, todayKey),
+      week: weekFirstTryDelta(recordsForSide(dailyRecords, side), todayKey),
     }
-  }, [goalMinutes])
+  }, [goalMinutes, side])
 
   const nextBatch = Math.min(2, progress.total - progress.unlocked)
   const unlockPct =
@@ -172,6 +190,8 @@ export function HomeView({
           </RaisedButton>
         </header>
 
+        <SideSwitch side={side} onChange={setSide} />
+
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_300px]">
           <Card className="flex flex-col gap-3.5 p-6">
             <SectionLabel>Continue</SectionLabel>
@@ -191,7 +211,7 @@ export function HomeView({
 
             <div className="flex flex-wrap items-center gap-2.5 text-[15px] text-ink-muted">
               <span className="font-semibold text-ink-soft">
-                {progress.unlocked} / {progress.total} chords unlocked
+                {progress.unlocked} / {progress.total} {noun(side)} unlocked
               </span>
               <div className="h-2.5 w-full max-w-[280px] overflow-hidden rounded-full bg-track">
                 <div
@@ -264,8 +284,8 @@ export function HomeView({
               </div>
               {editing && (
                 <p className="text-[13px] text-ink-muted">
-                  Set a chord aside to stop it being dealt — it also stops
-                  holding up the next unlock. Bring it back any time.
+                  Set a {noun(side, 1)} aside to stop it being dealt — it also
+                  stops holding up the next unlock. Bring it back any time.
                 </p>
               )}
               {/* What's still to come, in unlock order (§5.1) — the chip is a
@@ -288,7 +308,7 @@ export function HomeView({
                       title={
                         editing
                           ? chord.opensWith > 0
-                            ? `Unlock now — also opens the ${chord.opensWith} chord${chord.opensWith === 1 ? '' : 's'} before it`
+                            ? `Unlock now — also opens the ${counted(side, chord.opensWith)} before it`
                             : 'Unlock now'
                           : undefined
                       }
@@ -306,7 +326,7 @@ export function HomeView({
             </div>
 
             <div className="mt-auto flex flex-wrap gap-2.5 pt-2">
-              {MODE_ORDER.map((id) => {
+              {sideModes(side).map((id) => {
                 // Daily has nothing to drill until something is learned
                 // (§5.3): it reads as locked, like a chord you haven't
                 // reached, rather than starting an empty session.
@@ -318,7 +338,7 @@ export function HomeView({
                     tone={locked ? 'locked' : 'default'}
                     title={
                       locked
-                        ? 'Pass a chord first — daily practice drills the chords you have learned'
+                        ? `Pass a ${noun(side, 1)} first — daily practice drills the ${noun(side)} you have learned`
                         : undefined
                     }
                     onClick={locked ? undefined : () => setMode(id)}
@@ -337,8 +357,7 @@ export function HomeView({
             {mode === 'learn' && (
               <p className="text-[15px] text-ink-muted">
                 <b className="font-semibold text-ink-soft">
-                  {learnSet.length} chord{learnSet.length === 1 ? '' : 's'} to
-                  learn
+                  {counted(side, learnSet.length)} to learn
                 </b>
                 {learnFiller.length > 0 && (
                   <> · with {learnFiller.join(', ')}</>
@@ -350,7 +369,7 @@ export function HomeView({
             {mode === 'daily' && (
               <p className="text-[15px] text-ink-muted">
                 <b className="font-semibold text-ink-soft">
-                  {learnedChords} learned chord{learnedChords === 1 ? '' : 's'}
+                  {learnedChords} learned {noun(side, learnedChords)}
                 </b>{' '}
                 from every preset · {dailyCapMinutes} min cap
               </p>
@@ -417,6 +436,44 @@ export function HomeView({
         </div>
       </div>
     </main>
+  )
+}
+
+// The Chords | Scales switch (§7.1): a segmented control above the Continue
+// card. Home-only — a session runs on one side — and persisted by the store
+// with each side's own preset, so switching is never a preset change in
+// disguise.
+function SideSwitch({
+  side,
+  onChange,
+}: {
+  side: Side
+  onChange: (side: Side) => void
+}) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Chords or scales"
+      className="flex w-full max-w-[320px] overflow-hidden rounded-[14px] border-2 border-card-border"
+    >
+      {SIDES.map((id) => (
+        <button
+          key={id}
+          type="button"
+          role="radio"
+          aria-checked={side === id}
+          onClick={() => onChange(id)}
+          className={cx(
+            'flex-1 py-2.5 text-[15px] transition-colors',
+            side === id
+              ? 'bg-primary font-extrabold text-primary-ink'
+              : 'font-semibold text-ink-muted hover:text-ink-soft',
+          )}
+        >
+          {SIDE_LABELS[id]}
+        </button>
+      ))}
+    </div>
   )
 }
 

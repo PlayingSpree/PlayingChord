@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { usePractice } from '../store/practiceStore'
 import { MODE_POLICY } from '../practice'
 import { cx } from './cx'
+import { noun } from './sides'
 
 // The transient in-session notice (DESIGN.md §7.3): the §5 unlock toast naming
 // the chords a fresh batch opened. Hidden in Song mode, which isn't
@@ -12,6 +13,7 @@ export function Toasts() {
   const justUnlocked = usePractice((s) => s.justUnlocked)
   const labels = usePractice((s) => s.justUnlockedLabels)
   const mode = usePractice((s) => s.mode)
+  const side = usePractice((s) => s.side)
 
   if (MODE_POLICY[mode].clockPaced) return null
   if (!justUnlocked || labels.length === 0) return null
@@ -19,7 +21,7 @@ export function Toasts() {
   return (
     <div className="pointer-events-none fixed inset-x-0 top-20 z-20 flex flex-col items-center gap-2">
       <Toast tone="unlock">
-        🔓 New chord{labels.length === 1 ? '' : 's'} unlocked:{' '}
+        🔓 New {noun(side, labels.length)} unlocked:{' '}
         <span className="font-extrabold">{labels.join(', ')}</span>
       </Toast>
     </div>

@@ -15,8 +15,9 @@ import { ProgressView } from './components/ProgressView'
 import { ChordStatsView } from './components/ChordStatsView'
 import { Chip, RaisedButton } from './components/ui'
 import { MODE_LABELS } from './components/modes'
+import { noun } from './components/sides'
 import { cx } from './components/cx'
-import { effectiveLength, MODE_POLICY } from './practice'
+import { effectiveLength, MODE_POLICY, type Side } from './practice'
 import {
   SimulatedMidiSource,
   WebMidiSource,
@@ -240,6 +241,7 @@ function StageView({
     return () => practiceStore.getState().pause()
   }, [])
 
+  const side = usePractice((s) => s.side)
   const presets = usePractice((s) => s.presets)
   const presetId = usePractice((s) => s.presetId)
   const mode = usePractice((s) => s.mode)
@@ -261,7 +263,7 @@ function StageView({
   // rather than a preset that isn't governing anything.
   const presetName =
     mode === 'daily'
-      ? 'Learned chords'
+      ? `Learned ${noun(side)}`
       : (presets.find((p) => p.id === presetId)?.name ?? 'Practice')
   const modeLabel = MODE_LABELS[mode]
   // The length applies to the practice modes (§7.2): prompts count reps,
@@ -379,7 +381,11 @@ function StageView({
       </header>
 
       <div className="flex flex-1 items-center justify-center px-6 py-8">
-        {awaitingReady ? <ReadyPanel onReady={ready} /> : <PromptCard />}
+        {awaitingReady ? (
+          <ReadyPanel side={side} onReady={ready} />
+        ) : (
+          <PromptCard />
+        )}
       </div>
 
       <footer className="px-4 pb-8">
@@ -393,7 +399,7 @@ function StageView({
 // time-to-correct it records is the time to *play* the chord, not the time to
 // walk up to the keyboard. The whole panel is the tap target (any note answers
 // it too, via the store) and the keyboard below stays live for warming up.
-function ReadyPanel({ onReady }: { onReady: () => void }) {
+function ReadyPanel({ side, onReady }: { side: Side; onReady: () => void }) {
   return (
     <button
       type="button"
@@ -404,7 +410,8 @@ function ReadyPanel({ onReady }: { onReady: () => void }) {
         Ready?
       </span>
       <span className="text-lg text-ink-muted">
-        Tap here or play any note — the timer starts with the first chord.
+        Tap here or play any note — the timer starts with the first{' '}
+        {noun(side, 1)}.
       </span>
     </button>
   )

@@ -16,10 +16,12 @@ import {
   type SessionLength,
   type SessionLengthUnit,
   type SessionMode,
+  type Side,
 } from '../practice'
 import { ALL_PITCH_CLASSES, keyDisplayName, type PitchClass } from '../theory'
 import { Chip, RaisedButton, SectionLabel, Toggle } from './ui'
-import { MODE_LABELS, MODE_ORDER } from './modes'
+import { MODE_LABELS } from './modes'
+import { counted, noun, Noun, sideModes } from './sides'
 import { cx } from './cx'
 
 // The session sheet (DESIGN.md §7.2): a modal over Home or the Stage holding
@@ -34,6 +36,8 @@ import { cx } from './cx'
 // Song's tempo / chord count / show-example are the exception — they're
 // persisted preferences that apply from the next beat or progression (§7.3),
 // not session config, so they keep writing straight through to settings.
+// The sheet stays on the side Home is switched to (§7.1): its presets and
+// modes are that side's, and changing side means going back Home.
 // Length values per unit (§7.2), ∞ last in both. A unit switch rather than
 // one long row: prompts and minutes answer different questions ("give me 20
 // reps" vs "give me 10 minutes") and mixing them in a single row of chips
@@ -67,6 +71,7 @@ export function SessionSheet({
   onStart: () => void
   onClose: () => void
 }) {
+  const side = usePractice((s) => s.side)
   const presets = usePractice((s) => s.presets)
   const [draft, setDraft] = useState<Draft>(() => {
     const state = practiceStore.getState()
@@ -202,7 +207,7 @@ export function SessionSheet({
         <div className="flex flex-col gap-1.5">
           <SectionLabel>Mode</SectionLabel>
           <div className="flex overflow-hidden rounded-[14px] border-2 border-card-border">
-            {MODE_ORDER.map((id) => {
+            {sideModes(side).map((id) => {
               // Nothing learned yet, nothing for daily to deal (§5.3).
               const locked = id === 'daily' && learnedChords === 0
               return (
@@ -227,15 +232,17 @@ export function SessionSheet({
           </div>
           {MODE_POLICY[draft.mode].hasLearnLoop && (
             <LearnSetPicker
+              side={side}
               presetId={draft.presetId}
               diatonicKey={draft.diatonicKey}
               selection={draft.learnSelection}
               onChange={(learnSelection) => patch({ learnSelection })}
             />
           )}
-          {daily && <DailySettings learnedChords={learnedChords} />}
+          {daily && <DailySettings side={side} learnedChords={learnedChords} />}
           {MODE_POLICY[draft.mode].supportsWorstOnly && (
             <WorstOnlyRow
+              side={side}
               presetId={draft.presetId}
               diatonicKey={draft.diatonicKey}
               value={draft.worstOnly}
@@ -319,7 +326,13 @@ export function SessionSheet({
 // saying what it will deal. The cap is a persisted preference, not session
 // config — like Song's tempo it writes straight through as it's set, because
 // the point of the daily drill is that it is the same tomorrow.
-function DailySettings({ learnedChords }: { learnedChords: number }) {
+function DailySettings({
+  side,
+  learnedChords,
+}: {
+  side: Side
+  learnedChords: number
+}) {
   const cap = useSettings((s) => s.settings.dailyCapMinutes)
   const update = settingsStore.getState().update
   return (
@@ -339,9 +352,9 @@ function DailySettings({ learnedChords }: { learnedChords: number }) {
         </div>
       </SettingRow>
       <p className="text-[13px] text-ink-muted">
-        Every chord you have learned, from every preset —{' '}
+        Every {noun(side, 1)} you have learned, from every preset —{' '}
         <b className="font-semibold text-ink-soft">
-          {learnedChords} chord{learnedChords === 1 ? '' : 's'}
+          {counted(side, learnedChords)}
         </b>
         . Unlocking stays in Learn and Free.
       </p>
@@ -359,11 +372,13 @@ function DailySettings({ learnedChords }: { learnedChords: number }) {
 // alongside it to keep three in play (§5.4), and the line below says which,
 // so the pool is never a surprise on the Stage.
 function LearnSetPicker({
+  side,
   presetId,
   diatonicKey,
   selection,
   onChange,
 }: {
+  side: Side
   presetId: string
   diatonicKey: PitchClass
   selection: readonly string[]
@@ -389,7 +404,7 @@ function LearnSetPicker({
 
   return (
     <div className="mt-1 flex flex-col gap-2">
-      <SectionLabel>Chords to learn</SectionLabel>
+      <SectionLabel>{Noun(side)} to learn</SectionLabel>
       <div className="flex flex-wrap gap-2">
         {choices.map((choice) => (
           <Chip
@@ -409,14 +424,14 @@ function LearnSetPicker({
       </div>
       <p className="text-[13px] text-ink-muted">
         {selection.length === 0 ? (
-          'Pick at least one chord to learn.'
+          `Pick at least one ${noun(side, 1)} to learn.`
         ) : (
           <>
             Runs until{' '}
             <b className="font-semibold text-ink-soft">
               {selection.length === 1
-                ? 'this chord'
-                : `all ${selection.length} chords`}
+                ? `this ${noun(side, 1)}`
+                : `all ${counted(side, selection.length)}`}
             </b>{' '}
             {selection.length === 1 ? 'reaches' : 'reach'} D this session
             {filler.length > 0 && <> · dealt with {filler.join(', ')}</>}.
@@ -433,11 +448,13 @@ function LearnSetPicker({
 // not the store's active one, and recomputed from the persisted records each
 // time the picks change — the sheet is opened before a session deals anything.
 function WorstOnlyRow({
+  side,
   presetId,
   diatonicKey,
   value,
   onChange,
 }: {
+  side: Side
   presetId: string
   diatonicKey: PitchClass
   value: boolean
@@ -451,12 +468,12 @@ function WorstOnlyRow({
   )
   const disabled = !canDrill && !value
   return (
-    <SettingRow label="Worst chords only" disabled={disabled}>
+    <SettingRow label={`Worst ${noun(side)} only`} disabled={disabled}>
       <Toggle
         checked={value}
         onChange={onChange}
         disabled={disabled}
-        aria-label="Worst chords only"
+        aria-label={`Worst ${noun(side)} only`}
       />
     </SettingRow>
   )
