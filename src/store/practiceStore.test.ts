@@ -31,6 +31,7 @@ import {
   createPracticeStore,
   JUST_UNLOCKED_FLASH_MS,
   type PresetMemory,
+  type PresetSelection,
 } from './practiceStore'
 
 const ADVANCE = DEFAULT_PRACTICE_SETTINGS.autoAdvanceMs
@@ -45,7 +46,7 @@ function presetsOf(
 }
 
 function memoryStub(
-  initial: Partial<{ presetId: string; diatonicKey: PitchClass }> | null = null,
+  initial: Partial<PresetSelection> | null = null,
 ): PresetMemory & { saved: unknown[] } {
   const saved: unknown[] = []
   return {
@@ -1033,8 +1034,10 @@ describe('practiceStore — preset selection (§4)', () => {
     expect(['maj7', 'min7', 'dom7']).toContain(prompt.chord.type.id)
     expect(store.getState().phase).toBe('armed')
     expect(memory.saved).toContainEqual({
+      side: 'chords',
       presetId: 'seventh-chords',
       diatonicKey: 0,
+      scalePresetId: 'major-scales',
     })
   })
 
@@ -2153,7 +2156,10 @@ describe('practiceStore — custom library (Phase 9)', () => {
     s.store.getState().refreshLibrary()
     expect(s.store.getState().presetId).toBe('first')
     expect(chordOf(s.store.getState().prompt).voicing.id).toBe('any')
-    expect(memory.saved.at(-1)).toEqual({ presetId: 'first', diatonicKey: 0 })
+    expect(memory.saved.at(-1)).toMatchObject({
+      presetId: 'first',
+      diatonicKey: 0,
+    })
   })
 
   it('falls back when rule edits leave the active preset empty', () => {
@@ -2401,5 +2407,89 @@ describe('practiceStore — scale runs (§6.6)', () => {
     expect(s.store.getState().run).toBeNull()
     s.press(60, 62, 64, 65, 67, 69, 71)
     expect(s.store.getState().phase).toBe('advancing')
+  })
+})
+
+// Two sides (§7.1): each remembers its own preset, the pickers offer only the
+// switched-to side's, and a session runs on one side.
+describe('practiceStore — sides (§7.1)', () => {
+  it('boots on the chords side with only chord presets offered', () => {
+    const { store } = setup({}, false)
+    expect(store.getState().side).toBe('chords')
+    expect(store.getState().presets.every((p) => p.kind !== 'scale')).toBe(true)
+  })
+
+  it('reopens on the remembered side and its preset', () => {
+    const memory = memoryStub({
+      side: 'scales',
+      presetId: 'seventh-chords',
+      diatonicKey: 0,
+      scalePresetId: 'minor-scales',
+    })
+    const { store } = setup({ memory }, false)
+    expect(store.getState().side).toBe('scales')
+    expect(store.getState().presetId).toBe('minor-scales')
+    expect(store.getState().presets.every((p) => p.kind === 'scale')).toBe(true)
+  })
+
+  it('remembers each side’s own preset across a switch', () => {
+    const memory = memoryStub()
+    const { store } = setup({ memory }, false)
+    store.getState().setPreset('seventh-chords')
+    store.getState().setSide('scales')
+    expect(store.getState().presetId).toBe('major-scales')
+    store.getState().setPreset('minor-scales')
+    store.getState().setSide('chords')
+    expect(store.getState().presetId).toBe('seventh-chords')
+    expect(memory.saved.at(-1)).toEqual({
+      side: 'chords',
+      presetId: 'seventh-chords',
+      diatonicKey: 0,
+      scalePresetId: 'minor-scales',
+    })
+  })
+
+  it('never switches side mid-session', () => {
+    const { store } = setup()
+    store.getState().setSide('scales')
+    expect(store.getState().side).toBe('chords')
+  })
+
+  it('offers no Song on the Scales side', () => {
+    const { store } = setup({}, false)
+    store.getState().setMode('song')
+    store.getState().setSide('scales')
+    expect(store.getState().mode).toBe('free')
+    store.getState().setMode('song')
+    expect(store.getState().mode).toBe('free')
+  })
+
+  it('keeps the best combo streak per side', () => {
+    const bestStreak = new InMemoryBestStreak()
+    const { store, press, release } = setup({ bestStreak }, false)
+    store.getState().setSide('scales')
+    store.getState().start()
+    store.getState().ready()
+    const run = store.getState().run
+    if (run === null) throw new Error('Expected a run')
+    for (const note of run.notes) {
+      press(note)
+      release(note)
+    }
+    expect(bestStreak.best('scales')).toBe(1)
+    expect(bestStreak.best()).toBe(0)
+  })
+
+  it('counts learned chords for Daily on the switched-to side only', () => {
+    const progress = new InMemoryPresetProgress()
+    progress.set('major-triads', {
+      unlockedCount: 3,
+      masteredIndices: [0],
+      setAsideIndices: [],
+    })
+    const { store } = setup({ progress }, false)
+    expect(store.getState().learnedChordCount()).toBeGreaterThan(0)
+    store.getState().setSide('scales')
+    expect(store.getState().learnedChordCount()).toBe(0)
   })
 })

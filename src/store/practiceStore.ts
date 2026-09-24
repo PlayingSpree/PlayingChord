@@ -3,7 +3,10 @@ import { useStore } from 'zustand'
 import {
   ActiveTimeTracker,
   builtInPresets,
+  builtInScalePresets,
   isScalePreset,
+  presetSide,
+  type Side,
   judgeCallouts,
   repOutcome,
   streakAfter,
@@ -77,6 +80,7 @@ import {
   PersistedComboStats,
   PersistedDailyActivity,
   PersistedPresetProgress,
+  recordsForSide,
   type BestStreakSource,
   type DailyActivitySource,
   type PresetProgressSource,
@@ -85,10 +89,14 @@ import { settingsStore } from './settingsStore'
 import { libraryStore } from './libraryStore'
 
 // Selected preset + diatonic key, remembered like the MIDI device — in the
-// versioned schema (§8); the Phase 5 plain key migrates on first load.
+// versioned schema (§8); the Phase 5 plain key migrates on first load. Since
+// scales, also the side Home is switched to and each side's own preset
+// (§7.1): `presetId` is the chords side's, as it always was.
 export interface PresetSelection {
+  side: Side
   presetId: string
   diatonicKey: PitchClass
+  scalePresetId: string | null
 }
 
 export interface PresetMemory {
@@ -97,10 +105,24 @@ export interface PresetMemory {
 }
 
 export const persistedPresetMemory: PresetMemory = {
-  load: () => appStorage.state.presetSelection,
-  save: (selection) =>
-    appStorage.update((state) => ({ ...state, presetSelection: selection })),
+  load: () => {
+    const { presetSelection, side, scalePresetId } = appStorage.state
+    return { ...presetSelection, side, scalePresetId }
+  },
+  save: ({ side, presetId, diatonicKey, scalePresetId }) =>
+    appStorage.update((state) => ({
+      ...state,
+      presetSelection: { presetId, diatonicKey },
+      side,
+      scalePresetId,
+    })),
 }
+
+// Every built-in preset of both kinds (§4); each side sees its own.
+export const allBuiltInPresets = (diatonicKey: PitchClass): Preset[] => [
+  ...builtInPresets(diatonicKey),
+  ...builtInScalePresets(),
+]
 
 function sanitizeDiatonicKey(value: unknown): PitchClass {
   return typeof value === 'number' &&
@@ -201,6 +223,11 @@ export const ACTIVE_FLUSH_MS = 5_000
 // the prompt-count length with its end-of-session Report (§7.4),
 // worst-chords-only drilling, and active-minutes → daily goal/streak tracking.
 export interface PracticeStoreState {
+  // The side Home is switched to (§7.1). Everything below that names a
+  // preset, a pool or a record is that side's.
+  side: Side
+  // The switched-to side's presets only — the pickers never offer the other
+  // kind (§7.2).
   presets: readonly Preset[]
   presetId: string
   diatonicKey: PitchClass
@@ -286,6 +313,9 @@ export interface PracticeStoreState {
   // unless a gated session is actually waiting.
   ready(): void
   onHeldChange(held: ReadonlySet<number>): void
+  // Switch Home's side (§7.1): picks up that side's remembered preset.
+  // Home-only — a no-op while a session is live, which runs on one side.
+  setSide(side: Side): void
   setPreset(id: string): void
   setDiatonicKey(key: PitchClass): void
   setMode(mode: SessionMode): void
@@ -353,7 +383,7 @@ export interface PracticeStoreDeps {
 }
 
 export function createPracticeStore({
-  presets = builtInPresets,
+  presets = allBuiltInPresets,
   voicings = () => BUILT_IN_VOICING_LIBRARY,
   stats = new PersistedComboStats(appStorage),
   activity = new PersistedDailyActivity(appStorage),
@@ -397,12 +427,30 @@ export function createPracticeStore({
 
   const remembered = memory.load()
   const initialKey = sanitizeDiatonicKey(remembered?.diatonicKey)
-  const initialPresets = presets(initialKey)
-  const fallback = initialPresets[0]
-  if (!fallback) throw new Error('No presets defined')
-  const initialId = initialPresets.some((p) => p.id === remembered?.presetId)
-    ? (remembered?.presetId ?? fallback.id)
-    : fallback.id
+  const sidePresets = (side: Side, key: PitchClass): readonly Preset[] =>
+    presets(key).filter((preset) => presetSide(preset) === side)
+  // A remembered id stands only if its side still offers it.
+  const pickId = (side: Side, id: string | null | undefined): string | null => {
+    const list = sidePresets(side, initialKey)
+    return list.find((p) => p.id === id)?.id ?? list[0]?.id ?? null
+  }
+  // Each side's active preset (§7.1), remembered across switches.
+  const chosen: Record<Side, string | null> = {
+    chords: pickId('chords', remembered?.presetId),
+    scales: pickId('scales', remembered?.scalePresetId),
+  }
+  // The remembered side, unless it has nothing to offer.
+  const preferredSide: Side =
+    remembered?.side === 'scales' ? 'scales' : 'chords'
+  let side: Side =
+    chosen[preferredSide] !== null
+      ? preferredSide
+      : preferredSide === 'chords'
+        ? 'scales'
+        : 'chords'
+  const initialId = chosen[side]
+  if (initialId === null) throw new Error('No presets defined')
+  const initialPresets = sidePresets(side, initialKey)
 
   const currentGoal = (): GoalProgress => ({
     todayMinutes: activity.todayMinutes(),
@@ -414,13 +462,30 @@ export function createPracticeStore({
   })
 
   return createStore<PracticeStoreState>()((set, get) => {
-    const resolvePool = createPoolResolver({
-      presets,
-      voicings,
-      storedProgress: (id: string) => progressStore.get(id),
-      unlockByFifths: () => settings().unlockByFifths,
-      stats,
-    })
+    // One resolver per side, so a vanished preset falls back to one of its
+    // own kind rather than across the switch.
+    const resolverFor = (of: Side) =>
+      createPoolResolver({
+        presets: (key) => sidePresets(of, key),
+        voicings,
+        storedProgress: (id: string) => progressStore.get(id),
+        unlockByFifths: () => settings().unlockByFifths,
+        stats,
+      })
+    const resolvers: Record<Side, ReturnType<typeof resolverFor>> = {
+      chords: resolverFor('chords'),
+      scales: resolverFor('scales'),
+    }
+    const resolvePool = (presetId: string, key: PitchClass) =>
+      resolvers[side](presetId, key)
+
+    const saveSelection = (diatonicKey: PitchClass) =>
+      memory.save({
+        side,
+        presetId: chosen.chords ?? '',
+        diatonicKey,
+        scalePresetId: chosen.scales,
+      })
 
     // The pool the session draws from (§4/§5): the resolved preset with its
     // expansion, chord order and §5.1 progress record. Immutable — every path
@@ -438,7 +503,9 @@ export function createPracticeStore({
     }
     persistReconciliation()
 
-    // The §5.3 daily pool: every preset's learned chords, folded together.
+    // The §5.3 daily pool: every preset's learned chords, folded together —
+    // every preset of the switched-to side, since scale Daily drills scale
+    // presets and chord Daily chord presets.
     // Cached because it resolves *every* preset (built-ins plus custom) and is
     // asked for on each prompt; `dailyCombos = null` marks it stale, which
     // every path that can change a preset's pool or its progress does.
@@ -450,7 +517,7 @@ export function createPracticeStore({
     const buildDailyPool = (): Combo[] => {
       const key = get().diatonicKey
       return dailyPool(
-        presets(key).map((preset) => {
+        sidePresets(side, key).map((preset) => {
           const p = resolvePool(preset.id, key)
           return {
             combos: p.combos,
@@ -742,7 +809,8 @@ export function createPracticeStore({
       const firstTryStreak = streakAfter(state, next)
       if (firstTryStreak === null) return
       set({ firstTryStreak })
-      if (firstTryStreak > 0) bestStreak.record(firstTryStreak)
+      // Ten chords in a row and ten scales in a row are different feats.
+      if (firstTryStreak > 0) bestStreak.record(firstTryStreak, side)
     }
 
     // What the ✔ pill has to say about this rep (§7.3/§5.4), decided on the
@@ -959,7 +1027,9 @@ export function createPracticeStore({
     // the persisted history it is measured against, and the figures derived
     // from the pool it was drawn from. The run merges its own tallies in.
     const reportContext = (): SessionRunContext => {
-      const records = activity.records()
+      // Baselines and Total prompts are the session's side's; Total time is
+      // shared, and recordsForSide keeps active minutes whole (§7.4).
+      const records = recordsForSide(activity.records(), side)
       let lifetimePrompts = 0
       let lifetimeActiveMinutes = 0
       for (const record of Object.values(records)) {
@@ -1028,9 +1098,11 @@ export function createPracticeStore({
       invalidateDaily()
       clearUnlockFlash()
       clearGradeFlash()
-      memory.save({ presetId: pool.presetId, diatonicKey })
+      chosen[side] = pool.presetId
+      saveSelection(diatonicKey)
       set({
-        presets: presets(diatonicKey),
+        side,
+        presets: sidePresets(side, diatonicKey),
         presetId: pool.presetId,
         diatonicKey,
         progress: pool.progress,
@@ -1053,6 +1125,7 @@ export function createPracticeStore({
     }
 
     return {
+      side,
       presets: initialPresets,
       presetId: initialId,
       diatonicKey: initialKey,
@@ -1136,6 +1209,16 @@ export function createPracticeStore({
         machine.heldChange(held)
       },
 
+      setSide(next: Side) {
+        if (next === side || sessionLive) return
+        const id = chosen[next] ?? sidePresets(next, get().diatonicKey)[0]?.id
+        if (id === undefined) return
+        side = next
+        // No Song on the Scales side: it drills chord transitions (§6.5).
+        if (side === 'scales' && get().mode === 'song') set({ mode: 'free' })
+        applySelection(id, get().diatonicKey)
+      },
+
       setPreset(id: string) {
         if (id === get().presetId) return
         if (!get().presets.some((p) => p.id === id)) return
@@ -1151,13 +1234,17 @@ export function createPracticeStore({
         } else {
           // Key picker is only shown for the diatonic preset, but keep the
           // state coherent if it's ever set another way.
-          memory.save({ presetId: get().presetId, diatonicKey: sanitized })
-          set({ diatonicKey: sanitized, presets: presets(sanitized) })
+          saveSelection(sanitized)
+          set({
+            diatonicKey: sanitized,
+            presets: sidePresets(side, sanitized),
+          })
         }
       },
 
       setMode(mode: SessionMode) {
         if (mode === get().mode) return
+        if (mode === 'song' && side === 'scales') return // §6.5, §7.1
         const leavingSong = get().mode === 'song'
         // A pending ✔ counts under the outgoing mode's rules (recordOutcome
         // still sees the old mode); the current prompt is replaced so a
@@ -1279,13 +1366,11 @@ export function createPracticeStore({
           // The active preset vanished (deleted, or now empty) — the
           // resolver fell back; remember the fallback like any selection.
           recentKeys = []
-          memory.save({
-            presetId: pool.presetId,
-            diatonicKey: current.diatonicKey,
-          })
+          chosen[side] = pool.presetId
+          saveSelection(current.diatonicKey)
         }
         set({
-          presets: presets(current.diatonicKey),
+          presets: sidePresets(side, current.diatonicKey),
           presetId: pool.presetId,
           progress: pool.progress,
         })
@@ -1394,7 +1479,7 @@ export function createPracticeStore({
 // factory defaults stay built-ins-only so tests are isolated from the
 // shared appStorage singleton.
 const appPresets = (diatonicKey: PitchClass): readonly Preset[] => [
-  ...builtInPresets(diatonicKey),
+  ...allBuiltInPresets(diatonicKey),
   ...libraryStore.getState().customPresets,
 ]
 const appVoicings = (): VoicingLibrary =>

@@ -93,6 +93,24 @@ export const EMPTY_DAILY_COUNTS: DailyCounts = {
   timeToCorrectMs: 0,
 }
 
+// The daily records as one side sees them (§7.4, §7.5): each day's prompt
+// counters are that side's, active minutes the shared figure — so every
+// reader written against the top-level counters reads either side unchanged.
+export function recordsForSide(
+  records: Readonly<Record<string, DailyRecord>>,
+  side: Side,
+): Record<string, DailyRecord> {
+  const out: Record<string, DailyRecord> = {}
+  for (const [key, record] of Object.entries(records)) {
+    out[key] = {
+      date: record.date,
+      activeMinutes: record.activeMinutes,
+      ...dailyCounts(record, side),
+    }
+  }
+  return out
+}
+
 // One side's counters for a day — zero where the day has none.
 export function dailyCounts(
   record: DailyRecord | undefined,

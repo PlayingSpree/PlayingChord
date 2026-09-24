@@ -13,7 +13,7 @@ import {
   type ScaleTypeId,
   type VoicingLibrary,
 } from '../theory'
-import type { ChordCombo, Combo, ScaleCombo } from './combos'
+import type { ChordCombo, Combo, ScaleCombo, Side } from './combos'
 
 // A preset defines the pool the generator draws from (DESIGN.md §4). Pools
 // have variants because some (diatonic) are root+quality *pairs*, not a
@@ -62,6 +62,11 @@ export type Preset = ChordPreset | ScalePreset
 
 export function isScalePreset(preset: Preset): preset is ScalePreset {
   return preset.kind === 'scale'
+}
+
+// Which side of Home a preset belongs to (§7.1).
+export function presetSide(preset: Preset): Side {
+  return isScalePreset(preset) ? 'scales' : 'chords'
 }
 
 export interface PoolScale {

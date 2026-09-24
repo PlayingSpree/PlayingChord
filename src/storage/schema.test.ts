@@ -15,6 +15,7 @@ import {
   sanitizeStateV1,
   sanitizeStateV2,
   dailyCounts,
+  recordsForSide,
 } from './schema'
 import {
   EDITOR_MAX_HAND_NOTES,
@@ -596,6 +597,22 @@ describe('scales in the v2 schema (§8)', () => {
       timedPrompts: 20,
       timeToCorrectMs: 40_000,
     })
+  })
+
+  it('shows each side its own counters and the shared minutes', () => {
+    const scales = {
+      prompts: 5,
+      firstTrySuccesses: 4,
+      timedPrompts: 5,
+      timeToCorrectMs: 30_000,
+    }
+    const records = { [day.date]: { ...day, scales } }
+    expect(recordsForSide(records, 'scales')[day.date]).toEqual({
+      date: day.date,
+      activeMinutes: 12,
+      ...scales,
+    })
+    expect(recordsForSide(records, 'chords')[day.date]).toEqual(day)
   })
 
   it('drops a garbled scales bucket, not the day', () => {
