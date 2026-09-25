@@ -47,6 +47,10 @@ export interface PracticeSettings extends MatchSettings {
   // circle of fifths (C → G → D …) instead of chromatically. Diatonic and
   // explicit pools keep their own deliberate order either way.
   unlockByFifths: boolean
+  // Unlocks mid-session (§5.1): items a batch opens during a session wait for
+  // the next one instead of joining the drill at once — the session keeps the
+  // pool it started with, and the new items open a fresh session of their own.
+  holdNewUnlocks: boolean
   // Song mode (§6.5) — set beside the mode picker, not the settings panel,
   // but persisted here so tempo/length survive reloads.
   songTempoBpm: number
@@ -69,6 +73,7 @@ export const DEFAULT_PRACTICE_SETTINGS: PracticeSettings = {
   pianoSoundEnabled: true,
   chordNameSize: 'lg',
   unlockByFifths: false,
+  holdNewUnlocks: true,
   songTempoBpm: 60,
   songChordCount: 4,
   songShowExample: true,
@@ -175,6 +180,7 @@ export function sanitizeSettings(value: unknown): PracticeSettings {
     ),
     chordNameSize: asChordNameSize(raw.chordNameSize, defaults.chordNameSize),
     unlockByFifths: asBoolean(raw.unlockByFifths, defaults.unlockByFifths),
+    holdNewUnlocks: asBoolean(raw.holdNewUnlocks, defaults.holdNewUnlocks),
     songTempoBpm: sanitizeSongTempoBpm(raw.songTempoBpm),
     songChordCount: asSongChordCount(
       raw.songChordCount,

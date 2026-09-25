@@ -499,6 +499,12 @@ export function createPracticeStore({
 
     let justUnlockedTimer: ReturnType<typeof setTimeout> | null = null
 
+    // Items a batch opened during this session, kept out of dealing until the
+    // next one while the holdNewUnlocks setting is on (§5.1). Read through the
+    // setting on every deal, so turning it off mid-session lets them straight
+    // in. Emptied wherever a session begins or the pool it names is replaced.
+    let heldUnlocks: ReadonlySet<string> = new Set()
+
     // Persist a reconciliation that changed a stored record, so the self-heal
     // happens once instead of on every load. Only for the pool actually
     // switched to — resolving a draft (§7.2) never writes.
@@ -645,8 +651,8 @@ export function createPracticeStore({
 
     // Feeds a completed free-practice prompt into the §5 unlock progress — as
     // the chord's grade, so it must run *after* stats.record(). On an unlock,
-    // the queue is dropped so newly opened chords can enter the very next
-    // preview refill (the pool changed, same rule as every other pool change).
+    // the new chords are held for the next session (holdNewUnlocks, §5.1), or
+    // the queue is dropped so they can enter the very next preview refill.
     //
     // Daily practice never gets here (see recordOutcome): its pool is the
     // learned chords of *every* preset (§5.3), so an index into the selected
@@ -670,10 +676,15 @@ export function createPracticeStore({
       set({ progress: pool.progress })
       resetLearnSelection()
       if (update.justUnlocked) {
-        queue = []
-        const newLabels = pool.chordOrder
-          .slice(previousCount, pool.progressRecord.unlockedCount)
-          .map((key: string) => pool.label(key))
+        const newKeys = pool.chordOrder.slice(
+          previousCount,
+          pool.progressRecord.unlockedCount,
+        )
+        heldUnlocks = new Set([...heldUnlocks, ...newKeys])
+        // Held, they can't be in the preview anyway; let in, the preview is
+        // rebuilt so they can appear in it at once.
+        if (!settings().holdNewUnlocks) queue = []
+        const newLabels = newKeys.map((key: string) => pool.label(key))
         run.noteUnlocked(newLabels)
         flashJustUnlocked(newLabels)
       }
@@ -687,9 +698,18 @@ export function createPracticeStore({
     // set; an empty result (every unlocked chord already passed with nothing
     // ever missed, or a selection the pool no longer contains) falls back to
     // the whole unlocked pool.
+    //
+    // Chords unlocked mid-session are taken out of every one of those while
+    // they are held (§5.1). The session started without them, so what's left
+    // is never empty — the pool it opened with is still all there.
     const pickPool = (): readonly Combo[] => {
       const state = get()
-      const available = pool.inPlay
+      const held = settings().holdNewUnlocks ? heldUnlocks : new Set<string>()
+      const dealable = (combos: readonly Combo[]) =>
+        held.size === 0
+          ? combos
+          : combos.filter((combo) => !held.has(poolChordKey(combo)))
+      const available = dealable(pool.inPlay)
       if (state.mode === 'daily') {
         // Defensive: the mode is offered only when something is learned
         // (learnedChordCount), but nextPrompt needs a non-empty pool (§5).
@@ -697,14 +717,14 @@ export function createPracticeStore({
         return daily.length > 0 ? daily : available
       }
       if (MODE_POLICY[state.mode].supportsWorstOnly && state.worstOnly) {
-        const worst = pool.worstOnly()
+        const worst = dealable(pool.worstOnly())
         if (worst.length > 0) return worst
       }
       if (state.mode === 'learn') {
-        const learning = pool.learnSet(state.learnSelection)
+        const learning = dealable(pool.learnSet(state.learnSelection))
         if (learning.length > 0) return learning
       }
-      return available
+      return available.length > 0 ? available : pool.inPlay
     }
 
     const nextPrompt = () => {
@@ -1021,6 +1041,7 @@ export function createPracticeStore({
 
     const resetSession = () => {
       run = new SessionRun()
+      heldUnlocks = new Set() // last session's unlocks are this one's pool
       // A fresh loop grades from nothing (§5.4): last session's reps are gone,
       // so a chord rehearsed yesterday must be brought up again today. That is
       // the point of grading the session rather than the record.
@@ -1105,6 +1126,7 @@ export function createPracticeStore({
       recordOutcome()
       pool = resolvePool(presetId, diatonicKey)
       persistReconciliation()
+      heldUnlocks = new Set() // they named chords in the old pool
       recentKeys = []
       queue = []
       // The diatonic preset's pool follows its key, so the learned set can
@@ -1410,6 +1432,7 @@ export function createPracticeStore({
         if (presetId !== pool.presetId) return
         pool = resolvePool(get().presetId, get().diatonicKey)
         persistReconciliation()
+        heldUnlocks = new Set() // the wipe re-locks them anyway
         clearUnlockFlash()
         clearGradeFlash()
         queue = []
@@ -1433,6 +1456,7 @@ export function createPracticeStore({
         // The order setting feeds resolution, so re-resolving picks it up.
         pool = resolvePool(get().presetId, get().diatonicKey)
         persistReconciliation()
+        heldUnlocks = new Set() // the frontier now names different chords
         // Passed *indices* carry onto the new order (§5.1), so which chords
         // count as learned moves with it — the daily pool with them.
         invalidateDaily()

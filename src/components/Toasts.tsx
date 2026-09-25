@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { usePractice } from '../store/practiceStore'
+import { useSettings } from '../store/settingsStore'
 import { MODE_POLICY } from '../practice'
 import { cx } from './cx'
 import { noun } from './sides'
@@ -14,6 +15,8 @@ export function Toasts() {
   const labels = usePractice((s) => s.justUnlockedLabels)
   const mode = usePractice((s) => s.mode)
   const side = usePractice((s) => s.side)
+  // Held for the next session (§5.1): say so, or the player waits for them.
+  const held = useSettings((s) => s.settings.holdNewUnlocks)
 
   if (MODE_POLICY[mode].clockPaced) return null
   if (!justUnlocked || labels.length === 0) return null
@@ -23,6 +26,7 @@ export function Toasts() {
       <Toast tone="unlock">
         🔓 New {noun(side, labels.length)} unlocked:{' '}
         <span className="font-extrabold">{labels.join(', ')}</span>
+        {held && ' · from next session'}
       </Toast>
     </div>
   )

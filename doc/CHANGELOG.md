@@ -15,6 +15,17 @@ artifact and are not recoverable.
 
 ---
 
+## 10.6.0 — 2026-09-25
+
+**Unlocks wait for the next session.** A batch earned mid-session is still opened,
+saved, toasted and listed on the Report at once, but no longer dealt until a new
+session starts: the session in progress keeps the pool it began with (§5.1). The
+toast says `· from next session` (§7.3). A new setting, *New unlocks wait for the
+next session* (default on), restores the old behavior of dealing them straight
+away (§7.6).
+
+---
+
 ## 10.5.0 — 2026-09-25
 
 **Learn picks up new items; `new` means never played.** The learn set reopens on its

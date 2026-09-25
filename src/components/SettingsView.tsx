@@ -283,6 +283,17 @@ function GoalSection() {
         C → G → D → A … for root-ordered chord pools; diatonic and custom lists
         keep their own order, and scales always open by key signature
       </p>
+      <Row label="New unlocks wait for the next session">
+        <Toggle
+          checked={settings.holdNewUnlocks}
+          onChange={(v) => update({ holdNewUnlocks: v })}
+          aria-label="New unlocks wait for the next session"
+        />
+      </Row>
+      <p className="text-xs text-ink-muted">
+        A session keeps the pool it started with; off, newly unlocked items join
+        the drill at once
+      </p>
     </SettingsCard>
   )
 }

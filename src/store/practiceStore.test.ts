@@ -589,6 +589,49 @@ describe('practiceStore — unlock progress (§5)', () => {
     expect(s.store.getState().justUnlockedLabels).toEqual([])
   })
 
+  // Plays fast first-tries until a batch opens, then 30 more prompts; returns
+  // every root shown or previewed after the unlock.
+  const rootsAfterUnlock = (s: ReturnType<typeof setup>): Set<number> => {
+    for (let i = 0; i < 10 && !s.store.getState().justUnlocked; i++) {
+      playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
+    }
+    expect(s.store.getState().justUnlocked).toBe(true)
+    const seen = new Set<number>()
+    for (let i = 0; i < 30; i++) {
+      seen.add(chordOf(s.store.getState().prompt).chord.root)
+      s.store.getState().upcoming.forEach((u) => {
+        seen.add(Number(u.key.split(':')[0]))
+      })
+      playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
+    }
+    return seen
+  }
+
+  it('holds a mid-session unlock for the next session', () => {
+    const s = setup({ presets: sixRoots })
+    const seen = rootsAfterUnlock(s)
+    expect([...seen].sort()).toEqual([0, 1, 2])
+
+    // A fresh session deals them.
+    s.store.getState().discardSession()
+    enterStage(s)
+    const next = new Set<number>()
+    for (let i = 0; i < 30; i++) {
+      next.add(chordOf(s.store.getState().prompt).chord.root)
+      playSlowAndAdvance(s, chordOf(s.store.getState().prompt))
+    }
+    expect(next.has(3) || next.has(4)).toBe(true)
+  })
+
+  it('lets a mid-session unlock straight in with holdNewUnlocks off', () => {
+    const s = setup({
+      presets: sixRoots,
+      settings: () => ({ ...DEFAULT_PRACTICE_SETTINGS, holdNewUnlocks: false }),
+    })
+    const seen = rootsAfterUnlock(s)
+    expect(seen.has(3) || seen.has(4)).toBe(true)
+  })
+
   it('unlockByFifths reorders a product pool’s unlock order (§5.1)', () => {
     const s = setup({
       presets: sixRoots,

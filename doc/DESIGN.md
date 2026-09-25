@@ -4,7 +4,7 @@ A web app for practicing piano chords and scales with a MIDI keyboard. The app s
 random chord or scale from a chosen preset, the user plays it on their connected MIDI
 keyboard, and the app validates the input and moves on to the next one.
 
-Spec version: **10.5.0** (2026-09-25) — chords and scales. Revision history lives in
+Spec version: **10.6.0** (2026-09-25) — chords and scales. Revision history lives in
 [CHANGELOG.md](CHANGELOG.md); this document describes only what the app *is* today.
 Both previously open questions are resolved (see [§9](#9-resolved-questions)). Build
 sequencing (what gets implemented first) is intentionally left outside this document.
@@ -502,9 +502,17 @@ flashcard-style batches instead of the whole pool at once:
   practice never pass anything — the first two record no self-paced outcome, and
   the third deals only items that are passed already (§5.3).
 - Once **every** unlocked item is passed, the **next 2** unlock, repeating until
-  the whole pool is open — after which generation behaves exactly as above. The
-  upcoming-preview queue is rebuilt at the moment of an unlock (the pool changed,
-  like any other pool change), so new items can appear in the very next preview.
+  the whole pool is open — after which generation behaves exactly as above.
+- **A mid-session unlock waits for the next session** (setting, default on). The
+  batch is opened, saved, toasted and listed on the Report the moment it is earned,
+  but nothing deals it until a session starts: the drill in progress keeps the pool
+  it started with, and the new items get a session of their own — Home's In play
+  row shows them as *new* (§7.1) and Learn's default set picks them up (§5.4) in
+  the meantime. Dropping two unknown items into a drill that is going well
+  changes its difficulty under the player, and the moment a batch opens is the
+  natural break anyway. With the setting off, the upcoming-preview queue is
+  rebuilt at the moment of an unlock (the pool changed, like any other pool
+  change), so new items can appear in the very next preview.
 - **Scope:** the gate applies to Learn and free-practice generation
   (worst-chords-only, free-only, and the learn set, Learn-only — §5.4 — each
   narrowing *within* the unlocked set; see the §7.2 session sheet). **Song mode is
@@ -1073,7 +1081,8 @@ counts a new progression in).
   and loop chips (the length doesn't apply). The old
   always-visible unlock chip is gone — Home's In play row carries the per-chord
   breakdown — but the transient unlock **toast** ("🔓 New chords unlocked:
-  A, E") still fires at the mid-session unlock moment.
+  A, E") still fires at the mid-session unlock moment, adding `· from next
+  session` while unlocks are held (§5.1) so the player isn't left waiting for them.
 - **Grade-up notice**: a combo's grade rides a *recent* window (§5), so it can
   climb mid-session; when it does, a line under the feedback pill says so
   ("📈 C maj grade up: D → C"), rather than leaving the news for the player's
@@ -1376,7 +1385,8 @@ all sessions, for the side Home is switched to (§7.1), titled *Chord progress* 
   on/off, staff key signature on/off (chord root as key, §3.5; a scale's own key,
   §3.6), correct-chime on/off,
   piano sound on key press on/off (§9), judgment delay, auto-advance delay, daily
-  goal minutes, circle-of-fifths unlock order on/off (§5.1), scale fingering
+  goal minutes, circle-of-fifths unlock order on/off (§5.1), new unlocks wait
+  for the next session on/off (§5.1, default on), scale fingering
   hand Off / RH / LH (§6.6; also in the session sheet). (Mode sub-settings —
   worst-chords-only, the learn set, Song's tempo / chords-per-progression /
   show-example — live in the session sheet, §7.2, not the settings panel; the

@@ -78,6 +78,7 @@ describe('sanitizeSettings', () => {
       pianoSoundEnabled: false,
       chordNameSize: 'sm',
       unlockByFifths: true,
+      holdNewUnlocks: false,
       songTempoBpm: 90,
       songChordCount: 3,
       songShowExample: false,
@@ -148,6 +149,14 @@ describe('sanitizeSettings', () => {
       false,
     )
     expect(sanitizeSettings({ unlockByFifths: true }).unlockByFifths).toBe(true)
+  })
+
+  it('defaults holding mid-session unlocks on and coerces junk', () => {
+    expect(sanitizeSettings({}).holdNewUnlocks).toBe(true)
+    expect(sanitizeSettings({ holdNewUnlocks: 0 }).holdNewUnlocks).toBe(true)
+    expect(sanitizeSettings({ holdNewUnlocks: false }).holdNewUnlocks).toBe(
+      false,
+    )
   })
 
   it('defaults the chord name size and rejects unknown values', () => {
