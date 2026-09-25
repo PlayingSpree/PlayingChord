@@ -121,6 +121,15 @@ supported — try Chrome or Edge") — no degraded fallback input mode.
 
 No backend. The app is a static site (deployable to GitHub Pages / Netlify).
 
+**Installable and offline.** The site is a PWA: a manifest makes it installable as
+its own window (Chrome/Edge — the same browsers Web MIDI already requires), and a
+service worker precaches the whole build, so once visited the app runs with no
+network at all. It asks the browser to keep its storage **persistent**, since
+`localStorage` holds the only copy of the user's stats. An update never replaces a
+running app: a newly deployed build waits until every window of the app has closed
+and takes over on the next launch, so a session is never cut off by a reload. The
+build tag on Home (§7.1) says which build is actually running.
+
 ---
 
 ## 3. Domain Model

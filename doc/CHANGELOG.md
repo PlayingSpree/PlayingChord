@@ -15,6 +15,15 @@ artifact and are not recoverable.
 
 ---
 
+## 10.7.0 — 2026-09-25
+
+**Installable and offline.** The app is a PWA: it can be installed as its own
+window and, once visited, runs without a network. A new deploy takes over on the
+next launch rather than reloading a running app. Storage is requested as
+persistent. It has its own icon now, in place of the Vite placeholder (§2).
+
+---
+
 ## 10.6.0 — 2026-09-25
 
 **Unlocks wait for the next session.** A batch earned mid-session is still opened,

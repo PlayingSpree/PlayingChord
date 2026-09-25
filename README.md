@@ -49,6 +49,14 @@ the live build; re-run the workflow from `master` to put production back. The
 `github-pages` environment allows exactly `master`, `dev`, and `dev/**`, so any
 other branch has to be merged into `dev` first.
 
+The site is a PWA with a service worker, which changes how a new deploy
+arrives: an open or installed copy of the app keeps running the build it started
+with, and picks up the new one only after **all** of its windows and tabs are closed
+and it is opened again. When switching the live site between a preview and
+`master`, check the build tag on Home to see which build you're actually on.
+The service worker isn't active in `npm run dev`; use `npm run build && npm run
+preview` to try install and offline behavior locally.
+
 Any other static host (Netlify, Cloudflare Pages, `python -m http.server` on a
 LAN) just serves `dist/` as-is. Remember the site still needs a Web-MIDI-capable
 browser (Chrome/Edge/Opera) and a MIDI keyboard on the *visiting* machine.

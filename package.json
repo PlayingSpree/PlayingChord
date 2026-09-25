@@ -1,7 +1,7 @@
 {
   "name": "playingchord",
   "private": true,
-  "version": "10.6.0",
+  "version": "10.7.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -31,6 +31,7 @@
     "tailwindcss": "^4.3.2",
     "typescript": "~6.0.2",
     "vite": "^8.1.1",
+    "vite-plugin-pwa": "^1.3.0",
     "vitest": "^4.1.10"
   }
 }
