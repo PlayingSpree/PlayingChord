@@ -135,16 +135,16 @@ describe('the evidence floor (§5, §7.5)', () => {
   })
 })
 
-describe('displayGrade / worstChordDisplayGrade (§7.5 `new`)', () => {
+describe('displayGrade / worstChordDisplayGrade (§7.5 `pending`)', () => {
   const missedRecord = (n: number): ComboStatRecord => {
     let record: ComboStatRecord | null = null
     for (let i = 0; i < n; i++) record = applyOutcome(record, 'missed', 3000)
     return record!
   }
 
-  it('shows `new` for an F the combo has not had the reps to disprove', () => {
-    expect(displayGrade(missedRecord(1))).toBe('new')
-    expect(displayGrade(missedRecord(GRADE_EVIDENCE_FLOOR - 1))).toBe('new')
+  it('shows `pending` for an F the combo has not had the reps to disprove', () => {
+    expect(displayGrade(missedRecord(1))).toBe('pending')
+    expect(displayGrade(missedRecord(GRADE_EVIDENCE_FLOOR - 1))).toBe('pending')
   })
 
   it('shows the F once the window reaches the floor', () => {
@@ -153,21 +153,21 @@ describe('displayGrade / worstChordDisplayGrade (§7.5 `new`)', () => {
 
   it('shows a below-floor letter as itself — passing is its own proof', () => {
     // Two clean reps grade D and pass the chord, so the badge has to say D:
-    // a `new` beside the ★ learned pill would contradict it.
+    // a `pending` beside the ★ learned pill would contradict it.
     expect(displayGrade(cleanRecord(2, 2500))).toBe('D')
   })
 
-  it('folds a chord to `new` only when nothing proven is failing', () => {
+  it('folds a chord to `pending` only when nothing proven is failing', () => {
     const unprovenF = missedRecord(1)
     const provenF = missedRecord(GRADE_EVIDENCE_FLOOR)
     const passing = cleanRecord(GRADE_EVIDENCE_FLOOR, 2000)
 
-    expect(worstChordDisplayGrade(keyed(unprovenF))).toBe('new')
+    expect(worstChordDisplayGrade(keyed(unprovenF))).toBe('pending')
     // A proven F drags the chord red however many unproven combos sit beside it.
     expect(worstChordDisplayGrade(keyed(unprovenF, provenF))).toBe('F')
     // An unproven F still outranks a passing combo — the chord isn't passed,
     // it just has nothing to show yet.
-    expect(worstChordDisplayGrade(keyed(unprovenF, passing))).toBe('new')
+    expect(worstChordDisplayGrade(keyed(unprovenF, passing))).toBe('pending')
     expect(worstChordDisplayGrade(keyed(passing))).toBe('A')
     expect(worstChordDisplayGrade(keyed())).toBeNull()
   })

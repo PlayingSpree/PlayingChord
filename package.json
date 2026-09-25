@@ -1,7 +1,7 @@
 {
   "name": "playingchord",
   "private": true,
-  "version": "10.4.1",
+  "version": "10.5.0",
   "type": "module",
   "scripts": {
     "dev": "vite",

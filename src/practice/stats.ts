@@ -447,24 +447,24 @@ function isProven(record: ComboStatRecord): boolean {
   return recent !== null && recent.total >= GRADE_EVIDENCE_FLOOR
 }
 
-// The grade as shown (§7.5). `new` stands in for an F a combo hasn't had the
+// The grade as shown (§7.5). `pending` stands in for an F a combo hasn't had the
 // chance to disprove yet — everything else shows its letter, including a
 // below-floor D, because passing is its own proof (§5.1) and the `★ learned`
 // pill must never contradict the badge beside it. Display only: comboScore
 // still returns the floored number, so §5 weighting keeps drilling the combo
 // and the pass gate keeps seeing the real letter.
-export type DisplayGrade = ComboGrade | 'new'
+export type DisplayGrade = ComboGrade | 'pending'
 
 export function displayGrade(
   record: ComboStatRecord,
   gradeScale = 1,
 ): DisplayGrade {
   const { grade } = comboMetrics(record, gradeScale)
-  return grade === 'F' && !isProven(record) ? 'new' : grade
+  return grade === 'F' && !isProven(record) ? 'pending' : grade
 }
 
 // The same rule folded over a chord's combos for Home's In play row (§7.1):
-// `new` only when nothing proven is failing. A chord with one proven F still
+// `pending` only when nothing proven is failing. A chord with one proven F still
 // reads F however many unproven combos sit beside it.
 export function worstChordDisplayGrade(
   records: readonly KeyedRecord[],
@@ -475,7 +475,7 @@ export function worstChordDisplayGrade(
     ([key, record]) => displayGrade(record, gradeScaleOf(key)) === 'F',
   )
     ? 'F'
-    : 'new'
+    : 'pending'
 }
 
 export interface ComboRow {

@@ -254,8 +254,10 @@ describe('pickSuggestion (§5.2 set-aside offer)', () => {
     ).toBeNull()
   })
 
-  it('never offers an unproven chord — `new` needs reps, not a bench', () => {
-    expect(pickSuggestion('free', 'F', [chord('C', 'new', 3)], [])).toBeNull()
+  it('never offers an unproven chord — `pending` needs reps, not a bench', () => {
+    expect(
+      pickSuggestion('free', 'F', [chord('C', 'pending', 3)], []),
+    ).toBeNull()
   })
 
   it('says nothing when the floor already blocks the move', () => {

@@ -87,6 +87,10 @@ export interface PoolProgress {
 // resolved through this pool's spelling.
 export interface PoolChordEntry extends ChordPassEntry {
   label: string
+  // Any persisted reps at all — what splits a not-yet-passed chord into `new`
+  // (never played) and `learning` (§7.1). Learn's reps are session-only
+  // (§5.4), so they don't count.
+  played: boolean
 }
 
 // Swapping in a rep that hasn't been written yet, which is how the ✔ pill calls
@@ -243,7 +247,7 @@ export class Pool {
   }
 
   // The same fold through the display rule (§7.5) — an unproven combo reads
-  // `new`, not F. What the §5.2 suggestion judges on: a chord that has barely
+  // `pending`, not F. What the §5.2 suggestion judges on: a chord that has barely
   // been played needs reps, not a bench.
   displayGrade(chordKey: string): DisplayGrade | null {
     const records: KeyedRecord[] = []
@@ -295,10 +299,9 @@ export class Pool {
   // Every pool chord in unlock order with its locked/unlocked/passed status and
   // display label — the unlock chip's drill-down (§7) and Home's In play row.
   passList(): PoolChordEntry[] {
-    return chordPassList(this.chordOrder, this.progressRecord).map((entry) => ({
-      ...entry,
-      label: this.label(entry.key),
-    }))
+    return chordPassList(this.chordOrder, this.progressRecord).map((entry) =>
+      this.#display(entry),
+    )
   }
 
   // May this chord be set aside right now (§5.2)? False once doing so would
@@ -327,8 +330,16 @@ export class Pool {
   // current pass state.
   learnChoices(): PoolChordEntry[] {
     return selectableLearnChords(this.chordOrder, this.progressRecord).map(
-      (entry) => ({ ...entry, label: this.label(entry.key) }),
+      (entry) => this.#display(entry),
     )
+  }
+
+  #display(entry: ChordPassEntry): PoolChordEntry {
+    return {
+      ...entry,
+      label: this.label(entry.key),
+      played: this.displayGrade(entry.key) !== null,
+    }
   }
 
   // What the picker opens with: the in-play chords not yet passed, or the most

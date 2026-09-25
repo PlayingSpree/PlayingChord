@@ -94,6 +94,7 @@ export function HomeView({
         key: chord.key,
         label: chord.label,
         passed: chord.passed,
+        played: chord.played,
         grade: worstChordDisplayGrade(records),
         canSetAside: canSetChordAside(chord.key),
       }
@@ -243,6 +244,7 @@ export function HomeView({
                     key={chip.key}
                     label={chip.label}
                     passed={chip.passed}
+                    played={chip.played}
                     grade={chip.grade}
                     action={
                       editing && chip.canSetAside
@@ -483,19 +485,23 @@ function SideSwitch({
 function InPlayChip({
   label,
   passed,
+  played,
   grade,
   action,
 }: {
   label: string
   passed: boolean
+  played: boolean
   grade: DisplayGrade | null
   action?: { glyph: string; run: () => void } | null
 }) {
   const onClick = action ? action.run : undefined
+  // Not passed yet: `new` until its first persisted rep, `learning` after
+  // (§7.1) — no letter either way, since what it's waiting on is the pass.
   if (!passed) {
     return (
       <Chip tone="info" className="px-3 py-1.5 text-sm" onClick={onClick}>
-        {label} · learning
+        {label} · {played ? 'learning' : 'new'}
         {action && <span aria-hidden>{action.glyph}</span>}
       </Chip>
     )

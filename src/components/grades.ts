@@ -7,7 +7,7 @@ import type { ComboGrade, DisplayGrade } from '../practice'
 // neutral, F red keep the three-tier heat map the prototype reads by.
 //
 // Red is F alone: D is a passing grade (§5.1), and a letter that unlocks the
-// next chords can't be the same color as the one that doesn't. `new` — the
+// next chords can't be the same color as the one that doesn't. `pending` — the
 // unproven stand-in for an F (§7.5) — is neutral for the same reason: it says
 // "no reading yet", and red would be a verdict.
 type GradeTier = 'top' | 'good' | 'neutral' | 'bad'
@@ -19,7 +19,7 @@ const TIER: Record<DisplayGrade, GradeTier> = {
   C: 'neutral',
   D: 'neutral',
   F: 'bad',
-  new: 'neutral',
+  pending: 'neutral',
 }
 
 // Letter on its own (a chip already carrying its own background).

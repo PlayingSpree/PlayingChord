@@ -15,6 +15,18 @@ artifact and are not recoverable.
 
 ---
 
+## 10.5.0 — 2026-09-25
+
+**Learn picks up new items; `new` means never played.** The learn set reopens on its
+default — the in-play items not yet passed — whenever the unlock record moves, so
+items unlocked in free practice join it instead of waiting for a reload behind a
+set that had already passed (§5.4). Home's In play row splits the old *learning*
+tag: **new** until an item's first persisted rep, **learning** after it; the
+session sheet's picker tags the same way (§7.1, §7.2). The unproven-F stand-in
+that used to read `new` is now **`pending`**, so the word isn't used twice (§7.5).
+
+---
+
 ## 10.4.1 — 2026-09-24
 
 **Terms.** No behavior change: §3 opens with the five words for the layers of what

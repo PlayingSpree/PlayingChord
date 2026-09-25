@@ -32,8 +32,8 @@ interface Row {
   key: string
   label: string
   metrics: ComboMetrics
-  // The letter as shown: `new` where the combo hasn't the reps to justify an
-  // F yet (§7.5). Sorting still uses metrics.score, so a `new` row sorts by
+  // The letter as shown: `pending` where the combo hasn't the reps to justify an
+  // F yet (§7.5). Sorting still uses metrics.score, so a `pending` row sorts by
   // the real number behind the badge.
   grade: DisplayGrade
 }
@@ -263,8 +263,8 @@ export function ChordStatsView({ onBack }: { onBack: () => void }) {
               {GRADE_EVIDENCE_FLOOR} recent attempts the reps you haven't played
               count against the grade, so a combo that has only ever been missed
               can't pass on one bad rep and a lucky one can't take the top of
-              the scale — <b className="text-ink-soft">new</b> stands in for a
-              failing grade there until the window fills.
+              the scale — <b className="text-ink-soft">pending</b> stands in for
+              a failing grade there until the window fills.
             </p>
           </>
         )}
@@ -277,7 +277,7 @@ function GradeBadge({ grade }: { grade: DisplayGrade }) {
   return (
     <span
       className={cx(
-        // min-w rather than a fixed square: the letters and the `new` stand-in
+        // min-w rather than a fixed square: the letters and the `pending` stand-in
         // share one badge, so the word widens it instead of overflowing.
         'inline-flex h-7 min-w-7 items-center justify-center rounded-lg px-1.5 text-sm font-extrabold',
         gradeTint(grade),

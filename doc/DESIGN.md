@@ -4,7 +4,7 @@ A web app for practicing piano chords and scales with a MIDI keyboard. The app s
 random chord or scale from a chosen preset, the user plays it on their connected MIDI
 keyboard, and the app validates the input and moves on to the next one.
 
-Spec version: **10.4.1** (2026-09-24) — chords and scales. Revision history lives in
+Spec version: **10.5.0** (2026-09-25) — chords and scales. Revision history lives in
 [CHANGELOG.md](CHANGELOG.md); this document describes only what the app *is* today.
 Both previously open questions are resolved (see [§9](#9-resolved-questions)). Build
 sequencing (what gets implemented first) is intentionally left outside this document.
@@ -617,7 +617,11 @@ the pass bar (`practice/learnLoop.ts`).
   it falls back to the three most recently reached items rather than leaving the
   mode unstartable. The set is session-only, like every other narrow, and Start is
   unavailable with none picked — a loop with nothing to finish would end on its
-  first rep.
+  first rep. It **reopens on that default whenever the unlock record moves** — a
+  pass, an unlock, a by-hand open or set-aside (§5.2), a reset — so an item that
+  just unlocked in free practice joins it and one that just passed leaves it;
+  a hand pick holds only until then (Go again repeats it). Keeping the old pick
+  would leave Learn drilling items already passed while the new ones waited.
 - **At least three items are dealt.** A short set is padded with items already
   **learned** (passed, §5.1), most recently learned first — the ones that sit
   nearest to what is being learned now. The floor is §5.2's and it is the same
@@ -944,8 +948,10 @@ The entry screen — the app boots here, not into practice. The no-device gate
   control (the preset picker, incl. the diatonic key picker); unlock progress —
   `N/total chords unlocked`, a bar, and how many unlock on the next pass (§5.1);
   an **In play** chip row — every unlocked chord with its letter grade (chord
-  score §5 → S–F, or `new` where the evidence floor hasn't been reached, §7.5),
-  not-yet-passed chords tagged *learning* instead of lettered at all, chords
+  score §5 → S–F, or `pending` where the evidence floor hasn't been reached, §7.5),
+  not-yet-passed chords tagged instead of lettered at all — *new* until their
+  first persisted rep, *learning* after it (Learn's reps are session-only, §5.4,
+  so they don't count) — chords
   set aside by hand dimmed beside them (§5.2), plus one
   `🔒 N locked` chip — this row is the per-chord breakdown that used to live
   behind the top-bar unlock chip. The 🔒 chip is a **disclosure**: clicking it
@@ -1000,7 +1006,8 @@ session config, so they take effect as they're set.
   mode in every mode — like Song's settings a persisted preference, set as it's
   picked.
 - **Chords to learn** (Learn, §5.4): a chip per chord in play in the drafted
-  preset, the not-yet-passed ones pre-ticked, with a line saying what the loop
+  preset, the not-yet-passed ones pre-ticked and tagged *new* / *learning* as on
+  Home's In play row (§7.1), with a line saying what the loop
   will deal — how many chords must reach D, and which learned chords come along
   to make three. Read of the *drafted* preset like *Worst chords only*, and reset
   to that preset's default when the preset or key changes: the keys name chords in
@@ -1261,7 +1268,7 @@ count as prompts, a hit being a first-try success (§6.5).
   the session graded **F** *and* some chord it played is **currently** graded F
   too, naming the one missed most and offering to set it aside. Both halves
   matter: a session can grade F on pace alone with every chord at C, and naming
-  a scapegoat there would be a lie; an unproven chord reads `new`, not F (§7.5),
+  a scapegoat there would be a lie; an unproven chord reads `pending`, not F (§7.5),
   and needs reps rather than a bench. Free practice only — Learn is stats-neutral,
   Song isn't gated by unlocks at all, and daily practice draws across every preset
   (§5.3), so an offer after one would act on whichever preset happened to be
@@ -1314,14 +1321,14 @@ all sessions, for the side Home is switched to (§7.1), titled *Chord progress* 
     chords can't read the same as the one that doesn't. The §7.3 slow flash sits
     at the same F boundary but stays **amber**, deliberately: one rep is a
     warning about pace, while the red letter is a verdict on a window of them.
-  - **`new`** replaces the letter where a combo would grade F but hasn't reached
+  - **`pending`** replaces the letter where a combo would grade F but hasn't reached
     the §5 evidence floor — a below-floor F is arithmetic, not a verdict, and the
     missing reps are what produced it. Neutral, never red, for that reason. Only
     the F is hidden: a below-floor **D still shows its letter**, because passing is
     its own proof (§5.1) and the badge must never contradict the `★ learned`
     callout (§7.3). Display only — the score underneath is the floored one, so §5
     weighting keeps drilling the combo and the pass gate keeps reading the real
-    letter. A chord folds to `new` only when nothing *proven* is failing: one
+    letter. A chord folds to `pending` only when nothing *proven* is failing: one
     proven F still reads red however many unproven combos sit beside it.
   - **Scales** grade on the same table with every second multiplied by the shape's
     grade multiplier (§3.6): a one-octave run is S ≤ 2 s … D ≤ 10 s. The letter
@@ -1341,7 +1348,7 @@ all sessions, for the side Home is switched to (§7.1), titled *Chord progress* 
   §8 time samples) and need not stay equal. The accuracy *column* reports the plain
   ratio over reps actually played — the evidence floor shapes the grade, not the
   percentage beside it. Sorting the grade column sorts on the score behind it, so a
-  `new` row sits where its real number puts it.
+  `pending` row sits where its real number puts it.
 
 ### 7.6 Goals, streaks & settings
 

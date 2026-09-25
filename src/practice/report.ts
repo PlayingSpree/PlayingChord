@@ -105,7 +105,7 @@ const BRING_BACK_MIN_GRADE: readonly ComboGrade[] = ['S', 'A']
 //  - The *session* graded F, and
 //  - some chord in it is *currently* graded F too. A session can grade F on
 //    pace alone with every chord sitting at C; naming a scapegoat there would
-//    be a lie. `new` is not F (§7.5) — an unproven chord needs reps, not a
+//    be a lie. `pending` is not F (§7.5) — an unproven chord needs reps, not a
 //    bench.
 //
 // Worst first is the chord missed most this session, ties broken by label so

@@ -181,6 +181,7 @@ export interface UnlockProgress {
 // display label resolved through the active expansion (diatonic spelling).
 export interface ChordPassDisplayEntry extends ChordPassEntry {
   label: string
+  played: boolean // any persisted reps — `new` vs `learning` (§7.1)
 }
 
 // One chord of the learn loop's set (§5.4) as the Stage and sheet read it: its
@@ -615,6 +616,16 @@ export function createPracticeStore({
       publishLearnProgress()
     }
 
+    // The unlock record moved — a pass, an unlock, a by-hand open or set-aside.
+    // Which chords are waiting to be learned moved with it, so the set reopens
+    // on the default (§5.4): a chord that just unlocked joins it, one that just
+    // passed leaves it. Learn never passes anything, so this can't pull the set
+    // out from under a live loop.
+    const resetLearnSelection = () => {
+      set({ learnSelection: pool.defaultLearnSet() })
+      publishLearnProgress()
+    }
+
     // Writes a by-hand progress change (§5.2) through: persist, swap in the
     // moved pool, drop the preview queue (the pool changed, like any other
     // pool change) and redeal a live prompt so a chord just set aside isn't
@@ -628,8 +639,7 @@ export function createPracticeStore({
       recentKeys = []
       invalidateDaily() // a benched chord leaves the daily pool too (§5.3)
       set({ progress: pool.progress })
-      // A benched chord leaves the learn set with everything else (§5.4).
-      syncLearnSelection()
+      resetLearnSelection()
       if (get().mode !== 'song' && get().prompt !== null) nextPrompt()
     }
 
@@ -658,6 +668,7 @@ export function createPracticeStore({
       progressStore.set(pool.presetId, pool.progressRecord)
       invalidateDaily() // a chord just passed — it joins the daily pool (§5.3)
       set({ progress: pool.progress })
+      resetLearnSelection()
       if (update.justUnlocked) {
         queue = []
         const newLabels = pool.chordOrder
@@ -1408,8 +1419,7 @@ export function createPracticeStore({
           justUnlocked: false,
           justUnlockedLabels: [],
         })
-        // The wipe re-locks chords the learn set may have named (§5.4).
-        syncLearnSelection()
+        resetLearnSelection() // the wipe re-locks chords the set may name
         // Song isn't gated (§6.5) and a paused store has no prompt to
         // re-deal; a live Learn/Practice prompt redeals from the narrowed
         // pool so a now-locked chord isn't left on screen.
@@ -1435,9 +1445,8 @@ export function createPracticeStore({
           justUnlocked: false,
           justUnlockedLabels: [],
         })
-        // Which chords are in play moves with the order (§5.1), so the learn
-        // set can name one that just fell behind the frontier.
-        syncLearnSelection()
+        // Which chords are in play and waiting moves with the order (§5.1).
+        resetLearnSelection()
         // Usually toggled from Settings while paused (no prompt); a live
         // Learn/Practice prompt redeals from the reordered unlocked set.
         if (get().mode !== 'song' && get().prompt !== null) nextPrompt()

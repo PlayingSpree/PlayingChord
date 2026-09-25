@@ -1326,11 +1326,25 @@ describe('practiceStore — the learn loop (§5.4)', () => {
     expect(s.store.getState().learnProgress.rehearsed).toBe(0)
   })
 
-  it('drops a chord from the set when it is put aside (§5.2)', () => {
+  it('reopens on the default when a chord is put aside (§5.2)', () => {
     const s = setup({ presets: sixRoots, progress: partlyPassed() }, false)
-    s.store.getState().setLearnSelection(['1:maj', '2:maj', '4:maj'])
+    s.store.getState().setLearnSelection(['1:maj', '2:maj'])
     s.store.getState().setChordAside('2:maj')
-    expect(s.store.getState().learnSelection).toEqual(['1:maj', '4:maj'])
+    expect(s.store.getState().learnSelection).toEqual([
+      '1:maj',
+      '4:maj',
+      '5:maj',
+    ])
+  })
+
+  it('picks up chords unlocked by free practice', () => {
+    const s = setup({ presets: sixRoots })
+    s.store.getState().setLearnSelection(['0:maj'])
+    for (let i = 0; i < 10 && !s.store.getState().justUnlocked; i++) {
+      playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
+    }
+    // Roots 0–2 passed, which opened 3 and 4: those are what's waiting now.
+    expect(s.store.getState().learnSelection).toEqual(['3:maj', '4:maj'])
   })
 
   it('re-derives the set when the preset changes under it', () => {
@@ -1395,7 +1409,7 @@ describe('practiceStore — session length & report (§7.2/§7.4)', () => {
     })
     const s = setup({ presets: sixRoots, progress: fullyUnlocked('test', 6) })
     // Clean but far past D's second: every chord grades F on speed alone,
-    // and enough reps to clear the evidence floor so none of them read `new`.
+    // and enough reps to clear the evidence floor so none of them read `pending`.
     for (let i = 0; i < 40; i++) {
       playSlowAndAdvance(s, chordOf(s.store.getState().prompt))
     }
