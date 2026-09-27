@@ -651,6 +651,45 @@ describe('practiceStore — unlock progress (§5)', () => {
     expect(seen.has(3) || seen.has(4)).toBe(true)
   })
 
+  it('holds a batch a library edit opens mid-session, like a pass’s', () => {
+    // Three roots, all passed: the unlock queue has nothing left to open.
+    let roots: PitchClass[] = [0, 1, 2]
+    const progress = new InMemoryPresetProgress()
+    progress.set('test', {
+      unlockedCount: 3,
+      masteredIndices: [0, 1, 2],
+      setAsideIndices: [],
+    })
+    const s = setup({
+      presets: () => [
+        {
+          id: 'test',
+          name: 'Test',
+          pool: { kind: 'product', roots, chordTypes: ['maj'] },
+          voicingIds: ['any'],
+        },
+      ],
+      progress,
+    })
+    // Edited from Settings over the paused session: the pool grows under the
+    // finished record, which opens the next batch on the spot (§5.1).
+    s.store.getState().pause()
+    roots = [0, 1, 2, 3, 4, 5]
+    s.store.getState().refreshLibrary()
+    expect(s.store.getState().progress.unlocked).toBe(5)
+
+    enterStage(s)
+    const seen = new Set<number>()
+    for (let i = 0; i < 30; i++) {
+      seen.add(chordOf(s.store.getState().prompt).chord.root)
+      s.store.getState().upcoming.forEach((u) => {
+        seen.add(Number(u.key.split(':')[0]))
+      })
+      playSlowAndAdvance(s, chordOf(s.store.getState().prompt))
+    }
+    expect([...seen].sort()).toEqual([0, 1, 2])
+  })
+
   it('unlockByFifths reorders a product pool’s unlock order (§5.1)', () => {
     const s = setup({
       presets: sixRoots,

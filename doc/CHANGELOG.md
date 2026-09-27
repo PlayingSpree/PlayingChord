@@ -15,6 +15,18 @@ artifact and are not recoverable.
 
 ---
 
+## 10.12.1 — 2026-09-27
+
+**One rule for what gets dealt.** A batch that a library edit opens (a custom
+preset's pool growing under a finished record, 10.12.0) is now held for the next
+session like any other mid-session unlock; before, it was dealt at once while a
+pass's batch waited. The preview's rebuild rule is restated in full: it is
+dropped whenever what can be dealt changes and at each session start, while the
+no-repeat history goes only when the pool itself is replaced or a session starts
+(§5, §5.1).
+
+---
+
 ## 10.12.0 — 2026-09-27
 
 **Passed, one word; the unlock queue can't stall.** *Learned* is retired as a

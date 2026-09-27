@@ -413,6 +413,42 @@ describe('pool progress questions (§5.1/§5.2)', () => {
     ])
   })
 
+  it('sets a chord aside only while enough stays in play (§5.2)', () => {
+    const pool = setup().resolve('triads', 0)
+    // Three in play is the floor, so nothing can go.
+    expect(pool.setAside('0:maj')).toBe(pool)
+    const open = pool.withProgress(opened(pool.progressRecord))
+    expect(open.setAside('0:maj').progressRecord.setAsideIndices).toEqual([0])
+  })
+
+  it('reads back the batch that setting aside the last waiting chord opens', () => {
+    const pool = setup().resolve('triads', 0)
+    const waiting = pool.withProgress({
+      unlockedCount: 4,
+      masteredIndices: [0, 1, 2],
+      setAsideIndices: [],
+    })
+    expect(waiting.setAside('5:maj').openedSince(waiting)).toEqual([
+      '7:maj',
+      '9:maj',
+    ])
+  })
+
+  it('opens a locked chord with the ones ahead of it (§5.1)', () => {
+    const pool = setup().resolve('triads', 0)
+    expect(pool.open('7:maj').openedSince(pool)).toEqual(['5:maj', '7:maj'])
+    // Already in play: nothing moves.
+    expect(pool.open('0:maj')).toBe(pool)
+  })
+
+  it('compares frontiers by chord, not by place', () => {
+    const byPool = setup().resolve('triads', 0)
+    // By fifths the first three are C G D where the pool's own order has
+    // C D E: only G is new, whatever position it sits at.
+    const byFifths = setup({ unlockByFifths: () => true }).resolve('triads', 0)
+    expect(byFifths.openedSince(byPool)).toEqual(['7:maj'])
+  })
+
   it('says how many chords would open with a locked one (§5.1)', () => {
     const pool = setup().resolve('triads', 0)
     // F is the frontier, so A opens with the two ahead of it.

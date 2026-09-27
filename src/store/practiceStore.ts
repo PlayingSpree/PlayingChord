@@ -10,32 +10,27 @@ import {
   completeRep,
   streakAfter,
   createPoolResolver,
+  Dealer,
   songChordLabel,
   comboKey,
-  poolChordKey,
   dailyChordCount,
   dailyLegRemaining,
   dailyPool,
   dueDailyLeg,
   DEFAULT_DIATONIC_KEY,
   effectiveLength,
-  fillQueue,
   InMemoryComboStats,
   isLearnSetComplete,
   MODE_POLICY,
   rehearsedChords,
   sanitizeLearnSelection,
   sessionLengthReached,
-  RECENT_WINDOW,
   romanNumeral,
-  openChord,
-  setAsideChord,
   carryProgressAcrossEdit,
   sanitizeSessionLength,
   DEFAULT_SESSION_LENGTH,
   SessionRun,
   SongEngine,
-  UPCOMING_COUNT,
   wrongHeldKeys,
   type AttemptPhase,
   type ChordPool,
@@ -55,7 +50,6 @@ import {
   type RunProgress,
   type PracticeSettings,
   type Preset,
-  type PresetProgressRecord,
   type Prompt,
   type PromptOutcome,
   type Rng,
@@ -416,11 +410,17 @@ export function createPracticeStore({
   now = Date.now,
   settings = () => settingsStore.getState().settings,
 }: PracticeStoreDeps = {}) {
-  let recentKeys: string[] = []
-  // Next combos to be dealt, in order (§5 upcoming preview); invalidated
-  // (reset to []) wherever the pool/expansion can change, alongside
-  // recentKeys.
-  let queue: Combo[] = []
+  // What gets dealt next (§5): the upcoming preview, the no-repeat history it
+  // is drawn against and the chords a mid-session unlock holds back (§5.1).
+  // Told what happened rather than reset by hand; replaced wholesale at each
+  // session start, which is what makes last session's unlocks this one's pool.
+  const newDealer = () =>
+    new Dealer({
+      stats,
+      rng,
+      holdNewUnlocks: () => settings().holdNewUnlocks,
+    })
+  let dealer = newDealer()
   let currentCombo: Combo | null = null
   // What this session has accumulated about itself (§7.2) — its recorded
   // prompts, the chords it passed / opened / rehearsed, its active time and the
@@ -516,12 +516,6 @@ export function createPracticeStore({
     let pool = resolvePool(initialId, initialKey)
 
     let justUnlockedTimer: ReturnType<typeof setTimeout> | null = null
-
-    // Items a batch opened during this session, kept out of dealing until the
-    // next one while the holdNewUnlocks setting is on (§5.1). Read through the
-    // setting on every deal, so turning it off mid-session lets them straight
-    // in. Emptied wherever a session begins or the pool it names is replaced.
-    let heldUnlocks: ReadonlySet<string> = new Set()
 
     // Persist a reconciliation that changed a stored record, so the self-heal
     // happens once instead of on every load. Only for the pool actually
@@ -658,17 +652,16 @@ export function createPracticeStore({
       publishLearnProgress()
     }
 
-    // Writes a by-hand progress change (§5.2) through: persist, swap in the
-    // moved pool, drop the preview queue (the pool changed, like any other
-    // pool change) and redeal a live prompt so a chord just set aside isn't
-    // left on screen. These are Home/Report controls, so a live prompt is the
-    // paused-with-settings-open case rather than the usual one.
-    const applyManualProgress = (next: PresetProgressRecord) => {
-      if (next === pool.progressRecord) return
-      pool = pool.withProgress(next)
-      progressStore.set(pool.presetId, next)
-      queue = []
-      recentKeys = []
+    // Writes a by-hand progress move (§5.2) through: persist, swap in the
+    // moved pool, tell the dealer what is dealable changed and redeal a live
+    // prompt so a chord just set aside isn't left on screen. These are
+    // Home/Report controls, so a live prompt is the paused-with-settings-open
+    // case rather than the usual one.
+    const applyManualProgress = (next: Pool) => {
+      if (next === pool) return
+      pool = next
+      progressStore.set(pool.presetId, pool.progressRecord)
+      dealer.narrowed()
       invalidateDaily() // a benched chord leaves the daily pool too (§5.3)
       set({ progress: pool.progress })
       resetLearnSelection()
@@ -677,9 +670,9 @@ export function createPracticeStore({
 
     // Writes a rep's pass through to the §5 unlock progress (completeRep only
     // returns one in free practice — daily draws from every preset at once and
-    // has nothing left to pass, §5.3). On an unlock, the new chords are held
-    // for the next session (holdNewUnlocks, §5.1), or the queue is dropped so
-    // they can enter the very next preview refill.
+    // has nothing left to pass, §5.3). An unlock goes to the dealer, which
+    // holds the new chords for the next session or lets them straight in
+    // (holdNewUnlocks, §5.1).
     const applyRepProgress = ({ record, passed, opened }: RepProgress) => {
       // Collected for the Report (§7.4).
       run.notePassed(pool.label(passed))
@@ -689,10 +682,7 @@ export function createPracticeStore({
       set({ progress: pool.progress })
       resetLearnSelection()
       if (opened.length > 0) {
-        heldUnlocks = new Set([...heldUnlocks, ...opened])
-        // Held, they can't be in the preview anyway; let in, the preview is
-        // rebuilt so they can appear in it at once.
-        if (!settings().holdNewUnlocks) queue = []
+        dealer.unlocked(opened)
         const newLabels = opened.map((key) => pool.label(key))
         run.noteUnlocked(newLabels)
         flashJustUnlocked(newLabels)
@@ -704,57 +694,36 @@ export function createPracticeStore({
     // preset's raw pool) and daily practice replaces it with the cross-preset
     // passed pool (§5.3). "Worst chords only" (free, §5/§7) and the learn
     // loop's chord set (§5.4) then each narrow generation within the unlocked
-    // set; an empty result (every unlocked chord already passed with nothing
-    // ever missed, or a selection the pool no longer contains) falls back to
-    // the whole unlocked pool.
-    //
-    // Chords unlocked mid-session are taken out of every one of those while
-    // they are held (§5.1). The session started without them, so what's left
-    // is never empty — the pool it opened with is still all there.
-    const pickPool = (): readonly Combo[] => {
+    // set. The dealer takes the first of these with anything dealable left
+    // once held unlocks are out (§5.1), so an empty narrowing (every unlocked
+    // chord already passed with nothing ever missed, a selection the pool no
+    // longer contains) falls back to the whole unlocked pool.
+    const candidates = (): (readonly Combo[])[] => {
       const state = get()
-      const held = settings().holdNewUnlocks ? heldUnlocks : new Set<string>()
-      const dealable = (combos: readonly Combo[]) =>
-        held.size === 0
-          ? combos
-          : combos.filter((combo) => !held.has(poolChordKey(combo)))
-      const available = dealable(pool.inPlay)
       if (state.mode === 'daily') {
-        // Defensive: the mode is offered only when something is passed
-        // (passedChordCount), but nextPrompt needs a non-empty pool (§5).
-        const daily = currentDailyPool()
-        return daily.length > 0 ? daily : available
+        // The mode is offered only when something is passed
+        // (passedChordCount); the in-play pool behind it is defensive.
+        return [currentDailyPool(), pool.inPlay]
       }
+      const narrowings: (readonly Combo[])[] = []
       if (MODE_POLICY[state.mode].supportsWorstOnly && state.worstOnly) {
-        const worst = dealable(pool.worstOnly())
-        if (worst.length > 0) return worst
+        narrowings.push(pool.worstOnly())
       }
       if (state.mode === 'learn') {
-        const learning = dealable(pool.learnSet(state.learnSelection))
-        if (learning.length > 0) return learning
+        narrowings.push(pool.learnSet(state.learnSelection))
       }
-      return available.length > 0 ? available : pool.inPlay
+      return [...narrowings, pool.inPlay]
     }
 
     const nextPrompt = () => {
-      const source = pickPool()
-      if (queue.length === 0) {
-        queue = fillQueue([], 1, source, recentKeys, stats, rng)
-      }
-      const combo = queue.shift()
-      // Unreachable: fillQueue(_, 1, ...) always returns exactly one combo
-      // for a non-empty pool, and pickPool() never returns an empty pool.
-      if (combo === undefined) throw new Error('Upcoming queue was empty')
+      const { combo, upcoming } = dealer.deal(candidates())
       currentCombo = combo
-      recentKeys.push(comboKey(combo))
-      if (recentKeys.length > RECENT_WINDOW) recentKeys.shift()
-      queue = fillQueue(queue, UPCOMING_COUNT, source, recentKeys, stats, rng)
       const prompt = pool.promptFor(combo)
       set({
         prompt,
         justPassed: false,
         pace: null,
-        upcoming: queue.map((c) => ({
+        upcoming: upcoming.map((c) => ({
           key: comboKey(c),
           ...pool.comboLabelParts(c),
         })),
@@ -1004,7 +973,7 @@ export function createPracticeStore({
 
     const resetSession = () => {
       run = new SessionRun()
-      heldUnlocks = new Set() // last session's unlocks are this one's pool
+      dealer = newDealer() // last session's unlocks are this one's pool
       // A fresh loop grades from nothing (§5.4): last session's reps are gone,
       // so a chord rehearsed yesterday must be brought up again today. That is
       // the point of grading the session rather than the record.
@@ -1094,9 +1063,7 @@ export function createPracticeStore({
       // timer itself dies with the next promptShown().
       pool = resolvePool(presetId, diatonicKey)
       persistReconciliation()
-      heldUnlocks = new Set() // they named chords in the old pool
-      recentKeys = []
-      queue = []
+      dealer.repooled()
       // The diatonic preset's pool follows its key, so the passed set can
       // move under a selection change as well as a progress one (§5.3).
       invalidateDaily()
@@ -1254,7 +1221,7 @@ export function createPracticeStore({
         const leavingSong = get().mode === 'song'
         // The current prompt is replaced so a Learn reveal can't be answered
         // for Practice credit.
-        queue = [] // the pool can change (worstOnly/the learn set are per-mode)
+        dealer.narrowed() // worstOnly/the learn set are per-mode
         // Leaving the mode ends the run (§7.3). Only Practice can break a
         // streak — Learn records no outcome at all and Song is clock-paced —
         // so without this a detour parks the count and hands it back intact,
@@ -1284,7 +1251,7 @@ export function createPracticeStore({
         if (on === get().worstOnly) return
         // Free practice only — not rendered elsewhere, but stay safe.
         if (!MODE_POLICY[get().mode].supportsWorstOnly) return
-        queue = []
+        dealer.narrowed()
         set({ worstOnly: on })
         if (sessionLive) dealOrGate()
       },
@@ -1302,7 +1269,7 @@ export function createPracticeStore({
         ) {
           return
         }
-        queue = []
+        dealer.narrowed()
         set({ learnSelection: selection })
         publishLearnProgress()
         if (sessionLive && MODE_POLICY[get().mode].hasLearnLoop) dealOrGate()
@@ -1354,17 +1321,21 @@ export function createPracticeStore({
         // Re-resolving picks up the edit whole: new rules and spellings, a
         // pool grown or shrunk under its saved unlock progress (reconciled
         // §5), or a fallback if the active preset vanished.
+        const before = pool
         pool = resolvePool(current.presetId, current.diatonicKey)
         persistReconciliation()
-        // The queue's combos are only guaranteed valid against the expansion
-        // they were drawn from; a library edit can change rules or spellings
-        // even when the preset itself is unchanged.
-        queue = []
         invalidateDaily() // a custom preset's passed chords can move with it
-        if (pool.presetId !== current.presetId) {
+        if (pool.presetId === current.presetId) {
+          // A pool grown under a finished record opens its next batch on the
+          // spot (§5.1) — an unlock like a pass's, held like one. The preview
+          // goes either way: an edit can change rules or spellings even when
+          // the preset itself is unchanged.
+          dealer.unlocked(pool.openedSince(before))
+          dealer.narrowed()
+        } else {
           // The active preset vanished (deleted, or now empty) — the
           // resolver fell back; remember the fallback like any selection.
-          recentKeys = []
+          dealer.repooled()
           chosen[side] = pool.presetId
           saveSelection(current.diatonicKey)
         }
@@ -1391,11 +1362,9 @@ export function createPracticeStore({
         if (presetId !== pool.presetId) return
         pool = resolvePool(get().presetId, get().diatonicKey)
         persistReconciliation()
-        heldUnlocks = new Set() // the wipe re-locks them anyway
+        dealer.repooled() // the wipe re-locks what it held anyway
         clearUnlockFlash()
         clearGradeFlash()
-        queue = []
-        recentKeys = []
         set({
           progress: pool.progress,
           justUnlocked: false,
@@ -1412,14 +1381,12 @@ export function createPracticeStore({
         // The order setting feeds resolution, so re-resolving picks it up.
         pool = resolvePool(get().presetId, get().diatonicKey)
         persistReconciliation()
-        heldUnlocks = new Set() // the frontier now names different chords
+        dealer.repooled() // the frontier now names different chords
         // Passed *indices* carry onto the new order (§5.1), so which chords
         // count as passed moves with it — the daily pool with them.
         invalidateDaily()
         clearUnlockFlash()
         clearGradeFlash()
-        queue = []
-        recentKeys = []
         set({
           progress: pool.progress,
           justUnlocked: false,
@@ -1437,28 +1404,18 @@ export function createPracticeStore({
       },
 
       setChordAside(chordKey: string) {
-        const next = setAsideChord(
-          pool.chordOrder,
-          pool.progressRecord,
-          chordKey,
-        )
+        const next = pool.setAside(chordKey)
         // Setting aside the last item still waiting opens the next batch
         // (§5.2). That is an unlock like a pass's, so a session paused under
         // it holds the batch for the next one (§5.1) — a new session starts
         // with nothing held anyway.
-        const opened = pool.chordOrder.slice(
-          pool.progressRecord.unlockedCount,
-          next.unlockedCount,
-        )
-        if (opened.length > 0)
-          heldUnlocks = new Set([...heldUnlocks, ...opened])
+        dealer.unlocked(next.openedSince(pool))
         applyManualProgress(next)
       },
 
       openChordForPlay(chordKey: string) {
-        applyManualProgress(
-          openChord(pool.chordOrder, pool.progressRecord, chordKey),
-        )
+        // Opened by hand, so nothing is held: the player asked for it now.
+        applyManualProgress(pool.open(chordKey))
       },
 
       canSetChordAside(chordKey: string) {

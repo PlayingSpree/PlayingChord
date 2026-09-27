@@ -4,7 +4,7 @@ A web app for practicing piano chords and scales with a MIDI keyboard. The app s
 random chord or scale from a chosen preset, the user plays it on their connected MIDI
 keyboard, and the app validates the input and moves on to the next one.
 
-Spec version: **10.12.0** (2026-09-27) — chords and scales. Revision history lives in
+Spec version: **10.12.1** (2026-09-27) — chords and scales. Revision history lives in
 [CHANGELOG.md](CHANGELOG.md); this document describes only what the app *is* today.
 Both previously open questions are resolved (see [§9](#9-resolved-questions)). Build
 sequencing (what gets implemented first) is intentionally left outside this document.
@@ -450,8 +450,11 @@ existed carries no kind and loads as a chord preset.
   preview and the current prompt stay duplicate-free whenever the pool is
   large enough; a pool too small for 4 distinct combos repeats within the
   preview rather than leaving slots empty. The queue is rebuilt from scratch
-  whenever the pool changes (preset, key, mode, worst-only, or a library
-  edit).
+  whenever what can be dealt changes (preset, key, mode, worst-only, the learn
+  set, an item set aside or opened, a library edit), and a session starts with
+  none. The played history behind the no-repeat rule survives a narrowing and
+  goes only when the pool itself is replaced (another preset or key, a
+  progress wipe, a new unlock order) or a session starts.
 - **Worst chords only** (a free-practice setting, §7.2) inverts the emphasis: it draws
   only from the selected preset's weak spots instead of gently biasing the normal
   stream — its **worst combos** (worst-ranked first, so the ranking still leads the
@@ -529,7 +532,10 @@ flashcard-style batches instead of the whole pool at once:
   row shows them as *new* (§7.1) and Learn's default set picks them up (§5.4) in
   the meantime. Dropping two unknown items into a drill that is going well
   changes its difficulty under the player, and the moment a batch opens is the
-  natural break anyway. With the setting off, the upcoming-preview queue is
+  natural break anyway. It holds however the batch opened — a pass, setting
+  aside the last item still waiting (§5.2), a library edit growing the pool —
+  except an item opened by hand (§5.2), which the player asked for now. With
+  the setting off, the upcoming-preview queue is
   rebuilt at the moment of an unlock (the pool changed, like any other pool
   change), so new items can appear in the very next preview.
 - **Scope:** the gate applies to Learn and free-practice generation

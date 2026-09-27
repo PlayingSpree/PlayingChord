@@ -32,9 +32,11 @@ import {
   filterUnlockedCombos,
   initialProgress,
   notPassedChordKeys,
+  openChord,
   poolChordKey,
   reconcileProgress,
   remapProgress,
+  setAsideChord,
   unlockedChordKeys,
   type ChordPassEntry,
   type PresetProgressRecord,
@@ -146,6 +148,39 @@ export class Pool {
       voicings: this.#voicings,
       stats: this.#stats,
     })
+  }
+
+  // The same pool with a chord set aside by hand (§5.2), or itself when it
+  // may not be. Setting aside the last item still waiting opens the next
+  // batch; openedSince reads it back.
+  setAside(chordKey: string): Pool {
+    return this.#moved(
+      setAsideChord(this.chordOrder, this.progressRecord, chordKey),
+    )
+  }
+
+  // The same pool with a chord opened for play (§5.2) — brought back, or the
+  // frontier dragged up to it — or itself when it is already in play.
+  open(chordKey: string): Pool {
+    return this.#moved(
+      openChord(this.chordOrder, this.progressRecord, chordKey),
+    )
+  }
+
+  // The chords behind this pool's unlock frontier that were not behind
+  // `before`'s (§5.1) — a batch a move opened, or one a library edit did by
+  // growing a finished record. Keyed, so it holds across a reshaped order.
+  openedSince(before: Pool): string[] {
+    const was = new Set(
+      before.chordOrder.slice(0, before.progressRecord.unlockedCount),
+    )
+    return this.chordOrder
+      .slice(0, this.progressRecord.unlockedCount)
+      .filter((chordKey) => !was.has(chordKey))
+  }
+
+  #moved(next: PresetProgressRecord): Pool {
+    return next === this.progressRecord ? this : this.withProgress(next)
   }
 
   // What generation may draw from (§5): unlocked and not set aside.
