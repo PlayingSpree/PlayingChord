@@ -80,6 +80,11 @@ stats and weighted generation are keyed per **combo** `(root, typeId, voicingId)
 
 ## Working with me
 
-- If a request is ambiguous — unclear scope, more than one reasonable
-  interpretation, or a detail the spec doesn't resolve — **ask before coding**.
-  Prefer a short clarifying question over guessing and building the wrong thing.
+- **Clarify and confirm before acting.** Before making changes, restate how you
+  understand the request (scope, approach, files touched) and wait for my
+  go-ahead. If anything is ambiguous — unclear scope, more than one reasonable
+  interpretation, or a detail the spec doesn't resolve — ask a short clarifying
+  question instead of guessing and building the wrong thing.
+- Exceptions: simple, unambiguous requests (a one-line fix, a rename, a typo) and
+  read-only work (answering questions, exploring or explaining code, running
+  tests) can proceed without confirmation.
