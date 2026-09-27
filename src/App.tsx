@@ -17,6 +17,7 @@ import { Chip, RaisedButton } from './components/ui'
 import { MODE_LABELS } from './components/modes'
 import { noun } from './components/sides'
 import { cx } from './components/cx'
+import { formatMinutes } from './components/daily'
 import { effectiveLength, MODE_POLICY, type Side } from './practice'
 import {
   SimulatedMidiSource,
@@ -154,7 +155,12 @@ export default function App() {
   // built).
   const endSession = () => {
     practiceStore.getState().endSession()
-    setView(practiceStore.getState().report !== null ? 'report' : 'home')
+    if (practiceStore.getState().report !== null) {
+      setView('report')
+    } else {
+      practiceStore.getState().returnFromDaily()
+      setView('home')
+    }
   }
 
   // The session sheet pauses the session it's opened over (§7.2): judging
@@ -170,8 +176,10 @@ export default function App() {
     if (view === 'stage') practiceStore.getState().start()
   }
 
+  // Back Home on the side it was on before a Daily run switched it (§7.1).
   const goHomeFromReport = () => {
     practiceStore.getState().dismissReport()
+    practiceStore.getState().returnFromDaily()
     setView('home')
   }
 
@@ -256,7 +264,7 @@ function StageView({
   const goal = usePractice((s) => s.goal)
   const tempo = useSettings((s) => s.settings.songTempoBpm)
   const goalMinutes = useSettings((s) => s.settings.dailyGoalMinutes)
-  const dailyCapMinutes = useSettings((s) => s.settings.dailyCapMinutes)
+  const dailyLegLimit = usePractice((s) => s.dailyLegLimitMinutes)
 
   // Daily practice has no preset behind it — it draws the chords already
   // learned, wherever they were learned (§5.3) — so the label names the pool
@@ -267,14 +275,14 @@ function StageView({
       : (presets.find((p) => p.id === presetId)?.name ?? 'Practice')
   const modeLabel = MODE_LABELS[mode]
   // The length applies to the practice modes (§7.2): prompts count reps,
-  // minutes count active time (daily's cap is always minutes, §5.3). ∞ has no
+  // minutes count active time (a daily leg is always minutes, §5.3). ∞ has no
   // length to fill, so the bar tracks today's goal minutes instead — the one
   // thing still on a clock in an endless session (§7.3). Learn has no length at
   // all: its bar fills with the chords of its set that are rehearsed (§5.4),
   // which is the thing that actually ends it. Which length is in force is the
   // store's rule too, so both read the one function rather than each deciding.
   const learning = MODE_POLICY[mode].hasLearnLoop
-  const length = effectiveLength(mode, sessionLength, dailyCapMinutes)
+  const length = effectiveLength(mode, sessionLength, dailyLegLimit)
   const limit = learning
     ? (learnProgress.total ?? 0) || null
     : length.value !== null && length.value > 0
@@ -326,7 +334,7 @@ function StageView({
               ? `✓ ${elapsed} / ${limit ?? 0} rehearsed`
               : bounded
                 ? timed
-                  ? `⏱ ${elapsed} / ${limit} min`
+                  ? `⏱ ${elapsed} / ${formatMinutes(limit)} min`
                   : `${elapsed} / ${limit}`
                 : done}
           </span>

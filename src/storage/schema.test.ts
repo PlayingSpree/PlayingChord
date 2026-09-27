@@ -159,6 +159,25 @@ describe('sanitizeDailyRecords', () => {
     })
   })
 
+  it('keeps sane per-side Daily minutes, dropping only a bad side (§5.3)', () => {
+    expect(
+      sanitizeDailyRecords({
+        a: { ...valid, dailyMinutes: { chords: 5, scales: 2.5 } },
+      }),
+    ).toEqual({
+      '2026-07-16': { ...valid, dailyMinutes: { chords: 5, scales: 2.5 } },
+    })
+    expect(
+      sanitizeDailyRecords({
+        a: { ...valid, dailyMinutes: { chords: -1, scales: 3 } },
+      }),
+    ).toEqual({ '2026-07-16': { ...valid, dailyMinutes: { scales: 3 } } })
+    // Nothing usable, or absent as in every record before the split.
+    expect(
+      sanitizeDailyRecords({ a: { ...valid, dailyMinutes: { chords: 'x' } } }),
+    ).toEqual({ '2026-07-16': valid })
+  })
+
   it('clamps a timed-prompt count above the day’s prompts', () => {
     expect(sanitizeDailyRecords({ a: { ...valid, timedPrompts: 99 } })).toEqual(
       { '2026-07-16': { ...valid, timedPrompts: 30 } },

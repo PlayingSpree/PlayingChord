@@ -10,7 +10,7 @@
 // was benched: the bench is a statement about playing the chord, not about one
 // preset.
 
-import { comboKey, type Combo } from './combos'
+import { comboKey, type Combo, type Side } from './combos'
 import { poolChordKey, type PresetProgressRecord } from './progress'
 
 // One preset's contribution: its expanded combos (§4) in pool order, the
@@ -64,4 +64,49 @@ export function dailyPool(sources: readonly DailyPresetSource[]): Combo[] {
 // in, and one chord can carry several voicing combos.
 export function dailyChordCount(pool: readonly Combo[]): number {
   return new Set(pool.map(poolChordKey)).size
+}
+
+// Chords first: the quicker kind, and the warm-up for the longer runs.
+const DAILY_LEG_ORDER: readonly Side[] = ['chords', 'scales']
+
+// Under this much left (10 s), a leg counts as done — a leg ended a breath
+// short of its share shouldn't come back as a seconds-long session of its own.
+const DAILY_LEG_DONE_SLACK_MINUTES = 1 / 6
+
+// Everything the two legs are sized from (§5.3): the persisted cap and split,
+// how many items each side has learned, and how many Daily minutes each side
+// has already played today.
+export interface DailyPlan {
+  capMinutes: number
+  chordShare: number
+  learned: Readonly<Record<Side, number>>
+  playedToday: Readonly<Record<Side, number>>
+}
+
+// A leg's share of the cap. A kind with nothing learned has nothing to
+// drill, so its leg is skipped and the other kind takes the whole cap — a
+// player who hasn't started scales shouldn't find half the drill missing.
+// 0 means the leg doesn't run at all.
+export function dailyLegMinutes(side: Side, plan: DailyPlan): number {
+  if (plan.learned[side] === 0) return 0
+  const other: Side = side === 'chords' ? 'scales' : 'chords'
+  if (plan.learned[other] === 0) return plan.capMinutes
+  const share = side === 'chords' ? plan.chordShare : 1 - plan.chordShare
+  return plan.capMinutes * share
+}
+
+// What is left of a leg today: its share less the Daily minutes this side
+// has played since midnight, so a leg ended early resumes with its remainder
+// and a finished one doesn't run again. 0 once within the slack of done.
+export function dailyLegRemaining(side: Side, plan: DailyPlan): number {
+  const left = dailyLegMinutes(side, plan) - plan.playedToday[side]
+  return left < DAILY_LEG_DONE_SLACK_MINUTES ? 0 : left
+}
+
+// The leg Daily runs next — the first, in leg order, with time left today —
+// or null when today's Daily is done (or there is nothing learned to run).
+export function dueDailyLeg(plan: DailyPlan): Side | null {
+  return (
+    DAILY_LEG_ORDER.find((side) => dailyLegRemaining(side, plan) > 0) ?? null
+  )
 }

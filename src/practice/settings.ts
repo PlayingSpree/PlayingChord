@@ -29,6 +29,10 @@ export interface PracticeSettings extends MatchSettings {
   // of the daily drill is that it is the same every day, so how long it runs
   // is a standing preference, not a pick.
   dailyCapMinutes: number
+  // The chord leg's share of that cap (§5.3) — the scale leg gets the rest.
+  // A ratio rather than minutes, so changing the cap can never leave a split
+  // that no longer fits inside it.
+  dailyChordShare: number
   // Grand-staff notation (§3.4): shown whenever this is on, in both Learn
   // and Practice; off keeps name+keyboard-only practice first-class.
   staffEnabled: boolean
@@ -67,6 +71,7 @@ export const DEFAULT_PRACTICE_SETTINGS: PracticeSettings = {
   autoAdvanceMs: 800,
   dailyGoalMinutes: 10,
   dailyCapMinutes: 10,
+  dailyChordShare: 0.5,
   staffEnabled: true,
   staffKeyEnabled: false,
   chimeEnabled: true,
@@ -92,6 +97,16 @@ export function sanitizeDailyCapMinutes(value: unknown): number {
   return DAILY_CAP_MINUTES.includes(value as number)
     ? (value as number)
     : DEFAULT_PRACTICE_SETTINGS.dailyCapMinutes
+}
+
+// The daily split's choices (§5.3), all chords → all scales. Chips again, so
+// an off-list value falls back to the even split.
+export const DAILY_CHORD_SHARES: readonly number[] = [1, 0.75, 0.5, 0.25, 0]
+
+export function sanitizeDailyChordShare(value: unknown): number {
+  return DAILY_CHORD_SHARES.includes(value as number)
+    ? (value as number)
+    : DEFAULT_PRACTICE_SETTINGS.dailyChordShare
 }
 
 // Song-mode tempo bounds (§6.5) and progression-length choices (§7).
@@ -171,6 +186,7 @@ export function sanitizeSettings(value: unknown): PracticeSettings {
       defaults.dailyGoalMinutes,
     ),
     dailyCapMinutes: sanitizeDailyCapMinutes(raw.dailyCapMinutes),
+    dailyChordShare: sanitizeDailyChordShare(raw.dailyChordShare),
     staffEnabled: asBoolean(raw.staffEnabled, defaults.staffEnabled),
     staffKeyEnabled: asBoolean(raw.staffKeyEnabled, defaults.staffKeyEnabled),
     chimeEnabled: asBoolean(raw.chimeEnabled, defaults.chimeEnabled),

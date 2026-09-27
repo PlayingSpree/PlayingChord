@@ -12,28 +12,40 @@ import {
   weekFirstTryDelta,
 } from '../storage'
 import {
+  dailyLegMinutes,
+  dailyLegRemaining,
+  dueDailyLeg,
   worstChordDisplayGrade,
   type DisplayGrade,
   type Side,
 } from '../practice'
 import { DevicePicker } from './DevicePicker'
 import { MODE_LABELS, START_LABEL } from './modes'
-import { counted, noun, SIDE_LABELS, SIDES, sideModes } from './sides'
+import {
+  counted,
+  noun,
+  presetModeOf,
+  presetModes,
+  SIDE_LABELS,
+  SIDES,
+} from './sides'
 import { Card, Chip, RaisedButton, SectionLabel } from './ui'
 import { cx } from './cx'
 import { gradeText } from './grades'
+import { formatMinutes } from './daily'
 
 // The Home screen (DESIGN.md §7.1): the entry point. The no-device gate
-// (§6.1) doesn't block it. Top bar, the Continue card (preset, unlock
-// progress, the "In play" grade row, the mode selector and Start), the daily
-// goal ring, a 14-day mini calendar, and the Progress button with this
+// (§6.1) doesn't block it. Top bar, the Daily card (both sides' legs, above
+// the side switch), the Continue card
+// (preset, unlock progress, the "In play" grade row, the mode selector and
+// Start), the daily goal ring, a 14-day mini calendar, and the Progress button with this
 // week's first-try delta. `onOpenSheet` opens the session sheet for full
 // config (preset / mode / length, §7.2).
 // The Continue card is about the *selected preset* — its unlock progress and
 // its in-play chords — which is what Learn, free practice and Song draw from.
 // Daily practice doesn't (§5.3: every preset's learned chords under a time
-// cap), so selecting it adds a line saying what it will deal instead; the
-// preset controls stay put, still configuring the other three.
+// cap), so it is a card of its own above, one click to start, rather than a
+// mode chip beside a preset it ignores.
 // Everything on the card is the switched-to side's (§7.1): the Chords |
 // Scales switch above it picks the side, and with it the preset, the pool,
 // the modes and the records the Progress button reads. The goal ring, the
@@ -65,7 +77,9 @@ export function HomeView({
   const openChordForPlay = usePractice((s) => s.openChordForPlay)
   const goalMinutes = useSettings((s) => s.settings.dailyGoalMinutes)
   const dailyCapMinutes = useSettings((s) => s.settings.dailyCapMinutes)
-  const learnedChordCount = usePractice((s) => s.learnedChordCount)
+  const dailyChordShare = useSettings((s) => s.settings.dailyChordShare)
+  const dailyPlan = usePractice((s) => s.dailyPlan)
+  const prepareDaily = usePractice((s) => s.prepareDaily)
   const diatonicKey = usePractice((s) => s.diatonicKey)
   const learnSet = usePractice((s) => s.learnSelection)
   const customRules = useLibrary((s) => s.customRules)
@@ -131,13 +145,16 @@ export function HomeView({
     [presetId, diatonicKey, learnSet, progress, customRules],
   )
 
-  // What daily practice would deal (§5.3), across every preset — read from
-  // the persisted records on the same triggers as the row above.
-  const learnedChords = useMemo(
-    () => learnedChordCount(),
-    // learnedChordCount is a stable store method; re-run on progress/library.
+  // What daily practice would deal (§5.3), across every preset of both
+  // sides, and how much of each leg today has already played — read from the
+  // persisted records on the same triggers as the row above, plus the cap
+  // and split. Home re-mounts after every session, so today's minutes are
+  // current.
+  const plan = useMemo(
+    () => dailyPlan(),
+    // dailyPlan is a stable store method; re-run on progress/library/settings.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [presetId, progress, customRules],
+    [side, presetId, progress, customRules, dailyCapMinutes, dailyChordShare],
   )
 
   // 14-day mini calendar + this-week delta, read once per mount. The
@@ -166,6 +183,33 @@ export function HomeView({
     }
   }, [goalMinutes, side])
 
+  // The Continue card's mode — never daily, which has its own card.
+  const presetMode = presetModeOf(mode)
+  const startPresetMode = () => {
+    setMode(presetMode)
+    onStart()
+  }
+  // Daily runs a chord leg then a scale leg (§5.3), each to its share of
+  // the cap less what today has already played, so a run cut short picks up
+  // where it stopped. With nothing learned on either side the card reads as
+  // locked; with both legs played out it reads as done for today and offers
+  // Keep going — the same learned pool, uncapped, until End. Starting
+  // switches Home to the leg's side, since a session runs on the store's
+  // side — the way back Home switches it back (§7.1).
+  const dailyLegs = SIDES.map((legSide) => ({
+    side: legSide,
+    share: dailyLegMinutes(legSide, plan),
+    remaining: dailyLegRemaining(legSide, plan),
+    learned: plan.learned[legSide],
+  }))
+  const dueLeg = dueDailyLeg(plan)
+  const nothingLearned = SIDES.every((s) => plan.learned[s] === 0)
+  const startedToday = SIDES.some((s) => plan.playedToday[s] > 0)
+  const doneToday = !nothingLearned && dueLeg === null
+  const startDaily = () => {
+    if (prepareDaily()) onStart()
+  }
+
   const nextBatch = Math.min(2, progress.total - progress.unlocked)
   const unlockPct =
     progress.total > 0
@@ -189,6 +233,52 @@ export function HomeView({
             ⚙
           </RaisedButton>
         </header>
+
+        {/* Above the side switch, with the other things that are about time
+            rather than kind (§7.1): one Daily spans both sides (§5.3). */}
+        <Card
+          className={cx(
+            'flex flex-wrap items-center gap-x-4 gap-y-3 px-6 py-4',
+            nothingLearned && 'border-dashed',
+          )}
+        >
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="text-xl font-extrabold">
+              {MODE_LABELS.daily}{' '}
+              <span className="text-[15px] font-semibold text-ink-muted">
+                · {dailyCapMinutes} min{doneToday && ' · ✓ done today'}
+              </span>
+            </span>
+            {nothingLearned ? (
+              <span className="text-[15px] text-ink-muted">
+                Pass a chord or a scale first — daily practice drills what you
+                have learned, from every preset
+              </span>
+            ) : (
+              <span className="flex flex-wrap gap-x-5 text-[15px] text-ink-muted">
+                {dailyLegs.map((leg) => (
+                  <span key={leg.side}>
+                    <b className="font-semibold text-ink-soft">
+                      {SIDE_LABELS[leg.side]}
+                    </b>{' '}
+                    {legLine(leg)}
+                  </span>
+                ))}
+              </span>
+            )}
+          </div>
+          <RaisedButton
+            variant={doneToday ? 'outline' : 'primary'}
+            disabled={nothingLearned}
+            onClick={startDaily}
+          >
+            {doneToday
+              ? 'Keep going ▶'
+              : startedToday
+                ? 'Continue daily ▶'
+                : 'Start daily ▶'}
+          </RaisedButton>
+        </Card>
 
         <SideSwitch side={side} onChange={setSide} />
 
@@ -326,35 +416,23 @@ export function HomeView({
             </div>
 
             <div className="mt-auto flex flex-wrap gap-2.5 pt-2">
-              {sideModes(side).map((id) => {
-                // Daily has nothing to drill until something is learned
-                // (§5.3): it reads as locked, like a chord you haven't
-                // reached, rather than starting an empty session.
-                const locked = id === 'daily' && learnedChords === 0
-                return (
-                  <Chip
-                    key={id}
-                    selected={mode === id}
-                    tone={locked ? 'locked' : 'default'}
-                    title={
-                      locked
-                        ? `Pass a ${noun(side, 1)} first — daily practice drills the ${noun(side)} you have learned`
-                        : undefined
-                    }
-                    onClick={locked ? undefined : () => setMode(id)}
-                    className="px-4 py-2.5 text-base"
-                  >
-                    {MODE_LABELS[id]}
-                  </Chip>
-                )
-              })}
+              {presetModes(side).map((id) => (
+                <Chip
+                  key={id}
+                  selected={presetMode === id}
+                  onClick={() => setMode(id)}
+                  className="px-4 py-2.5 text-base"
+                >
+                  {MODE_LABELS[id]}
+                </Chip>
+              ))}
             </div>
 
             {/* Learn deals a chosen set plus enough learned chords to make
                 three (§5.4), and runs until the set is rehearsed rather than to
                 a length — so, like daily, it says what it will deal. The set
                 itself is picked in the sheet. */}
-            {mode === 'learn' && (
+            {presetMode === 'learn' && (
               <p className="text-[15px] text-ink-muted">
                 <b className="font-semibold text-ink-soft">
                   {counted(side, learnSet.length)} to learn
@@ -366,22 +444,13 @@ export function HomeView({
               </p>
             )}
 
-            {mode === 'daily' && (
-              <p className="text-[15px] text-ink-muted">
-                <b className="font-semibold text-ink-soft">
-                  {learnedChords} learned {noun(side, learnedChords)}
-                </b>{' '}
-                from every preset · {dailyCapMinutes} min cap
-              </p>
-            )}
-
             <RaisedButton
               variant="primary"
               size="lg"
               className="w-full"
-              onClick={onStart}
+              onClick={startPresetMode}
             >
-              {START_LABEL[mode]}
+              {START_LABEL[presetMode]}
             </RaisedButton>
           </Card>
 
@@ -437,6 +506,22 @@ export function HomeView({
       </div>
     </main>
   )
+}
+
+// One Daily leg on the card (§5.3): why it won't run, that it's done
+// today, how much of it is left, or — untouched today — its share.
+function legLine(leg: {
+  share: number
+  remaining: number
+  learned: number
+}): string {
+  if (leg.learned === 0) return '· nothing learned yet'
+  if (leg.share === 0) return '· off'
+  if (leg.remaining === 0) return `✓ ${formatMinutes(leg.share)} min done`
+  if (leg.remaining < leg.share) {
+    return `${formatMinutes(leg.remaining)} of ${formatMinutes(leg.share)} min left · ${leg.learned} learned`
+  }
+  return `${formatMinutes(leg.share)} min · ${leg.learned} learned`
 }
 
 // The Chords | Scales switch (§7.1): a segmented control above the Continue

@@ -64,6 +64,17 @@ describe('sanitizeSettings', () => {
     )
   })
 
+  it('keeps the daily split on its chips, else the even split (§5.3)', () => {
+    expect(sanitizeSettings({ dailyChordShare: 0 }).dailyChordShare).toBe(0)
+    expect(sanitizeSettings({ dailyChordShare: 0.75 }).dailyChordShare).toBe(
+      0.75,
+    )
+    // Absent in settings written before the split existed, off-list, or junk.
+    expect(sanitizeSettings({}).dailyChordShare).toBe(0.5)
+    expect(sanitizeSettings({ dailyChordShare: 0.6 }).dailyChordShare).toBe(0.5)
+    expect(sanitizeSettings({ dailyChordShare: '1' }).dailyChordShare).toBe(0.5)
+  })
+
   it('round-trips already-valid settings unchanged', () => {
     const valid = {
       allowOctaveDoubling: false,
@@ -72,6 +83,7 @@ describe('sanitizeSettings', () => {
       autoAdvanceMs: 1200,
       dailyGoalMinutes: 20,
       dailyCapMinutes: 15,
+      dailyChordShare: 0.25,
       staffEnabled: false,
       staffKeyEnabled: true,
       chimeEnabled: false,

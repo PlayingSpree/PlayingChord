@@ -6,7 +6,6 @@ import {
 } from '../store/practiceStore'
 import { settingsStore, useSettings } from '../store/settingsStore'
 import {
-  DAILY_CAP_MINUTES,
   MAX_SONG_TEMPO_BPM,
   MIN_SONG_TEMPO_BPM,
   MODE_POLICY,
@@ -22,7 +21,7 @@ import { ALL_PITCH_CLASSES, keyDisplayName, type PitchClass } from '../theory'
 import { Chip, RaisedButton, SectionLabel, Toggle } from './ui'
 import { MODE_LABELS } from './modes'
 import { ThumbHandChips } from './ThumbHandChips'
-import { counted, noun, Noun, sideModes } from './sides'
+import { counted, noun, Noun, presetModeOf, presetModes } from './sides'
 import { cx } from './cx'
 
 // The session sheet (DESIGN.md §7.2): a modal over Home or the Stage holding
@@ -38,7 +37,9 @@ import { cx } from './cx'
 // persisted preferences that apply from the next beat or progression (§7.3),
 // not session config, so they keep writing straight through to settings.
 // The sheet stays on the side Home is switched to (§7.1): its presets and
-// modes are that side's, and changing side means going back Home.
+// modes are that side's, and changing side means going back Home. Daily
+// practice isn't drafted here — it has no preset and one persisted setting,
+// so Home starts it from its own card and Settings holds its cap (§7.1).
 // Length values per unit (§7.2), ∞ last in both. A unit switch rather than
 // one long row: prompts and minutes answer different questions ("give me 20
 // reps" vs "give me 10 minutes") and mixing them in a single row of chips
@@ -79,7 +80,8 @@ export function SessionSheet({
     return {
       presetId: state.presetId,
       diatonicKey: state.diatonicKey,
-      mode: state.mode,
+      // Opened over a daily session, the draft starts on free practice.
+      mode: presetModeOf(state.mode),
       sessionLength: state.sessionLength,
       worstOnly: state.worstOnly,
       learnSelection: state.learnSelection,
@@ -101,13 +103,6 @@ export function SessionSheet({
         ).defaultLearnSet(),
       }
     })
-  const daily = draft.mode === 'daily'
-  // What daily practice would deal right now (§5.3) — read once per open,
-  // like the worst-only availability below: the sheet sits outside a session,
-  // so nothing can change under it while it's up.
-  const [learnedChords] = useState(() =>
-    practiceStore.getState().learnedChordCount(),
-  )
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -167,11 +162,7 @@ export function SessionSheet({
           </RaisedButton>
         </div>
 
-        {/* Daily practice draws from every preset's learned chords (§5.3), so
-            there is no preset to pick — the picker would look like it was
-            choosing the pool when it wasn't. It still governs the other three
-            modes, so it comes back with them. */}
-        <div className={cx('flex flex-col gap-1.5', daily && 'hidden')}>
+        <div className="flex flex-col gap-1.5">
           <SectionLabel>Preset</SectionLabel>
           <div className="flex gap-2">
             <select
@@ -208,28 +199,21 @@ export function SessionSheet({
         <div className="flex flex-col gap-1.5">
           <SectionLabel>Mode</SectionLabel>
           <div className="flex overflow-hidden rounded-[14px] border-2 border-card-border">
-            {sideModes(side).map((id) => {
-              // Nothing learned yet, nothing for daily to deal (§5.3).
-              const locked = id === 'daily' && learnedChords === 0
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  disabled={locked}
-                  onClick={() => patch({ mode: id })}
-                  className={cx(
-                    'flex-1 py-2.5 text-[13px] transition-colors',
-                    draft.mode === id
-                      ? 'bg-primary font-extrabold text-primary-ink'
-                      : locked
-                        ? 'font-semibold text-ink-faint'
-                        : 'font-semibold text-ink-muted hover:text-ink-soft',
-                  )}
-                >
-                  {MODE_LABELS[id]}
-                </button>
-              )
-            })}
+            {presetModes(side).map((id) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => patch({ mode: id })}
+                className={cx(
+                  'flex-1 py-2.5 text-[13px] transition-colors',
+                  draft.mode === id
+                    ? 'bg-primary font-extrabold text-primary-ink'
+                    : 'font-semibold text-ink-muted hover:text-ink-soft',
+                )}
+              >
+                {MODE_LABELS[id]}
+              </button>
+            ))}
           </div>
           {MODE_POLICY[draft.mode].hasLearnLoop && (
             <LearnSetPicker
@@ -240,7 +224,6 @@ export function SessionSheet({
               onChange={(learnSelection) => patch({ learnSelection })}
             />
           )}
-          {daily && <DailySettings side={side} learnedChords={learnedChords} />}
           {MODE_POLICY[draft.mode].supportsWorstOnly && (
             <WorstOnlyRow
               side={side}
@@ -260,9 +243,9 @@ export function SessionSheet({
           )}
         </div>
 
-        {/* Song runs until ended, daily runs to its own cap (§5.3) and Learn
-            runs until its set is rehearsed (§5.4), so the length is free
-            practice's alone — the modes that draft one, per the policy. */}
+        {/* Song runs until ended and Learn runs until its set is rehearsed
+            (§5.4), so the length is free practice's alone — the modes that
+            draft one, per the policy. */}
         {MODE_POLICY[draft.mode].length === 'drafted' && (
           <div className="flex flex-col gap-1.5">
             <SectionLabel>Length</SectionLabel>
@@ -326,46 +309,6 @@ export function SessionSheet({
           Start ▶
         </RaisedButton>
       </div>
-    </div>
-  )
-}
-
-// Daily practice's whole configuration (§5.3): how long it runs, and a line
-// saying what it will deal. The cap is a persisted preference, not session
-// config — like Song's tempo it writes straight through as it's set, because
-// the point of the daily drill is that it is the same tomorrow.
-function DailySettings({
-  side,
-  learnedChords,
-}: {
-  side: Side
-  learnedChords: number
-}) {
-  const cap = useSettings((s) => s.settings.dailyCapMinutes)
-  const update = settingsStore.getState().update
-  return (
-    <div className="mt-1 flex flex-col gap-2.5">
-      <SettingRow label="Cap">
-        <div className="flex gap-1.5">
-          {DAILY_CAP_MINUTES.map((minutes) => (
-            <Chip
-              key={minutes}
-              selected={cap === minutes}
-              onClick={() => update({ dailyCapMinutes: minutes })}
-              className="px-3 py-1 text-sm"
-            >
-              {minutes}m
-            </Chip>
-          ))}
-        </div>
-      </SettingRow>
-      <p className="text-[13px] text-ink-muted">
-        Every {noun(side, 1)} you have learned, from every preset —{' '}
-        <b className="font-semibold text-ink-soft">
-          {counted(side, learnedChords)}
-        </b>
-        . Unlocking stays in Learn and Free.
-      </p>
     </div>
   )
 }

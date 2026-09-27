@@ -3,6 +3,7 @@ import { usePractice } from '../store/practiceStore'
 import { useSettings } from '../store/settingsStore'
 import {
   MODE_POLICY,
+  dueDailyLeg,
   type ComboGrade,
   type SessionReport,
   type Side,
@@ -33,6 +34,8 @@ export function ReportView({
   const side = usePractice((s) => s.side)
   const goalMinutes = useSettings((s) => s.settings.dailyGoalMinutes)
   const setMode = usePractice((s) => s.setMode)
+  const dailyPlan = usePractice((s) => s.dailyPlan)
+  const prepareDaily = usePractice((s) => s.prepareDaily)
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -44,6 +47,13 @@ export function ReportView({
 
   if (report === null) return null
   const learn = MODE_POLICY[report.mode].hasLearnLoop
+  // A Daily leg (§5.3) hands on to whatever of today's Daily is still due:
+  // the rest of this leg when it was ended early, else the next leg. Read
+  // after the session's minutes landed, so a finished leg is never offered
+  // again; when nothing is due, today's Daily is done and the offer is Keep
+  // going — the same pool, uncapped, until End.
+  const daily = report.mode === 'daily'
+  const dueLeg = daily ? dueDailyLeg(dailyPlan()) : null
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-surface p-8 text-ink">
@@ -177,7 +187,8 @@ export function ReportView({
 
         {/* A finished loop has nothing left to repeat — the set is rehearsed,
             and passing it happens in free practice (§5.4) — so Learn's next
-            step is that session, on the same preset, not another loop. */}
+            step is that session, on the same preset, not another loop. A
+            daily leg's next step is whatever of today's Daily is still due. */}
         <div className="flex gap-3">
           <RaisedButton
             autoFocus
@@ -186,10 +197,19 @@ export function ReportView({
             className="flex-1"
             onClick={() => {
               if (learn) setMode('free')
+              if (daily && !prepareDaily()) return
               onGoAgain()
             }}
           >
-            {learn ? 'Free practice ▶' : 'Go again ▶'}
+            {learn
+              ? 'Free practice ▶'
+              : !daily
+                ? 'Go again ▶'
+                : dueLeg === null
+                  ? 'Keep going ▶'
+                  : dueLeg === side
+                    ? 'Continue daily ▶'
+                    : `Next: Daily ${noun(dueLeg)} ▶`}
           </RaisedButton>
           <RaisedButton variant="outline" size="lg" onClick={onHome}>
             Home

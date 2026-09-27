@@ -1712,6 +1712,117 @@ describe('practiceStore — daily practice (§5.3)', () => {
     expect(s.store.getState().report!.suggestion).toBeNull() // free only (§7.4)
   })
 
+  // The chord presets plus one learned scale preset, so both Daily legs run.
+  const withScales = (): readonly Preset[] => [
+    ...twoPresets(),
+    {
+      kind: 'scale',
+      id: 'scales',
+      name: 'Scales',
+      pool: { kind: 'product', roots: [0], scaleTypes: ['major'] },
+      shapeIds: ['block'],
+    },
+  ]
+  const bothLearned = () => {
+    const progress = learnedProgress()
+    progress.set('scales', {
+      unlockedCount: 1,
+      masteredIndices: [0],
+      setAsideIndices: [],
+    })
+    return progress
+  }
+  const splitSettings = (dailyChordShare: number) => () => ({
+    ...DEFAULT_PRACTICE_SETTINGS,
+    dailyChordShare,
+  })
+
+  it('runs the chord leg to its share when scales are learned too', () => {
+    // The 10-minute cap splits ¾ / ¼ (§5.3), so the chord leg ends at 7.5
+    // minutes, not 10.
+    const s = dailySetup({
+      presets: withScales,
+      progress: bothLearned(),
+      settings: splitSettings(0.75),
+    })
+    expect(s.store.getState().learnedCounts()).toEqual({ chords: 3, scales: 1 })
+    for (let i = 0; i < 22; i++) {
+      vi.advanceTimersByTime(20_000)
+      playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
+    }
+    expect(s.store.getState().report).toBeNull()
+
+    vi.advanceTimersByTime(20_000)
+    playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
+    expect(s.store.getState().report?.mode).toBe('daily')
+  })
+
+  it('resumes a leg cut short with what is left of it today', () => {
+    const activity = new InMemoryDailyActivity()
+    activity.addMinutes(3, 'chords') // an earlier chord leg, ended early
+    const s = dailySetup({
+      presets: withScales,
+      progress: bothLearned(),
+      settings: splitSettings(0.5),
+      activity,
+    })
+    expect(s.store.getState().dailyLegLimitMinutes).toBe(2)
+
+    // This leg's own minutes land on the chord side's Daily minutes.
+    for (let i = 0; i < 3; i++) {
+      vi.advanceTimersByTime(20_000)
+      playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
+    }
+    s.store.getState().endSession()
+    expect(activity.todayDailyMinutes().chords).toBeGreaterThan(3)
+    expect(activity.todayDailyMinutes().scales).toBe(0)
+  })
+
+  it('switches to the due leg and back to the side Home was on (§7.1)', () => {
+    const activity = new InMemoryDailyActivity()
+    const s = setup(
+      {
+        presets: withScales,
+        progress: bothLearned(),
+        settings: splitSettings(0.5),
+        activity,
+      },
+      false,
+    )
+    s.store.getState().setSide('scales')
+    expect(s.store.getState().prepareDaily()).toBe(true)
+    expect(s.store.getState().side).toBe('chords')
+    expect(s.store.getState().mode).toBe('daily')
+
+    // The hand-on to the scale leg keeps the side the run started from.
+    activity.addMinutes(5, 'chords')
+    expect(s.store.getState().prepareDaily()).toBe(true)
+    expect(s.store.getState().side).toBe('scales')
+    s.store.getState().setSide('chords')
+    s.store.getState().returnFromDaily()
+    expect(s.store.getState().side).toBe('scales')
+
+    // Both legs played out: today's Daily is done, and what it readies is the
+    // uncapped Keep-going run on the side it is on.
+    activity.addMinutes(5, 'scales')
+    s.store.getState().setSide('chords')
+    expect(s.store.getState().prepareDaily()).toBe(true)
+    expect(s.store.getState().side).toBe('chords')
+    enterStage(s)
+    expect(s.store.getState().dailyLegLimitMinutes).toBeNull()
+    for (let i = 0; i < 40; i++) {
+      vi.advanceTimersByTime(20_000)
+      playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
+    }
+    expect(s.store.getState().report).toBeNull() // runs until End
+  })
+
+  it('has no Daily to ready with nothing learned anywhere', () => {
+    const s = setup({ presets: withScales }, false)
+    expect(s.store.getState().prepareDaily()).toBe(false)
+    expect(s.store.getState().mode).not.toBe('daily')
+  })
+
   it('picks up chords passed in free practice without a reload', () => {
     const s = setup({ presets: twoPresets, progress: learnedProgress() }, false)
     expect(s.store.getState().learnedChordCount()).toBe(3)

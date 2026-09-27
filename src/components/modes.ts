@@ -10,11 +10,12 @@ export const MODE_LABELS: Record<SessionMode, string> = {
   song: '♪ Song',
 }
 
-// Selector order: learn, then the two practice modes (§5.3 daily before the
-// configured drill it is meant to save you from configuring), then Song.
-export const MODE_ORDER: readonly SessionMode[] = [
+// The modes that run on the selected preset, in selector order — Home's
+// Continue card and the session sheet. Daily isn't one: it draws on every
+// preset (§5.3), so it has its own card on Home (§7.1) rather than a slot
+// beside the preset it ignores.
+export const PRESET_MODE_ORDER: readonly SessionMode[] = [
   'learn',
-  'daily',
   'free',
   'song',
 ]

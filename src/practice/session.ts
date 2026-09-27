@@ -181,18 +181,20 @@ export function sessionLengthReached(
 export const UNLIMITED_LENGTH: SessionLength = { unit: 'prompts', value: null }
 
 // What actually ends a session (§7.2), for a mode and the length drafted for
-// it: daily practice runs to its persisted cap in active minutes (§5.3), Learn
+// it: daily practice runs to what is left of its leg, in active minutes, or
+// without a length once today's legs are done (§5.3 — passed in, null for
+// the latter), Learn
 // to its chord set (§5.4) and Song to the End button, so only free practice
 // takes the drafted length. Shared by the store's between-prompts check and the
 // Stage's progress readout, which would otherwise each carry the rule.
 export function effectiveLength(
   mode: SessionMode,
   drafted: SessionLength,
-  dailyCapMinutes: number,
+  dailyMinutes: number | null,
 ): SessionLength {
   switch (MODE_POLICY[mode].length) {
     case 'dailyCap':
-      return { unit: 'minutes', value: dailyCapMinutes }
+      return { unit: 'minutes', value: dailyMinutes }
     case 'none':
       return UNLIMITED_LENGTH
     case 'drafted':

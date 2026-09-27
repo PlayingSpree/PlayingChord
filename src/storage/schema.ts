@@ -78,6 +78,19 @@ export interface DailyRecord {
   // invalidating the record.
   timeToCorrectMs: number
   scales?: DailyCounts
+  // Daily practice's active minutes per side (§5.3) — what a Daily leg has
+  // already played today, so one ended early resumes with its remainder and a
+  // finished one doesn't run again. Also counted in `activeMinutes`. Added
+  // within v2; absent (or a garbled side) reads as none played.
+  dailyMinutes?: Partial<Record<Side, number>>
+}
+
+// The Daily minutes a side has played on a day (§5.3).
+export function dailyLegPlayed(
+  record: DailyRecord | undefined,
+  side: Side,
+): number {
+  return record?.dailyMinutes?.[side] ?? 0
 }
 
 // The counters a day keeps per side.
@@ -278,15 +291,37 @@ export function sanitizeDailyRecords(
     }
     // A garbled scales bucket loses only the day's scale counters.
     const scales = sanitizeDailyCounts(asRecord(record.scales))
+    const dailyMinutes = sanitizeDailyMinutes(asRecord(record.dailyMinutes))
     // The record's own date is canonical — a mismatched map key self-heals.
     records[date] = {
       date,
       activeMinutes,
       ...counts,
       ...(scales !== null ? { scales } : {}),
+      ...(dailyMinutes !== null ? { dailyMinutes } : {}),
     }
   }
   return records
+}
+
+// The per-side Daily minutes, keeping each side only when it is a sane
+// figure — a bad one costs that side's resume point, not the day.
+function sanitizeDailyMinutes(
+  record: Record<string, unknown> | null,
+): Partial<Record<Side, number>> | null {
+  if (!record) return null
+  const sides: Partial<Record<Side, number>> = {}
+  for (const side of ['chords', 'scales'] as const) {
+    const minutes = record[side]
+    if (
+      typeof minutes === 'number' &&
+      Number.isFinite(minutes) &&
+      minutes >= 0
+    ) {
+      sides[side] = minutes
+    }
+  }
+  return Object.keys(sides).length > 0 ? sides : null
 }
 
 // One side's four counters, or null when the prompt pair is unusable.

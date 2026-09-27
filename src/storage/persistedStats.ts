@@ -16,6 +16,7 @@ import {
 } from '../practice'
 import type { AppStorage } from './appStorage'
 import {
+  dailyLegPlayed,
   EMPTY_DAILY_COUNTS,
   localDateKey,
   type DailyCounts,
@@ -135,9 +136,38 @@ export class PersistedComboStats implements ComboStatsSource {
 // what the goal chip / History read. Kept separate from ComboStatsSource:
 // activity accrues in Learn mode too, where combo stats never do (§5).
 export interface DailyActivitySource {
-  addMinutes(minutes: number): void
+  // `dailySide`, when the minutes were played in a Daily leg (§5.3), also
+  // credits them to that side's Daily minutes — the leg's resume point.
+  addMinutes(minutes: number, dailySide?: Side): void
   todayMinutes(): number
+  // Today's Daily minutes per side (§5.3).
+  todayDailyMinutes(): Record<Side, number>
   records(): Readonly<Record<string, DailyRecord>>
+}
+
+// A day's record with `minutes` more active time, credited to a Daily leg's
+// side as well when it was played in one.
+function withMinutes(
+  base: DailyRecord,
+  minutes: number,
+  dailySide: Side | undefined,
+): DailyRecord {
+  const next = { ...base, activeMinutes: base.activeMinutes + minutes }
+  if (dailySide === undefined) return next
+  return {
+    ...next,
+    dailyMinutes: {
+      ...base.dailyMinutes,
+      [dailySide]: dailyLegPlayed(base, dailySide) + minutes,
+    },
+  }
+}
+
+function dailyMinutesOf(record: DailyRecord | undefined): Record<Side, number> {
+  return {
+    chords: dailyLegPlayed(record, 'chords'),
+    scales: dailyLegPlayed(record, 'scales'),
+  }
 }
 
 export class PersistedDailyActivity implements DailyActivitySource {
@@ -152,7 +182,7 @@ export class PersistedDailyActivity implements DailyActivitySource {
     this.today = today
   }
 
-  addMinutes(minutes: number): void {
+  addMinutes(minutes: number, dailySide?: Side): void {
     if (!(minutes > 0)) return
     const date = this.today()
     this.storage.update((state) => {
@@ -161,7 +191,7 @@ export class PersistedDailyActivity implements DailyActivitySource {
         ...state,
         dailyRecords: {
           ...state.dailyRecords,
-          [date]: { ...base, activeMinutes: base.activeMinutes + minutes },
+          [date]: withMinutes(base, minutes, dailySide),
         },
       }
     })
@@ -169,6 +199,10 @@ export class PersistedDailyActivity implements DailyActivitySource {
 
   todayMinutes(): number {
     return this.storage.state.dailyRecords[this.today()]?.activeMinutes ?? 0
+  }
+
+  todayDailyMinutes(): Record<Side, number> {
+    return dailyMinutesOf(this.storage.state.dailyRecords[this.today()])
   }
 
   records(): Readonly<Record<string, DailyRecord>> {
@@ -185,18 +219,19 @@ export class InMemoryDailyActivity implements DailyActivitySource {
     this.today = today
   }
 
-  addMinutes(minutes: number): void {
+  addMinutes(minutes: number, dailySide?: Side): void {
     if (!(minutes > 0)) return
     const date = this.today()
     const base = this.byDate[date] ?? emptyDailyRecord(date)
-    this.byDate[date] = {
-      ...base,
-      activeMinutes: base.activeMinutes + minutes,
-    }
+    this.byDate[date] = withMinutes(base, minutes, dailySide)
   }
 
   todayMinutes(): number {
     return this.byDate[this.today()]?.activeMinutes ?? 0
+  }
+
+  todayDailyMinutes(): Record<Side, number> {
+    return dailyMinutesOf(this.byDate[this.today()])
   }
 
   records(): Readonly<Record<string, DailyRecord>> {

@@ -214,12 +214,30 @@ describe('PersistedDailyActivity (§7 active minutes)', () => {
     expect(reloaded.todayMinutes()).toBe(4)
   })
 
+  it("credits a Daily leg's minutes to its side as well (§5.3)", () => {
+    const storage = new AppStorage(fakeKV())
+    const activity = new PersistedDailyActivity(storage, () => '2026-07-16')
+    activity.addMinutes(2, 'chords')
+    activity.addMinutes(1.5, 'scales')
+    activity.addMinutes(3) // free practice: the goal's, no leg's
+    activity.addMinutes(1, 'chords')
+
+    expect(activity.todayMinutes()).toBe(7.5)
+    expect(activity.todayDailyMinutes()).toEqual({ chords: 3, scales: 1.5 })
+    expect(storage.state.dailyRecords['2026-07-16']?.dailyMinutes).toEqual({
+      chords: 3,
+      scales: 1.5,
+    })
+  })
+
   it('the in-memory double behaves the same', () => {
     const activity = new InMemoryDailyActivity(() => '2026-07-16')
     activity.addMinutes(1.5)
     activity.addMinutes(-1)
     expect(activity.todayMinutes()).toBe(1.5)
     expect(activity.records()['2026-07-16']?.prompts).toBe(0)
+    activity.addMinutes(2, 'scales')
+    expect(activity.todayDailyMinutes()).toEqual({ chords: 0, scales: 2 })
   })
 })
 

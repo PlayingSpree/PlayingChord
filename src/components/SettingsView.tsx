@@ -4,6 +4,8 @@ import {
   builtInPresets,
   builtInScalePresets,
   CHORD_NAME_SIZES,
+  DAILY_CAP_MINUTES,
+  DAILY_CHORD_SHARES,
   describeVoicingRule,
   MAX_DAILY_GOAL_MINUTES,
   MAX_DELAY_MS,
@@ -23,10 +25,12 @@ import { PresetEditor } from './PresetEditor'
 import { ThumbHandChips } from './ThumbHandChips'
 import { Card, Chip, RaisedButton, Stepper, Toggle } from './ui'
 import { cx } from './cx'
+import { formatMinutes } from './daily'
 
 // The §7.6 settings screen, grouped into cards: Sound / Notation / Matching &
 // timing / Goal & unlocks / Voicing rules / Presets. Mode sub-settings and the
-// session length live in the session sheet (§7.2), not here. The Phase 9
+// session length live in the session sheet (§7.2), not here — except daily
+// practice's cap, since daily isn't started from the sheet (§5.3). The Phase 9
 // library — voicing builder, preset editor, JSON import/export — keeps its
 // behavior; only the chrome is restyled.
 
@@ -246,6 +250,18 @@ function MatchingSection() {
   )
 }
 
+// The chord leg's share of the daily cap, as chips from all chords to all
+// scales (§5.3).
+// Named from whichever side has more, so no chip reads as a bare fraction
+// of nothing in particular.
+const SHARE_LABEL: Record<number, string> = {
+  1: 'All chords',
+  0.75: '¾ chords',
+  0.5: 'Half',
+  0.25: '¾ scales',
+  0: 'All scales',
+}
+
 function GoalSection() {
   const settings = useSettings((s) => s.settings)
   const update = useSettings((s) => s.update)
@@ -269,6 +285,49 @@ function GoalSection() {
           onIncrement={() => setGoal(settings.dailyGoalMinutes + 5)}
         />
       </Row>
+      {/* How long daily practice runs (§5.3), and how that time splits
+          between its chord leg and its scale leg — standing preferences, so
+          they live here rather than in the sheet. */}
+      <Row label="Daily practice length">
+        <div className="flex gap-1.5">
+          {DAILY_CAP_MINUTES.map((minutes) => (
+            <Chip
+              key={minutes}
+              selected={settings.dailyCapMinutes === minutes}
+              onClick={() => update({ dailyCapMinutes: minutes })}
+              className="px-2.5 py-1 text-[13px]"
+            >
+              {minutes}m
+            </Chip>
+          ))}
+        </div>
+      </Row>
+      {/* Five chips don't fit beside a label, so they get a line of their
+          own rather than wrapping inside each chip. */}
+      <div className="flex flex-col gap-2 text-[15px] font-semibold text-ink-soft">
+        <span>Daily split</span>
+        <div className="flex flex-wrap gap-1.5">
+          {DAILY_CHORD_SHARES.map((share) => (
+            <Chip
+              key={share}
+              selected={settings.dailyChordShare === share}
+              onClick={() => update({ dailyChordShare: share })}
+              className="whitespace-nowrap px-2.5 py-1 text-[13px]"
+            >
+              {SHARE_LABEL[share] ?? share}
+            </Chip>
+          ))}
+        </div>
+      </div>
+      <p className="text-xs text-ink-muted">
+        Chords{' '}
+        {formatMinutes(settings.dailyCapMinutes * settings.dailyChordShare)}{' '}
+        min, then scales{' '}
+        {formatMinutes(
+          settings.dailyCapMinutes * (1 - settings.dailyChordShare),
+        )}{' '}
+        min — a side with nothing learned yet hands its time to the other
+      </p>
       <Row label="Unlock in circle-of-fifths order">
         <Toggle
           checked={settings.unlockByFifths}

@@ -4,7 +4,7 @@ A web app for practicing piano chords and scales with a MIDI keyboard. The app s
 random chord or scale from a chosen preset, the user plays it on their connected MIDI
 keyboard, and the app validates the input and moves on to the next one.
 
-Spec version: **10.9.0** (2026-09-27) — chords and scales. Revision history lives in
+Spec version: **10.10.0** (2026-09-27) — chords and scales. Revision history lives in
 [CHANGELOG.md](CHANGELOG.md); this document describes only what the app *is* today.
 Both previously open questions are resolved (see [§9](#9-resolved-questions)). Build
 sequencing (what gets implemented first) is intentionally left outside this document.
@@ -30,7 +30,7 @@ sequencing (what gets implemented first) is intentionally left outside this docu
 - **Session modes**: **Learn** (a *loop*: pick a few chords, drill them with the
   example voicing shown until each grades D on the session's own reps; §5.4 —
   stats-neutral, so it unlocks nothing), two practice modes — **Daily** (every chord already learned,
-  across every preset, to a time cap; §5.3) and **Free** (default: a preset, its
+  then every scale, across every preset, to a split time cap; §5.3) and **Free** (default: a preset, its
   unlock gate and its narrows, to a chosen length) — and **Song**
   (a 2–4-chord progression from the active preset's pool looped to a metronome — the
   bar boundary judges, not the player's success; §6.5). Free practice keeps a
@@ -584,11 +584,39 @@ Everything above is scoped to *one* preset: its unlock queue, its narrows, its
 benched items. Daily practice is the one pool that isn't — the drill you run
 because it is today, not because you picked anything (`practice/daily.ts`).
 
-- **Daily is per kind.** The Home switch (§7.1) decides which Daily runs: chord
-  Daily draws on chord presets, scale Daily on scale presets, and everything below
-  holds for each on its own. A mixed drill would put a two-second chord beside a
-  twenty-second run in one weighted queue, and the two are practiced for different
-  reasons. The cap is one preference for both.
+- **One Daily, two legs, each of one kind.** Daily runs a **chord leg** then a
+  **scale leg**: the chord leg draws on chord presets, the scale leg on scale
+  presets, and everything below holds for each on its own. They are two
+  sessions, not one — a mixed drill would put a two-second chord beside a
+  twenty-second run in one weighted queue, and the two are practiced for
+  different reasons — joined by the chord leg's Report, whose main button starts
+  the scale leg (§7.4). Chords go first: the quicker kind, and the warm-up for
+  the longer runs.
+- **The legs are today's, not the run's.** Each side's Daily minutes are kept
+  on the day's record (§8), and a leg runs to its share **less what that side
+  has already played today** — fixed when the leg starts, since its own minutes
+  count against it as it goes. A leg ended early resumes with its remainder; a
+  finished one doesn't run again; Start picks up at the first leg with time
+  left, and once both are played out Daily is **done for today**. Within ten
+  seconds of its share a leg counts as done, rather than coming back as a
+  seconds-long session.
+- **Keep going** is what Daily offers once today's legs are done: the same
+  learned pool, **uncapped**, until End — on the side Home (or the Report's
+  leg) is on, or the other when that side has nothing learned. The capped legs
+  stay the default because not having to decide when to stop is the point of
+  the drill; the uncapped run is for the day you want more of the same, and no
+  other mode offers it — free practice is one preset's unlocked items, new ones
+  included. Its minutes are credited like a leg's but can't reopen one, since
+  both are already done. Like a free-practice ∞ session, the Stage paces it by
+  today's goal minutes (§7.3).
+- **The cap is split between the legs** by a **daily split** preference (§7.6)
+  — all chords, ¾ chords, half (default), ¾ scales, all scales — the scale leg taking what the
+  chord leg doesn't. A ratio rather than minutes, so changing the cap never
+  leaves a split that no longer fits it. A leg can be a fraction of a minute (¼
+  of 5); the clock is active time, so it ends where it should, and the readout
+  shows one decimal. A side with **nothing learned** yet has its leg skipped and
+  hands its time to the other, so a player who hasn't started scales still gets
+  the whole drill (`dailyLegMinutes`).
 - **The pool is every item already passed, in every preset** (built-in and
   custom), deduplicated by combo — the same item played the same way (voicing
   or shape) is one drillable thing however many presets happen to contain it, which is
@@ -605,16 +633,22 @@ because it is today, not because you picked anything (`practice/daily.ts`).
   which is what makes it maintenance rather than a rehearsal: an item that
   rots shows up in its grade and gets weighted back to the front (§5).
 - **It is capped in time, not prompts** — 5 / 10 / 15 / 20 **active** minutes
-  (§7.6's clock, so walking away doesn't burn the session), default 10. Unlike
+  in all, across both legs (§7.6's clock, so walking away doesn't burn the
+  session), default 10. Unlike
   the free-practice length (§7.2) the cap is a **persisted preference**: the
   point of a daily drill is that it is the same tomorrow, so how long it runs
-  is a standing decision rather than a pick made each time. The session ends at
-  the first prompt advance at or past the cap — never mid-attempt.
-- **No preset, no narrows, no key picker.** Its only setting is the cap. A
-  preset picker would look like it was choosing the pool when it wasn't.
-- **Unavailable until something is passed** — of the switched-to kind: with
-  nothing learned there is nothing to maintain, so Home and the session sheet offer the mode locked
-  rather than starting an empty session. The Report's set-aside offer (§7.4) is
+  is a standing decision rather than a pick made each time — set in Settings
+  (§7.6), not the session sheet. A leg ends at
+  the first prompt advance at or past its share — never mid-attempt.
+- **No preset, no narrows, no key picker.** Its only settings are the cap and
+  the split. A
+  preset picker would look like it was choosing the pool when it wasn't — and
+  for the same reason Daily is not a mode *beside* the preset at all: Home
+  starts it from a card of its own, and the session sheet, which drafts a
+  preset and a mode together, doesn't offer it (§7.1, §7.2).
+- **Unavailable until something is passed** — of either kind: with nothing
+  learned there is nothing to maintain, so Home's Daily card reads locked rather
+  than starting an empty session. The Report's set-aside offer (§7.4) is
   likewise free-practice-only — an offer made after a cross-preset session
   would act on whichever preset happened to be selected.
 
@@ -935,7 +969,8 @@ screen but absent. Merging them — one preset picker with two groups, a kind ta
 Progress, a kind switch inside Daily — was tried in design and read as confusing: a
 kind question asked on every screen instead of once. Shared across both sides are
 only the things that are about *time*, not kind — the daily goal, the streak, the
-goal calendar — and Settings. On the Scales side the UI says *scale* wherever it
+goal calendar, and Daily, which runs both kinds in turn (§5.3) and so asks no kind
+question at all — and Settings. On the Scales side the UI says *scale* wherever it
 says *chord*.
 
 **Visual language** (reference mock: `doc/Prototype.dc.html`): dark navy surface,
@@ -956,8 +991,8 @@ The entry screen — the app boots here, not into practice. The no-device gate
   screenshot has to be able to say which build it is; on production the branch
   is noise and stays hidden. Both values are fixed at build time, not read at
   runtime.
-- **Chords | Scales** switch: a segmented control at the top of Home, above the
-  Continue card — the §7 two sides. It is persisted, so the app reopens on the side
+- **Chords | Scales** switch: a segmented control below the Daily card and
+  above the Continue card — the §7 two sides. It is persisted, so the app reopens on the side
   last used, and each side remembers **its own active preset**, so switching is
   never a preset change in disguise. It lives on Home only: a session runs on one
   side, the sheet stays on it, and changing side means going back Home.
@@ -979,14 +1014,28 @@ The entry screen — the app boots here, not into practice. The no-device gate
   brings it back, a locked one unlocks early (saying how many open with it).
   Behind a toggle because the row is read every session and edited rarely: a
   chip that benched a chord on a stray click would be a trap in a row you scan.
-  Then the **mode selector** (Learn / Daily /
+  Then the **mode selector** (Learn /
   Free / Song — the Scales side has no Song, which drills chord transitions, §6.5)
   — configuration only, like everything else outside a session
-  (§7.2). **Daily** reads locked until some chord (on the Scales side, some
-  scale), anywhere, has been passed (§5.3); selecting it adds one line saying what it will deal — `N learned
-  chords from every preset · 10 min cap` — since the preset lines above it
-  govern the other three modes, not that one. Then the **Start** button,
-  labeled per mode.
+  (§7.2). Then the **Start** button,
+  labeled per mode. Daily is not among the modes: it ignores the preset
+  (§5.3), and a chip beside the preset read as though the preset governed it.
+  After a daily session the selector shows Free.
+- **Daily card**: a slim full-width card at the top, **above** the switch —
+  Daily spans both sides (§5.3), so it sits with nothing that the switch
+  governs. It shows the cap and both legs as they stand today —
+  `Chords 5 min · 12 learned`, `2 of 5 min left`, `✓ 5 min done`, or why a leg
+  won't run (*nothing learned yet*, *off*) — and its own button, one click with
+  nothing to configure: the drill you run because it is today should cost no
+  choices. It reads **Start daily**, **Continue daily** once today's Daily has
+  begun, and — once both legs are played out, with `✓ done today` beside the
+  cap — **Keep going** (§5.3), in the quieter outline style since the day's
+  drill is already done. It
+  reads locked until some chord or scale, anywhere, has been passed. Starting
+  switches Home to the due leg's side, since a session runs on one side; the
+  way back Home — from the Report, or an End with nothing played — switches it
+  back to the side it was on, so Daily never leaves Home somewhere the player
+  didn't put it.
 - **Daily goal ring**: today's active minutes vs the goal (§7.6) and what's
   left to keep the streak.
 - **Last 2 weeks**: a 14-day mini calendar of daily goal results
@@ -1013,13 +1062,14 @@ session config, so they take effect as they're set.
 
 - **Preset**: the same picker as the Continue card — the switched-to side's
   presets only (§7.1).
-- **Preset**: hidden in Daily, which has no preset to pick (§5.3) — a picker
-  there would look like it was choosing the pool.
-- **Mode**: Learn / Daily / Free / Song, segmented (no Song on the Scales side).
+- **Mode**: Learn / Free / Song, segmented (no Song on the Scales side). Daily
+  isn't drafted here: it has no preset and its one setting, the cap, is a
+  standing preference in Settings, so Home starts it from its own card (§7.1).
+  Opened over a daily session, the sheet drafts Free.
   Each mode's sub-settings
   (§7.3) appear under the row while that mode is selected: Learn's *Chords to
-  learn*, Daily's *Cap*, Free's *Worst chords only*, Song's *Tempo* / *Chords per
-  progression* / *Show example*. Daily is disabled until something is learned.
+  learn*, Free's *Worst chords only*, Song's *Tempo* / *Chords per
+  progression* / *Show example*.
   On the Scales side a *Fingering hand* row (Off / RH / LH, §6.6) sits under the
   mode in every mode — like Song's settings a persisted preference, set as it's
   picked.
@@ -1040,8 +1090,8 @@ session config, so they take effect as they're set.
   while nobody is playing, and a length is only ever checked between prompts, so
   it never cuts a rep off mid-attempt. Applies to free practice alone, which
   shows the count on the Stage (§7.3); it is hidden in Song, which runs until
-  ended, in Daily, which runs to its own persisted cap (§5.3), and in Learn,
-  which runs until its set is rehearsed (§5.4). The minute
+  ended, and in Learn, which runs until its set is rehearsed (§5.4); Daily,
+  which runs to its own persisted cap (§5.3), isn't drafted here at all. The minute
   option restores what the Draft-v5 timer offered, now beside the prompt count
   rather than instead of it.
 
@@ -1077,7 +1127,7 @@ counts a new progression in).
   (§5) and Song counts itself in (§6.5), so neither gates. The on-screen
   keyboard stays live behind the panel for warming up.
 - **Top bar, per mode**: the session label (preset + mode) opening the sheet —
-  Daily has no preset, so it names its pool instead: `Learned chords · ☀ Daily` —
+  Daily has no preset, so it names its leg's pool instead: `Learned chords · ☀ Daily` —
   an
   **End** button, and in the center — the practice modes: a progress bar
   with `done / length`, or `⏱ 3 / 10 min` when the length is timed (always, in
@@ -1304,7 +1354,11 @@ count as prompts, a hit being a first-try success (§6.5).
   Report offers **Free practice** in Go again's place — a free-practice session on
   the same preset. The loop's own line already says free practice is where its
   items unlock (§5.4), and a finished set has nothing left to repeat; the rare
-  second loop is a Start away on Home.
+  second loop is a Start away on Home. A Daily leg's Report offers what is
+  still due today (§5.3) in the same place: **Continue daily** when the leg was
+  ended with time left, **Next: Daily scales** when the chord leg is done and
+  the scale leg isn't. When nothing is due — the last leg just finished, or a
+  Keep-going run ended — it offers **Keep going** (§5.3).
 
 ### 7.5 Progress & chord stats
 
@@ -1399,7 +1453,9 @@ all sessions, for the side Home is switched to (§7.1), titled *Chord progress* 
   on/off, staff key signature on/off (chord root as key, §3.5; a scale's own key,
   §3.6), correct-chime on/off,
   piano sound on key press on/off (§9), judgment delay, auto-advance delay, daily
-  goal minutes, circle-of-fifths unlock order on/off (§5.1), new unlocks wait
+  goal minutes, daily practice length 5 / 10 / 15 / 20 min (§5.3's cap) and the
+  daily split between its chord and scale legs,
+  circle-of-fifths unlock order on/off (§5.1), new unlocks wait
   for the next session on/off (§5.1, default on), scale fingering
   hand Off / RH / LH (§6.6; also in the session sheet). (Mode sub-settings —
   worst-chords-only, the learn set, Song's tempo / chords-per-progression /
@@ -1454,6 +1510,9 @@ Scales (10.0.0) extend these without a migration:
   one figure, since the goal is about time, not kind. Summed scale time is plain
   seconds, so the scale time trend (§7.5) moves with the mix of shapes played; the
   grades don't, because they scale per combo.
+  An optional **`dailyMinutes`** map holds each side's Daily-leg minutes for the
+  day (§5.3) — also counted in the active minutes — so a leg knows what is left
+  of it; absent, or a garbled side, reads as none played.
 - **Presets** gain a kind; a stored or imported preset without one is a chord
   preset. Preset progress records (§5.1) are keyed by preset id as before.
 - **Settings** gain the switched-to side, an active preset per side (the existing

@@ -16,7 +16,9 @@ import {
   comboGradeScale,
   poolChordKey,
   dailyChordCount,
+  dailyLegRemaining,
   dailyPool,
+  dueDailyLeg,
   DEFAULT_DIATONIC_KEY,
   effectiveLength,
   fillQueue,
@@ -45,6 +47,7 @@ import {
   type GradeUpFlash,
   type ChordPassEntry,
   type Combo,
+  type DailyPlan,
   type ComboStatsSource,
   type ComboGrade,
   type ComboStatRecord,
@@ -287,6 +290,11 @@ export interface PracticeStoreState {
   // (§7.2) and the Stage's ⏱ readout. Mirrored out as the buffered active
   // time moves, so it advances only while actually playing.
   sessionActiveMs: number
+  // A Daily leg's length (§5.3): what was left of it today when the session
+  // started, fixed there — the leg's own minutes then count against it, so
+  // re-reading today's total mid-session would count them twice. null for
+  // the uncapped Keep-going run once today's legs are done; 0 outside Daily.
+  dailyLegLimitMinutes: number | null
   // The end-of-session Report (§7.4); null while a session is live or after
   // it's dismissed. Zero-prompt sessions end with no report (§7.2).
   report: SessionReport | null
@@ -370,6 +378,20 @@ export interface PracticeStoreState {
   // sessions. Unlike the pool questions, this one spans every preset, so it
   // stays here rather than on any single Pool.
   learnedChordCount(): number
+  // The same count for both sides at once — what sizes the two Daily legs
+  // (§5.3), which Home shows together whichever side is switched to.
+  learnedCounts(): Record<Side, number>
+  // Everything the two Daily legs are sized from right now (§5.3): the cap
+  // and split, both sides' learned counts and today's Daily minutes.
+  dailyPlan(): DailyPlan
+  // Ready the next Daily session (§5.3) — switch to its side and to Daily —
+  // for the caller to start: the due leg, capped at what is left of it, or
+  // once both legs are done today the uncapped Keep-going run, on the current
+  // side (the other when this one has nothing learned). Remembers the side
+  // Home was on, for returnFromDaily. false with nothing learned anywhere.
+  prepareDaily(): boolean
+  // Put Home back on the side it was on before Daily switched it (§7.1).
+  returnFromDaily(): void
 }
 
 export interface PracticeStoreDeps {
@@ -513,21 +535,34 @@ export function createPracticeStore({
     persistReconciliation()
 
     // The §5.3 daily pool: every preset's learned chords, folded together —
-    // every preset of the switched-to side, since scale Daily drills scale
-    // presets and chord Daily chord presets.
+    // per side, since the scale leg drills scale presets and the chord leg
+    // chord presets.
     // Cached because it resolves *every* preset (built-ins plus custom) and is
-    // asked for on each prompt; `dailyCombos = null` marks it stale, which
-    // every path that can change a preset's pool or its progress does.
-    let dailyCombos: Combo[] | null = null
+    // asked for on each prompt — both sides, since the leg's length depends on
+    // what the other side has learned; `invalidateDaily` marks them stale,
+    // which every path that can change a preset's pool or its progress does.
+    // The side Home was on before a Daily run switched it (§7.1), restored on
+    // the way back Home; null outside a run.
+    let dailyReturnSide: Side | null = null
+    // Whether the Daily session being readied is the uncapped Keep-going run
+    // (§5.3) rather than a leg — decided by prepareDaily, read at the start.
+    let dailyKeepGoing = false
+
+    let dailyCombos: Record<Side, Combo[] | null> = {
+      chords: null,
+      scales: null,
+    }
     const invalidateDaily = () => {
-      dailyCombos = null
+      dailyCombos = { chords: null, scales: null }
     }
 
-    const buildDailyPool = (): Combo[] => {
+    const buildDailyPool = (forSide: Side): Combo[] => {
       const key = get().diatonicKey
       return dailyPool(
-        sidePresets(side, key).map((preset) => {
-          const p = resolvePool(preset.id, key)
+        sidePresets(forSide, key).map((preset) => {
+          // That side's resolver, not resolvePool's current-side one: Home
+          // sizes both legs whichever side is switched to.
+          const p = resolvers[forSide](preset.id, key)
           return {
             combos: p.combos,
             chordOrder: p.chordOrder,
@@ -537,10 +572,9 @@ export function createPracticeStore({
       )
     }
 
-    const currentDailyPool = (): Combo[] => {
-      if (dailyCombos === null) dailyCombos = buildDailyPool()
-      return dailyCombos
-    }
+    const dailyPoolOf = (forSide: Side): Combo[] =>
+      (dailyCombos[forSide] ??= buildDailyPool(forSide))
+    const currentDailyPool = (): Combo[] => dailyPoolOf(side)
 
     const clearUnlockFlash = () => {
       if (justUnlockedTimer !== null) {
@@ -776,7 +810,7 @@ export function createPracticeStore({
       effectiveLength(
         get().mode,
         get().sessionLength,
-        settings().dailyCapMinutes,
+        get().dailyLegLimitMinutes,
       )
 
     // A learn rep, which lands in the loop's own stats and nowhere else (§5.4):
@@ -1021,7 +1055,11 @@ export function createPracticeStore({
 
     const flushActivity = () => {
       if (pendingActiveMs > 0) {
-        activity.addMinutes(pendingActiveMs / 60_000)
+        // A Daily leg's minutes are its side's resume point too (§5.3).
+        activity.addMinutes(
+          pendingActiveMs / 60_000,
+          get().mode === 'daily' ? side : undefined,
+        )
         pendingActiveMs = 0
       }
       publishGoal()
@@ -1051,6 +1089,12 @@ export function createPracticeStore({
         firstTryStreak: 0,
         done: 0,
         sessionActiveMs: 0,
+        dailyLegLimitMinutes:
+          get().mode !== 'daily'
+            ? 0
+            : dailyKeepGoing
+              ? null
+              : dailyLegRemaining(side, get().dailyPlan()),
         awaitingReady: false,
         justRehearsed: false,
       })
@@ -1183,6 +1227,7 @@ export function createPracticeStore({
       sessionLength: DEFAULT_SESSION_LENGTH,
       done: 0,
       sessionActiveMs: 0,
+      dailyLegLimitMinutes: 0,
       report: null,
       session: run.stats(),
       firstTryStreak: 0,
@@ -1505,6 +1550,51 @@ export function createPracticeStore({
 
       learnedChordCount() {
         return dailyChordCount(currentDailyPool())
+      },
+
+      learnedCounts() {
+        return {
+          chords: dailyChordCount(dailyPoolOf('chords')),
+          scales: dailyChordCount(dailyPoolOf('scales')),
+        }
+      },
+
+      dailyPlan() {
+        return {
+          capMinutes: settings().dailyCapMinutes,
+          chordShare: settings().dailyChordShare,
+          learned: get().learnedCounts(),
+          playedToday: activity.todayDailyMinutes(),
+        }
+      },
+
+      prepareDaily() {
+        if (sessionLive) return false
+        const plan = get().dailyPlan()
+        const leg = dueDailyLeg(plan)
+        const other: Side = side === 'chords' ? 'scales' : 'chords'
+        const target =
+          leg ??
+          (plan.learned[side] > 0
+            ? side
+            : plan.learned[other] > 0
+              ? other
+              : null)
+        if (target === null) return false
+        dailyKeepGoing = leg === null
+        // Only the first session of a run records it: the Report's hand-on to
+        // the next leg must not overwrite where Home was.
+        dailyReturnSide ??= side
+        get().setSide(target)
+        get().setMode('daily')
+        return true
+      },
+
+      returnFromDaily() {
+        if (dailyReturnSide === null || sessionLive) return
+        const back = dailyReturnSide
+        dailyReturnSide = null
+        get().setSide(back)
       },
     }
   })

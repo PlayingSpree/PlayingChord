@@ -15,6 +15,23 @@ artifact and are not recoverable.
 
 ---
 
+## 10.10.0 — 2026-09-27
+
+**Daily stands apart from the preset, and spans both sides.** Home starts daily
+practice from a card of its own above the Chords | Scales switch; the Continue
+card keeps Learn / Free / Song for the preset, and the session sheet no longer
+offers Daily. One Daily now runs a chord leg then a scale leg, each its own
+session joined by the chord leg's Report (*Next: Daily scales*), splitting the
+cap by a new *Daily split* setting (all chords → all scales, default half each);
+a side with nothing learned hands its time to the other. The legs are the day's:
+each side's Daily minutes are kept on the daily record, so a leg ended early
+resumes with its remainder and Daily reads *done today* once both are played
+out, offering *Keep going* — the same learned pool, uncapped, until End. Going
+back Home returns to the side Home was on. The cap moves to Settings
+as *Daily practice length* (§5.3, §7, §7.1, §7.2, §7.4, §7.6, §8).
+
+---
+
 ## 10.9.0 — 2026-09-27
 
 **New until passed.** Home's In play row and Learn's picker tag every
