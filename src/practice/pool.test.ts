@@ -209,26 +209,7 @@ describe('pool grades (§5.1/§7.5)', () => {
     const session = new InMemoryComboStats() // …and nothing this session
     const pool = resolve('triads', 0)
     expect(pool.chordGrade('0:maj')).not.toBeNull()
-    expect(pool.chordGrade('0:maj', { source: session })).toBeNull()
-  })
-
-  it('swaps in a rep that has not been written yet (§7.3)', () => {
-    const { resolve, stats } = setup()
-    reps(stats, '0:maj:any', 10) // every rep missed
-    const pool = resolve('triads', 0)
-    const projected = pool.chordGrade('0:maj', {
-      projected: {
-        key: '0:maj:any',
-        record: {
-          attempts: 10,
-          firstTrySuccesses: 10,
-          recentOutcomes: Array<'first-try'>(10).fill('first-try'),
-          timeToCorrectMs: [500],
-        },
-      },
-    })
-    expect(pool.chordGrade('0:maj')).toBe('F')
-    expect(projected).not.toBe('F')
+    expect(pool.chordGrade('0:maj', session)).toBeNull()
   })
 })
 

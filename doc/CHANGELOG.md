@@ -15,6 +15,18 @@ artifact and are not recoverable.
 
 ---
 
+## 10.11.0 — 2026-09-27
+
+**A rep is recorded on its ✔.** A correct answer lands the moment it is judged —
+combo record, pass and unlock, the session's count and tallies, the Report log —
+rather than when the next prompt is dealt, so everything the ✔ flash says is read
+back from what was written instead of predicted a window early. The Stage's
+`done / length` count, the unlock toast and the In play standing now move with the
+✔ that earned them. The advance-time recording only ever existed for the old Skip,
+which 9.8.0 removed. **Rep** joins §3's terms (§3, §6.2, §7.3).
+
+---
+
 ## 10.10.0 — 2026-09-27
 
 **Daily stands apart from the preset, and spans both sides.** Home starts daily

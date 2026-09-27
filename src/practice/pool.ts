@@ -58,7 +58,6 @@ import {
   worstChordDisplayGrade,
   worstChordGrade,
   type ComboGrade,
-  type ComboStatRecord,
   type ComboStatsSource,
   type DisplayGrade,
   type KeyedRecord,
@@ -87,14 +86,6 @@ export interface PoolProgress {
 // resolved through this pool's spelling.
 export interface PoolChordEntry extends ChordPassEntry {
   label: string
-}
-
-// Swapping in a rep that hasn't been written yet, which is how the ✔ pill calls
-// a pass during the advance window (§7.3) — and, for the learn loop, against
-// its own session-local records rather than the persisted ones (§5.4).
-export interface GradeLens {
-  source?: ComboStatsSource
-  projected?: { key: string; record: ComboStatRecord }
 }
 
 export interface PoolParts {
@@ -228,15 +219,17 @@ export class Pool {
   // The §5.1 pass grade of a whole chord: the worst of its combos in this pool
   // — the same figure Home's In play row shows (§7.1), so a chord can't read
   // red there and pass here. Combos with no history don't count against it;
-  // with none at all the chord has no grade.
-  chordGrade(chordKey: string, lens: GradeLens = {}): ComboGrade | null {
-    const source = lens.source ?? this.#stats
+  // with none at all the chord has no grade. `source` swaps in other records
+  // than the pool's own — the learn loop's session-local ones (§5.4).
+  chordGrade(
+    chordKey: string,
+    source: ComboStatsSource = this.#stats,
+  ): ComboGrade | null {
     const records: KeyedRecord[] = []
     for (const combo of this.combos) {
       if (poolChordKey(combo) !== chordKey) continue
       const key = comboKey(combo)
-      const record =
-        lens.projected?.key === key ? lens.projected.record : source.get(key)
+      const record = source.get(key)
       if (record !== null) records.push([key, record])
     }
     return worstChordGrade(records)

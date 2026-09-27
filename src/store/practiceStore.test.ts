@@ -437,6 +437,25 @@ describe('practiceStore — outcome recording (§5/§7)', () => {
     })
   })
 
+  it('records the rep on its ✔, once, before the advance (§6.2)', () => {
+    const stats = new InMemoryComboStats()
+    const s = setup({ presets: onePreset, stats })
+    const prompt = chordOf(s.store.getState().prompt)
+    s.press(...correctNotes(prompt))
+
+    expect(s.store.getState().phase).toBe('advancing')
+    expect(stats.get(promptComboKey(prompt))?.attempts).toBe(1)
+    expect(s.store.getState().done).toBe(1)
+    expect(s.store.getState().session.prompts).toBe(1)
+    expect(s.store.getState().pace?.timeToCorrectMs).toBe(0)
+
+    s.releaseAll()
+    vi.advanceTimersByTime(ADVANCE)
+    expect(stats.get(promptComboKey(prompt))?.attempts).toBe(1)
+    expect(s.store.getState().done).toBe(1)
+    expect(s.store.getState().pace).toBeNull() // the next prompt clears it
+  })
+
   it('records a missed-then-corrected prompt as a miss', () => {
     const stats = new InMemoryComboStats()
     const s = setup({ presets: onePreset, stats })
@@ -707,17 +726,17 @@ describe('practiceStore — unlock progress (§5)', () => {
     )
   })
 
-  it('flags the rep that learns a chord, one window before it lands (§7.3)', () => {
+  it('passes the chord on the ✔ that learns it, and flags that rep (§6.2/§7.3)', () => {
     const s = setup({ presets: sixRoots })
     const prompt = chordOf(s.store.getState().prompt)
     s.press(...correctNotes(prompt))
     s.releaseAll()
 
-    // The pass itself is applied on advance; the flag calls it on the judgment
-    // edge so the ✔ flash can say so while it's still up.
+    // Recorded on the judgment edge: the pass has landed while the ✔ flash
+    // that announces it is still up.
     expect(s.store.getState().phase).toBe('advancing')
     expect(s.store.getState().justLearned).toBe(true)
-    expect(s.store.getState().progress.passed).toBe(0)
+    expect(s.store.getState().progress.passed).toBe(1)
 
     vi.advanceTimersByTime(ADVANCE)
     expect(s.store.getState().progress.passed).toBe(1)
@@ -1092,7 +1111,7 @@ describe('practiceStore — preset selection (§4)', () => {
     expect(store.getState().prompt).toBe(prompt)
   })
 
-  it('a completed prompt awaiting auto-advance still counts when switching', () => {
+  it('a completed prompt awaiting auto-advance stays counted when switching', () => {
     const stats = new InMemoryComboStats()
     const s = setup({ stats })
     const prompt = chordOf(s.store.getState().prompt)
@@ -1159,7 +1178,7 @@ describe('practiceStore — Learn mode (§7)', () => {
     expect(s.store.getState().prompt).not.toBe(prompt) // still advances
   })
 
-  it('a pending ✔ earned in Practice still counts when switching to Learn', () => {
+  it('a ✔ earned in Practice stays counted when switching to Learn', () => {
     const stats = new InMemoryComboStats()
     const s = setup({ presets: onePreset, stats })
     s.press(...correctNotes(chordOf(s.store.getState().prompt)))
@@ -1169,7 +1188,7 @@ describe('practiceStore — Learn mode (§7)', () => {
     expect(stats.get('0:maj:any')?.attempts).toBe(1)
   })
 
-  it('a pending ✔ earned in Learn is dropped when switching to Practice', () => {
+  it('a ✔ earned in Learn stays out of the lifetime stats when switching to Practice', () => {
     const stats = new InMemoryComboStats()
     const s = setup({ presets: onePreset, stats })
     s.store.getState().setMode('learn')
@@ -1492,7 +1511,7 @@ describe('practiceStore — session length & report (§7.2/§7.4)', () => {
     expect(s.store.getState().done).toBe(25)
   })
 
-  it('End builds a report immediately, counting a pending ✔', () => {
+  it('End builds a report immediately, counting the ✔ still flashing', () => {
     const stats = new InMemoryComboStats()
     const s = setup({ presets: onePreset, stats })
     s.press(...correctNotes(chordOf(s.store.getState().prompt)))
@@ -1880,7 +1899,7 @@ describe('practiceStore — grade-up notice (§7.3)', () => {
   // with the flash, not on a window of its own, and the next ✔ replaces it.
   it('announces a combo whose grade climbs, on the ✔ that earned it', () => {
     const stats = seeded()
-    expect(comboGrade(comboMetrics(stats.get(KEY)!).score)).toBe('B')
+    expect(comboGrade(comboMetrics(stats.get(KEY)!, 1).score)).toBe('B')
     const s = setup({ presets: onePreset, stats })
 
     const prompt = chordOf(s.store.getState().prompt)
@@ -1911,7 +1930,7 @@ describe('practiceStore — grade-up notice (§7.3)', () => {
   it('announces a letter once per session, however the grade fluctuates', () => {
     const stats = seeded()
     const s = setup({ presets: onePreset, stats })
-    const gradeNow = () => comboGrade(comboMetrics(stats.get(KEY)!).score)
+    const gradeNow = () => comboGrade(comboMetrics(stats.get(KEY)!, 1).score)
     const missThenCorrect = () => {
       const prompt = chordOf(s.store.getState().prompt)
       s.press(61, 62, 63)
@@ -2161,7 +2180,7 @@ describe('practiceStore — session lifecycle (§7.2)', () => {
     expect(s.store.getState().session.prompts).toBe(0)
   })
 
-  it('discardSession still counts a pending ✔ toward lifetime stats', () => {
+  it('discardSession keeps the ✔ still flashing in lifetime stats', () => {
     const stats = new InMemoryComboStats()
     const s = setup({ presets: onePreset, stats }, false)
     enterStage(s)
@@ -2250,7 +2269,7 @@ describe('practiceStore — pause/resume (Phase 7 History nav)', () => {
     expect(s.store.getState().phase).toBe('armed')
   })
 
-  it('a ✔ waiting out its advance window still counts when pausing', () => {
+  it('a ✔ waiting out its advance window stays counted when pausing', () => {
     const stats = new InMemoryComboStats()
     const s = setup({ presets: onePreset, stats })
     s.press(...correctNotes(chordOf(s.store.getState().prompt)))

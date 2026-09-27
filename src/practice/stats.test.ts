@@ -5,7 +5,6 @@ import {
   applyOutcome,
   comboGrade,
   comboMetrics,
-  comboGradeScale,
   comboScore,
   COMBO_GRADE_ORDER,
   displayGrade,
@@ -39,7 +38,8 @@ import {
 // Build a record of N first-try successes at the given time-to-correct.
 const cleanRecord = (n: number, timeMs: number): ComboStatRecord => {
   let record: ComboStatRecord | null = null
-  for (let i = 0; i < n; i++) record = applyOutcome(record, 'first-try', timeMs)
+  for (let i = 0; i < n; i++)
+    record = applyOutcome(record, 'first-try', timeMs, 1)
   return record!
 }
 
@@ -49,24 +49,26 @@ const keyed = (...records: ComboStatRecord[]): KeyedRecord[] =>
 
 describe('gradingOutcome (§6.2 ceiling, §7.5)', () => {
   it('passes an ordinary outcome through', () => {
-    expect(gradingOutcome('first-try', 1200)).toBe('first-try')
-    expect(gradingOutcome('first-try', MAX_TIME_TO_CORRECT_MS - 1)).toBe(
+    expect(gradingOutcome('first-try', 1200, 1)).toBe('first-try')
+    expect(gradingOutcome('first-try', MAX_TIME_TO_CORRECT_MS - 1, 1)).toBe(
       'first-try',
     )
-    expect(gradingOutcome('missed', 1200)).toBe('missed')
+    expect(gradingOutcome('missed', 1200, 1)).toBe('missed')
   })
 
   it('grades a rep that reached the recording ceiling as a miss', () => {
-    expect(gradingOutcome('first-try', MAX_TIME_TO_CORRECT_MS)).toBe('missed')
+    expect(gradingOutcome('first-try', MAX_TIME_TO_CORRECT_MS, 1)).toBe(
+      'missed',
+    )
   })
 
   it('leaves a timeless bar to its own hit/miss (§6.5)', () => {
-    expect(gradingOutcome('first-try', null)).toBe('first-try')
-    expect(gradingOutcome('missed', null)).toBe('missed')
+    expect(gradingOutcome('first-try', null, 1)).toBe('first-try')
+    expect(gradingOutcome('missed', null, 1)).toBe('missed')
   })
 
   it('demotes only the grade window, not the lifetime counters', () => {
-    const record = applyOutcome(null, 'first-try', MAX_TIME_TO_CORRECT_MS)
+    const record = applyOutcome(null, 'first-try', MAX_TIME_TO_CORRECT_MS, 1)
     expect(record.firstTrySuccesses).toBe(1) // they did play it first try
     expect(record.recentOutcomes).toEqual(['missed']) // …but it doesn't grade
   })
@@ -80,21 +82,22 @@ describe('worstChordGrade (§7.1 In play)', () => {
   it('takes the lowest-scoring combo grade, not the average', () => {
     const strong = cleanRecord(5, 500) // fast, clean → S
     const weakRecord = applyOutcome(
-      applyOutcome(cleanRecord(3, 500), 'missed', 4000),
+      applyOutcome(cleanRecord(3, 500), 'missed', 4000, 1),
       'missed',
       4000,
+      1,
     ) // several recent misses → low grade
-    expect(comboGrade(comboMetrics(strong).score)).toBe('S')
+    expect(comboGrade(comboMetrics(strong, 1).score)).toBe('S')
     // The chord's grade is the weaker of the two, matching the weak combo.
     expect(worstChordGrade(keyed(strong, weakRecord))).toBe(
-      comboGrade(comboMetrics(weakRecord).score),
+      comboGrade(comboMetrics(weakRecord, 1).score),
     )
   })
 })
 
 describe('the evidence floor (§5, §7.5)', () => {
   const scoreAfter = (cleanReps: number) =>
-    comboScore(recentHistoryOf(cleanRecord(cleanReps, 2500)))
+    comboScore(recentHistoryOf(cleanRecord(cleanReps, 2500), 1))
 
   it('divides by the floor until the window fills that far', () => {
     // ~2.5s is 0.7 on the speed ramp, so these are accuracy × 0.7. The reps
@@ -110,12 +113,12 @@ describe('the evidence floor (§5, §7.5)', () => {
   it('keeps a lone lucky rep off the top of the scale', () => {
     // One flawless rep inside S's second used to grade S — and pass the chord
     // (§5.1) on that single rep.
-    expect(comboGrade(comboScore(recentHistoryOf(cleanRecord(1, 500))))).toBe(
-      'D',
-    )
+    expect(
+      comboGrade(comboScore(recentHistoryOf(cleanRecord(1, 500), 1))),
+    ).toBe('D')
     expect(
       comboGrade(
-        comboScore(recentHistoryOf(cleanRecord(GRADE_EVIDENCE_FLOOR, 500))),
+        comboScore(recentHistoryOf(cleanRecord(GRADE_EVIDENCE_FLOOR, 500), 1)),
       ),
     ).toBe('S')
   })
@@ -124,13 +127,13 @@ describe('the evidence floor (§5, §7.5)', () => {
     // The floor is the old window, so nothing persisted before it existed
     // changes grade: a full window of 5 divides by 5 either way.
     const proven = cleanRecord(GRADE_EVIDENCE_FLOOR, 2000)
-    expect(comboMetrics(proven).score).toBeCloseTo(0.8)
-    expect(comboMetrics(proven).grade).toBe('A')
+    expect(comboMetrics(proven, 1).score).toBeCloseTo(0.8)
+    expect(comboMetrics(proven, 1).grade).toBe('A')
   })
 
   it('cannot pass a chord that has only ever been missed (§5.1)', () => {
-    const missedOnce = applyOutcome(null, 'missed', 3000)
-    expect(comboMetrics(missedOnce).grade).toBe('F')
+    const missedOnce = applyOutcome(null, 'missed', 3000, 1)
+    expect(comboMetrics(missedOnce, 1).grade).toBe('F')
     expect(isPassingGrade(worstChordGrade(keyed(missedOnce)))).toBe(false)
   })
 })
@@ -138,23 +141,25 @@ describe('the evidence floor (§5, §7.5)', () => {
 describe('displayGrade / worstChordDisplayGrade (§7.5 `pending`)', () => {
   const missedRecord = (n: number): ComboStatRecord => {
     let record: ComboStatRecord | null = null
-    for (let i = 0; i < n; i++) record = applyOutcome(record, 'missed', 3000)
+    for (let i = 0; i < n; i++) record = applyOutcome(record, 'missed', 3000, 1)
     return record!
   }
 
   it('shows `pending` for an F the combo has not had the reps to disprove', () => {
-    expect(displayGrade(missedRecord(1))).toBe('pending')
-    expect(displayGrade(missedRecord(GRADE_EVIDENCE_FLOOR - 1))).toBe('pending')
+    expect(displayGrade(missedRecord(1), 1)).toBe('pending')
+    expect(displayGrade(missedRecord(GRADE_EVIDENCE_FLOOR - 1), 1)).toBe(
+      'pending',
+    )
   })
 
   it('shows the F once the window reaches the floor', () => {
-    expect(displayGrade(missedRecord(GRADE_EVIDENCE_FLOOR))).toBe('F')
+    expect(displayGrade(missedRecord(GRADE_EVIDENCE_FLOOR), 1)).toBe('F')
   })
 
   it('shows a below-floor letter as itself — passing is its own proof', () => {
     // Two clean reps grade D and pass the chord, so the badge has to say D:
     // a `pending` beside the ★ learned pill would contradict it.
-    expect(displayGrade(cleanRecord(2, 2500))).toBe('D')
+    expect(displayGrade(cleanRecord(2, 2500), 1)).toBe('D')
   })
 
   it('folds a chord to `pending` only when nothing proven is failing', () => {
@@ -175,7 +180,7 @@ describe('displayGrade / worstChordDisplayGrade (§7.5 `pending`)', () => {
 
 describe('applyOutcome (§8 combo stat record)', () => {
   it('creates a fresh record from null', () => {
-    expect(applyOutcome(null, 'first-try', 1500)).toEqual({
+    expect(applyOutcome(null, 'first-try', 1500, 1)).toEqual({
       attempts: 1,
       firstTrySuccesses: 1,
       recentOutcomes: ['first-try'],
@@ -184,9 +189,9 @@ describe('applyOutcome (§8 combo stat record)', () => {
   })
 
   it('counts attempts and first-try successes across outcomes', () => {
-    let record = applyOutcome(null, 'missed', 4000)
-    record = applyOutcome(record, 'first-try', 1000)
-    record = applyOutcome(record, 'missed', 6000)
+    let record = applyOutcome(null, 'missed', 4000, 1)
+    record = applyOutcome(record, 'first-try', 1000, 1)
+    record = applyOutcome(record, 'missed', 6000, 1)
     expect(record.attempts).toBe(3)
     expect(record.firstTrySuccesses).toBe(1)
   })
@@ -194,7 +199,7 @@ describe('applyOutcome (§8 combo stat record)', () => {
   it('caps the recent-outcome window', () => {
     let record: ComboStatRecord | null = null
     for (let i = 0; i < RECENT_OUTCOME_WINDOW + 2; i++) {
-      record = applyOutcome(record, 'missed', 1000)
+      record = applyOutcome(record, 'missed', 1000, 1)
     }
     expect(record!.recentOutcomes).toHaveLength(RECENT_OUTCOME_WINDOW)
     expect(record!.attempts).toBe(RECENT_OUTCOME_WINDOW + 2)
@@ -203,7 +208,7 @@ describe('applyOutcome (§8 combo stat record)', () => {
   it('caps time-to-correct samples, keeping the newest', () => {
     let record: ComboStatRecord | null = null
     for (let i = 0; i < TIME_TO_CORRECT_SAMPLE_CAP + 3; i++) {
-      record = applyOutcome(record, 'first-try', i)
+      record = applyOutcome(record, 'first-try', i, 1)
     }
     expect(record!.timeToCorrectMs).toHaveLength(TIME_TO_CORRECT_SAMPLE_CAP)
     expect(record!.timeToCorrectMs[0]).toBe(3)
@@ -211,17 +216,18 @@ describe('applyOutcome (§8 combo stat record)', () => {
 
   it('rounds and clamps time samples to non-negative integers', () => {
     const record = applyOutcome(
-      applyOutcome(null, 'first-try', 1234.6),
+      applyOutcome(null, 'first-try', 1234.6, 1),
       'first-try',
       -50,
+      1,
     )
     expect(record.timeToCorrectMs).toEqual([1235, 0])
   })
 
   it('a null time (§6.5 Song bar) counts the outcome without a sample', () => {
-    let record = applyOutcome(null, 'first-try', null)
-    record = applyOutcome(record, 'missed', null)
-    record = applyOutcome(record, 'first-try', 1200)
+    let record = applyOutcome(null, 'first-try', null, 1)
+    record = applyOutcome(record, 'missed', null, 1)
+    record = applyOutcome(record, 'first-try', 1200, 1)
     expect(record.attempts).toBe(3)
     expect(record.firstTrySuccesses).toBe(2)
     expect(record.recentOutcomes).toEqual(['first-try', 'missed', 'first-try'])
@@ -233,7 +239,7 @@ describe('recentHistoryOf / InMemoryComboStats (§5 weighting view)', () => {
   it('returns null for a combo with no history', () => {
     expect(new InMemoryComboStats().recentHistory('0:maj:any')).toBeNull()
     expect(new InMemoryComboStats().get('0:maj:any')).toBeNull()
-    expect(recentHistoryOf(null)).toBeNull()
+    expect(recentHistoryOf(null, 1)).toBeNull()
   })
 
   it('counts misses and totals per combo independently', () => {
@@ -529,11 +535,11 @@ describe('rankMostImproved (§7 History)', () => {
 describe('comboMetrics (§7 chord stats page)', () => {
   it('computes lifetime and recent accuracy separately', () => {
     let record: ComboStatRecord | null = null
-    for (let i = 0; i < 3; i++) record = applyOutcome(record, 'missed', 5000)
+    for (let i = 0; i < 3; i++) record = applyOutcome(record, 'missed', 5000, 1)
     for (let i = 0; i < RECENT_OUTCOME_WINDOW; i++) {
-      record = applyOutcome(record, 'first-try', 1000)
+      record = applyOutcome(record, 'first-try', 1000, 1)
     }
-    const metrics = comboMetrics(record!)
+    const metrics = comboMetrics(record!, 1)
     expect(metrics.attempts).toBe(3 + RECENT_OUTCOME_WINDOW)
     expect(metrics.lifetimeAccuracy).toBeCloseTo(
       RECENT_OUTCOME_WINDOW / (3 + RECENT_OUTCOME_WINDOW),
@@ -544,12 +550,12 @@ describe('comboMetrics (§7 chord stats page)', () => {
   it('windows the recent average separately from the lifetime average', () => {
     let record: ComboStatRecord | null = null
     for (let i = 0; i < 3; i++) {
-      record = applyOutcome(record, 'first-try', 5000)
+      record = applyOutcome(record, 'first-try', 5000, 1)
     }
     for (let i = 0; i < RECENT_TIME_WINDOW; i++) {
-      record = applyOutcome(record, 'first-try', 1000)
+      record = applyOutcome(record, 'first-try', 1000, 1)
     }
-    const metrics = comboMetrics(record!)
+    const metrics = comboMetrics(record!, 1)
     expect(metrics.lifetimeAvgTimeToCorrectMs).toBeCloseTo(
       (3 * 5000 + RECENT_TIME_WINDOW * 1000) / (3 + RECENT_TIME_WINDOW),
     )
@@ -559,18 +565,23 @@ describe('comboMetrics (§7 chord stats page)', () => {
   it('the recent average matches the lifetime average under the window size', () => {
     let record: ComboStatRecord | null = null
     for (const ms of [500, 700, 900]) {
-      record = applyOutcome(record, 'first-try', ms)
+      record = applyOutcome(record, 'first-try', ms, 1)
     }
-    const metrics = comboMetrics(record!)
+    const metrics = comboMetrics(record!, 1)
     expect(metrics.recentAvgTimeToCorrectMs).toBe(
       metrics.lifetimeAvgTimeToCorrectMs,
     )
   })
 
   it('both time fields are null when every sample is a Song-mode bar', () => {
-    let record: ComboStatRecord | null = applyOutcome(null, 'first-try', null)
-    record = applyOutcome(record, 'missed', null)
-    const metrics = comboMetrics(record!)
+    let record: ComboStatRecord | null = applyOutcome(
+      null,
+      'first-try',
+      null,
+      1,
+    )
+    record = applyOutcome(record, 'missed', null, 1)
+    const metrics = comboMetrics(record!, 1)
     expect(metrics.attempts).toBe(2)
     expect(metrics.lifetimeAvgTimeToCorrectMs).toBeNull()
     expect(metrics.recentAvgTimeToCorrectMs).toBeNull()
@@ -585,9 +596,9 @@ describe('comboMetrics (§7 chord stats page)', () => {
   it('folds recent accuracy and recent speed into a score and grade', () => {
     let record: ComboStatRecord | null = null
     for (let i = 0; i < GRADE_EVIDENCE_FLOOR; i++) {
-      record = applyOutcome(record, 'first-try', 1000)
+      record = applyOutcome(record, 'first-try', 1000, 1)
     }
-    const metrics = comboMetrics(record!)
+    const metrics = comboMetrics(record!, 1)
     expect(metrics.score).toBe(1) // clean, and right on S's second
     expect(metrics.grade).toBe('S')
   })
@@ -601,13 +612,13 @@ describe('allComboRows (§7 chord stats page)', () => {
   })
 
   it('resolves persisted keys back into combos', () => {
-    const record = applyOutcome(null, 'first-try', 1000)
+    const record = applyOutcome(null, 'first-try', 1000, 1)
     const rows = allComboRows({ [comboKey(combo(0))]: record })
     expect(rows).toEqual([{ key: comboKey(combo(0)), combo: combo(0), record }])
   })
 
   it('drops keys that no longer resolve (removed type / deleted custom rule)', () => {
-    const record = applyOutcome(null, 'first-try', 1000)
+    const record = applyOutcome(null, 'first-try', 1000, 1)
     const rows = allComboRows({
       '0:not-a-real-type:any': record,
       [comboKey(combo(1))]: record,
@@ -635,17 +646,8 @@ describe('grade scale (§3.6 per-combo grade multiplier)', () => {
     expect(gradeScaleOf(UP_1)).toBe(2)
     expect(gradeScaleOf(UPDOWN_2)).toBe(7)
     expect(gradeScaleOf('s:0:major:up-9')).toBe(1) // stale shape
-    expect(
-      comboGradeScale({
-        kind: 'scale',
-        root: 0,
-        scaleTypeId: 'major',
-        shapeId: 'updown-3',
-      }),
-    ).toBe(11)
-    expect(comboGradeScale({ root: 0, typeId: 'maj', voicingId: 'any' })).toBe(
-      1,
-    )
+    expect(gradeScaleOf('s:0:major:updown-3')).toBe(11)
+    expect(gradeScaleOf('0:maj:any')).toBe(1)
   })
 
   it('grades an up-1 run S at 2 s through D at 10 s', () => {
@@ -665,7 +667,7 @@ describe('grade scale (§3.6 per-combo grade multiplier)', () => {
   })
 
   it('scales the recording ceiling: 20 s for up-1', () => {
-    expect(maxTimeToCorrectMs()).toBe(MAX_TIME_TO_CORRECT_MS)
+    expect(maxTimeToCorrectMs(1)).toBe(MAX_TIME_TO_CORRECT_MS)
     expect(maxTimeToCorrectMs(2)).toBe(20_000)
     // Past a chord's ceiling but inside the run's: still a first-try rep.
     expect(gradingOutcome('first-try', 15_000, 2)).toBe('first-try')
@@ -673,8 +675,8 @@ describe('grade scale (§3.6 per-combo grade multiplier)', () => {
   })
 
   it('scales the slow and fast bars (§7.3)', () => {
-    expect(slowTimeMs()).toBe(SLOW_TIME_MS)
-    expect(fastTimeMs()).toBe(FAST_TIME_MS)
+    expect(slowTimeMs(1)).toBe(SLOW_TIME_MS)
+    expect(fastTimeMs(1)).toBe(FAST_TIME_MS)
     expect(slowTimeMs(7)).toBe(35_000)
     expect(fastTimeMs(7)).toBe(14_000)
   })

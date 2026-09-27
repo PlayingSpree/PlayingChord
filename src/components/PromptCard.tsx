@@ -3,11 +3,7 @@ import { usePractice, type UpcomingChord } from '../store/practiceStore'
 import { useSettings } from '../store/settingsStore'
 import {
   FIRST_TRY_STREAK_DISPLAY_MIN,
-  fastTimeMs,
-  maxTimeToCorrectMs,
   MODE_POLICY,
-  promptGradeScale,
-  slowTimeMs,
   type ChordNameSize,
   type Hint,
   type Prompt,
@@ -187,7 +183,7 @@ export function PromptCard() {
 function FeedbackPill() {
   const prompt = usePractice((s) => s.prompt)
   const phase = usePractice((s) => s.phase)
-  const reactionMs = usePractice((s) => s.reactionMs)
+  const pace = usePractice((s) => s.pace)
   const firstTryStreak = usePractice((s) => s.firstTryStreak)
   const hint = usePractice((s) => s.hint)
   const song = usePractice((s) => s.song)
@@ -208,22 +204,12 @@ function FeedbackPill() {
         <SongCountIn />
       </span>
     )
-  } else if (phase === 'advancing' && reactionMs !== null) {
-    // Slow is a Practice-mode judgment: Learn shows the answer from the start
-    // and Song is clock-paced, so neither has a reaction time worth grading.
-    // The bar is the grade's own D/F boundary (§7.5), so the chip fires on
-    // exactly the reps that would grade the combo F on speed alone. Amber, not
-    // F's red: this is one rep, a warning about pace, while the red letter is a
-    // verdict on a whole window of them.
-    const graded = MODE_POLICY[mode].graded && song === null
-    const gradeScale = prompt === null ? 1 : promptGradeScale(prompt)
-    const slow = graded && reactionMs > slowTimeMs(gradeScale)
-    // Fast is the same idea from the other end (§7.3): A's second, so the chip
-    // fires on exactly the reps that would grade the combo A on speed alone.
-    const fast = graded && reactionMs <= fastTimeMs(gradeScale)
-    // At the cap the pill reports what was actually recorded (§6.2), so the
-    // number the player sees is the number their stats moved by.
-    const capped = Math.min(reactionMs, maxTimeToCorrectMs(gradeScale))
+  } else if (phase === 'advancing' && pace !== null) {
+    // The rep's pace was decided where it was recorded (completeRep): slow
+    // past the D/F boundary, fast at A's second, and the time as stored.
+    // Amber, not F's red: this is one rep, a warning about pace, while the
+    // red letter is a verdict on a whole window of them.
+    const { slow, fast, capped, timeToCorrectMs } = pace
     content = (
       <span
         className={cx(
@@ -236,7 +222,7 @@ function FeedbackPill() {
               : 'bg-primary-tint text-primary-light',
         )}
       >
-        ✓ {(capped / 1000).toFixed(1)}s{capped < reactionMs && '+'}
+        ✓ {(timeToCorrectMs / 1000).toFixed(1)}s{capped && '+'}
         {slow && <span className="text-base font-semibold">· slow</span>}
         {fast && <span className="text-base font-semibold">· fast</span>}
         {firstTryStreak >= FIRST_TRY_STREAK_DISPLAY_MIN && (

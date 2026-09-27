@@ -7,13 +7,11 @@ import {
   isScalePreset,
   presetSide,
   type Side,
-  judgeCallouts,
-  repOutcome,
+  completeRep,
   streakAfter,
   createPoolResolver,
   songChordLabel,
   comboKey,
-  comboGradeScale,
   poolChordKey,
   dailyChordCount,
   dailyLegRemaining,
@@ -29,7 +27,6 @@ import {
   sanitizeLearnSelection,
   sessionLengthReached,
   RECENT_WINDOW,
-  recordChordAttempt,
   romanNumeral,
   openChord,
   setAsideChord,
@@ -43,17 +40,17 @@ import {
   type ChordPool,
   type ChordPrompt,
   type Pool,
-  type CalloutContext,
   type GradeUpFlash,
   type ChordPassEntry,
   type Combo,
   type DailyPlan,
   type ComboStatsSource,
   type ComboGrade,
-  type ComboStatRecord,
   type LifecycleState,
   type Hint,
   PromptJudge,
+  type RepPace,
+  type RepProgress,
   type RunProgress,
   type PracticeSettings,
   type Preset,
@@ -240,10 +237,10 @@ export interface PracticeStoreState {
   prompt: Prompt | null
   // Did the rep the ✔ flash is showing lift a chord that was still being
   // learned (§5.1: unlocked, not yet passed) to a passing grade? Set on the
-  // judgment edge and read by the §7.3 pill, which is on screen before the
-  // outcome is actually recorded (that happens on advance) — so this is the
-  // same pass call applyProgress will make, one advance window early.
+  // judgment edge, where the rep is recorded and the pass applied (§6.2).
   justLearned: boolean
+  // The ✔ pill's speed report for that rep (§7.3); null until a rep lands.
+  pace: RepPace | null
   // The §7.3 ready gate: a Practice session (fresh or resumed) holds its first
   // prompt until the player says they're set — a tap on the Stage or any note.
   // Nothing is dealt while this is true, so time-to-correct can't absorb the
@@ -276,15 +273,14 @@ export interface PracticeStoreState {
   // session. Empty outside Learn.
   learnProgress: LearnProgress
   // Did the rep the ✔ flash is showing just bring a selected chord up to the
-  // pass bar (§5.4)? Learn's counterpart to justLearned, and equally a call
-  // made one advance window early — see applyFlashes.
+  // pass bar (§5.4)? Learn's counterpart to justLearned.
   justRehearsed: boolean
   // Session length (§7.2): prompts or active minutes, ∞ for unlimited.
   // Session-only (not persisted). Applies to Learn and free practice; Song
   // ignores it and daily practice runs to its persisted cap instead (§5.3).
   sessionLength: SessionLength
-  // Prompts advanced past this session — correct + Learn — the Stage's
-  // done/length readout and the report's zero-prompt guard.
+  // Reps this session has completed — counted on the ✔, Learn's included — the
+  // Stage's done/length readout and the report's zero-prompt guard.
   done: number
   // Active ms accrued in *this* session — what a timed length counts against
   // (§7.2) and the Stage's ⏱ readout. Mirrored out as the buffered active
@@ -600,13 +596,9 @@ export function createPracticeStore({
 
     // A selected chord's grade on this session's reps alone (§5.4) — the same
     // fold and the same pass bar as the pool's own grade, over different
-    // evidence. `projected` swaps in the rep that hasn't been written yet, the
-    // trick the ✔ pill plays for the practice callouts.
-    const learnChordGrade = (
-      chordKey: string,
-      projected?: { key: string; record: ComboStatRecord },
-    ): ComboGrade | null =>
-      pool.chordGrade(chordKey, { source: learnStats, projected })
+    // evidence.
+    const learnChordGrade = (chordKey: string): ComboGrade | null =>
+      pool.chordGrade(chordKey, learnStats)
 
     // Re-derive which selected chords are rehearsed and publish the loop's
     // state (§5.4). Called after each learn rep and wherever the selection or
@@ -682,42 +674,25 @@ export function createPracticeStore({
       if (get().mode !== 'song' && get().prompt !== null) nextPrompt()
     }
 
-    // Feeds a completed free-practice prompt into the §5 unlock progress — as
-    // the chord's grade, so it must run *after* stats.record(). On an unlock,
-    // the new chords are held for the next session (holdNewUnlocks, §5.1), or
-    // the queue is dropped so they can enter the very next preview refill.
-    //
-    // Daily practice never gets here (see recordOutcome): its pool is the
-    // learned chords of *every* preset (§5.3), so an index into the selected
-    // preset's unlock order would be the wrong chord as often as the right
-    // one — and everything it deals is passed already, so there is nothing
-    // for it to pass.
-    const applyProgress = (combo: Combo) => {
-      const update = recordChordAttempt(
-        pool.chordOrder,
-        pool.progressRecord,
-        poolChordKey(combo),
-        pool.chordGrade(poolChordKey(combo)),
-      )
-      if (!update.changed) return
-      // The chord just passed this attempt (§5.1) — collect it for the Report.
-      run.notePassed(pool.label(poolChordKey(combo)))
-      const previousCount = pool.progressRecord.unlockedCount
-      pool = pool.withProgress(update.record)
+    // Writes a rep's pass through to the §5 unlock progress (completeRep only
+    // returns one in free practice — daily draws from every preset at once and
+    // has nothing left to pass, §5.3). On an unlock, the new chords are held
+    // for the next session (holdNewUnlocks, §5.1), or the queue is dropped so
+    // they can enter the very next preview refill.
+    const applyRepProgress = ({ record, passed, opened }: RepProgress) => {
+      // Collected for the Report (§7.4).
+      run.notePassed(pool.label(passed))
+      pool = pool.withProgress(record)
       progressStore.set(pool.presetId, pool.progressRecord)
       invalidateDaily() // a chord just passed — it joins the daily pool (§5.3)
       set({ progress: pool.progress })
       resetLearnSelection()
-      if (update.justUnlocked) {
-        const newKeys = pool.chordOrder.slice(
-          previousCount,
-          pool.progressRecord.unlockedCount,
-        )
-        heldUnlocks = new Set([...heldUnlocks, ...newKeys])
+      if (opened.length > 0) {
+        heldUnlocks = new Set([...heldUnlocks, ...opened])
         // Held, they can't be in the preview anyway; let in, the preview is
         // rebuilt so they can appear in it at once.
         if (!settings().holdNewUnlocks) queue = []
-        const newLabels = newKeys.map((key: string) => pool.label(key))
+        const newLabels = opened.map((key) => pool.label(key))
         run.noteUnlocked(newLabels)
         flashJustUnlocked(newLabels)
       }
@@ -777,6 +752,7 @@ export function createPracticeStore({
       set({
         prompt,
         justLearned: false,
+        pace: null,
         upcoming: queue.map((c) => ({
           key: comboKey(c),
           ...pool.comboLabelParts(c),
@@ -800,10 +776,6 @@ export function createPracticeStore({
       nextPrompt()
     }
 
-    // Advance the session's played-prompt count (§7.2): every prompt that
-    // advances counts a slot — correct or Learn.
-    const bumpDone = () => set((state) => ({ done: state.done + 1 }))
-
     // What actually ends this session (§7.2), resolved per mode by the policy
     // — the same rule the Stage's progress readout reads.
     const currentLength = (): SessionLength =>
@@ -813,58 +785,43 @@ export function createPracticeStore({
         get().dailyLegLimitMinutes,
       )
 
-    // A learn rep, which lands in the loop's own stats and nowhere else (§5.4):
-    // not the per-combo records, not the weighting, not the unlock queue, not
-    // the session tallies or the report log. Filler chords are recorded too —
-    // the grade is per chord and reading one costs nothing — but only the
-    // selection is ever asked whether it's rehearsed.
-    const recordLearnRep = () => {
+    // The rep on screen reached its ✔ (§6.2): record it now, while the flash
+    // is up, so everything the pill says is read back from what was written.
+    // completeRep writes the combo record — the persisted one, or the learn
+    // loop's own (§5.4) — and the rest lands here: the pass and any unlock,
+    // the Report log and session tallies, the loop's progress and the flashes.
+    // Everything that interrupts the advance window afterwards (a preset
+    // switch, End, a pause) finds the rep already counted.
+    const recordRep = (next: LifecycleState) => {
       if (currentCombo === null) return
-      const { outcome, timeToCorrectMs } = repOutcome(
-        machine.state,
-        comboGradeScale(currentCombo),
-      )
-      learnStats.record(comboKey(currentCombo), outcome, timeToCorrectMs)
-      currentCombo = null
+      const result = completeRep(next, currentCombo, {
+        mode: get().mode,
+        pool,
+        stats,
+        learnStats,
+        learnSelection: get().learnSelection,
+        learnRehearsed,
+      })
+      if (result.progress !== null) applyRepProgress(result.progress)
+      if (result.event !== null) run.logEvent(result.event)
       publishLearnProgress()
-    }
-
-    // A prompt only completes through the 'advancing' phase. Learn-mode prompts
-    // complete without touching anything persisted (§5) — recordLearnRep takes
-    // them instead. Returns whether a recorded prompt was logged (a ✔ that
-    // counts a done slot on its own — the caller only bumps done for Learn).
-    const recordOutcome = (): boolean => {
-      if (currentCombo === null || machine.state.phase !== 'advancing') {
-        return false
-      }
-      if (MODE_POLICY[get().mode].statsSource === 'session') {
-        recordLearnRep()
-        return false
-      }
-      // The same reduction the ✔ pill projected a window earlier (§6.2), which
-      // is why it is one function: from here it reaches combo stats and
-      // weighting, unlock progress, the session tallies, the Report log and —
-      // through stats.record — the day's summed time.
-      const { outcome, timeToCorrectMs } = repOutcome(
-        machine.state,
-        comboGradeScale(currentCombo),
-      )
-      const key = comboKey(currentCombo)
-      const label = pool.comboLabel(currentCombo)
-      stats.record(key, outcome, timeToCorrectMs)
-      // Only free practice moves the unlock queue (§5.1): daily draws from
-      // every preset at once and has nothing left to pass (§5.3).
-      if (MODE_POLICY[get().mode].movesUnlockProgress) {
-        applyProgress(currentCombo)
-      }
-      run.logEvent({ key, label, outcome, timeToCorrectMs })
-      // Defensive: a ✔ is recorded exactly once — clear the combo so a stray
-      // second recordOutcome (still 'advancing') can't double-count it.
-      currentCombo = null
-      // The combo streak isn't touched here — it moves on the judgment edges
-      // themselves (applyStreak below), which is what keeps the flash honest.
-      set((state) => ({ session: run.stats(), done: state.done + 1 }))
-      return true
+      // A climb comes back as a candidate: whether it is *worth* saying is
+      // about the rep, whether it has already been said is about the session
+      // (§7.3), and the run answers that. The pill only ever shows the three
+      // fields, so that is what is published.
+      const { climb } = result
+      const gradeUp: GradeUpFlash | null =
+        climb !== null && run.announceGradeUp(climb.key, climb.to)
+          ? { label: climb.label, from: climb.from, to: climb.to }
+          : null
+      set((state) => ({
+        session: run.stats(),
+        done: state.done + 1,
+        justLearned: result.justLearned,
+        justRehearsed: result.justRehearsed,
+        gradeUp,
+        pace: result.pace,
+      }))
     }
 
     // Learn is stats-neutral (§5) and Song bars have no self-paced streak, so
@@ -880,38 +837,6 @@ export function createPracticeStore({
       if (firstTryStreak > 0) bestStreak.record(firstTryStreak, side)
     }
 
-    // What the ✔ pill has to say about this rep (§7.3/§5.4), decided on the
-    // edge into 'advancing' and lasting exactly as long as the flash does — the
-    // pill renders none of it in any other phase. A climb comes back as a
-    // candidate: whether it is *worth* saying is about the rep, whether it has
-    // already been said is about the session (§7.3), and the run answers that.
-    const calloutContext = (): CalloutContext => ({
-      mode: get().mode,
-      combo: currentCombo,
-      pool,
-      stats,
-      learnStats,
-      learnSelection: get().learnSelection,
-      learnRehearsed,
-    })
-
-    const applyFlashes = (next: LifecycleState) => {
-      if (next.phase !== 'advancing' || get().phase === 'advancing') return
-      const { justLearned, justRehearsed, climb } = judgeCallouts(
-        next,
-        calloutContext(),
-      )
-      if (justLearned !== get().justLearned) set({ justLearned })
-      if (justRehearsed !== get().justRehearsed) set({ justRehearsed })
-      // The candidate carries the combo key the dedup is asked by; the pill
-      // only ever shows the three fields, so that is what is published.
-      const gradeUp: GradeUpFlash | null =
-        climb !== null && run.announceGradeUp(climb.key, climb.to)
-          ? { label: climb.label, from: climb.from, to: climb.to }
-          : null
-      if (gradeUp !== null || get().gradeUp !== null) set({ gradeUp })
-    }
-
     const machine = new PromptJudge({
       settings,
       now,
@@ -921,12 +846,12 @@ export function createPracticeStore({
       onState: (state) => {
         // Both read the pre-transition state, so they run before the set()
         applyStreak(state)
-        applyFlashes(state)
+        if (state.phase === 'advancing' && get().phase !== 'advancing') {
+          recordRep(state)
+        }
         set(state)
       },
       onAdvance: () => {
-        // A Learn prompt records nothing persisted but still consumes a slot.
-        if (!recordOutcome()) bumpDone()
         // The learn loop ends on its set, not on a length (§5.4) — checked
         // here, between prompts, for the same reason the length is.
         if (
@@ -1156,17 +1081,16 @@ export function createPracticeStore({
     }
 
     // End the current session (§7.2): freeze practice and show the Report — or
-    // return with no report when zero prompts played. The caller/endSession has
-    // already recorded any pending ✔.
+    // return with no report when zero prompts played. Every ✔ was recorded
+    // when it landed, so nothing is pending.
     const concludeSession = () => {
       haltSession()
       set({ report: get().done > 0 ? run.report(reportContext()) : null })
     }
 
     const applySelection = (presetId: string, diatonicKey: PitchClass) => {
-      // A correct prompt still waiting out its advance timer counts; the
+      // A ✔ still waiting out its advance timer was counted on the ✔; the
       // timer itself dies with the next promptShown().
-      recordOutcome()
       pool = resolvePool(presetId, diatonicKey)
       persistReconciliation()
       heldUnlocks = new Set() // they named chords in the old pool
@@ -1210,6 +1134,7 @@ export function createPracticeStore({
       diatonicKey: initialKey,
       prompt: null,
       justLearned: false,
+      pace: null,
       awaitingReady: false,
       phase: 'idle',
       reactionMs: null,
@@ -1326,10 +1251,8 @@ export function createPracticeStore({
         if (mode === get().mode) return
         if (mode === 'song' && side === 'scales') return // §6.5, §7.1
         const leavingSong = get().mode === 'song'
-        // A pending ✔ counts under the outgoing mode's rules (recordOutcome
-        // still sees the old mode); the current prompt is replaced so a
-        // Learn reveal can't be answered for Practice credit.
-        recordOutcome()
+        // The current prompt is replaced so a Learn reveal can't be answered
+        // for Practice credit.
         queue = [] // the pool can change (worstOnly/the learn set are per-mode)
         // Leaving the mode ends the run (§7.3). Only Practice can break a
         // streak — Learn records no outcome at all and Song is clock-paced —
@@ -1360,7 +1283,6 @@ export function createPracticeStore({
         if (on === get().worstOnly) return
         // Free practice only — not rendered elsewhere, but stay safe.
         if (!MODE_POLICY[get().mode].supportsWorstOnly) return
-        recordOutcome()
         queue = []
         set({ worstOnly: on })
         if (sessionLive) dealOrGate()
@@ -1379,7 +1301,6 @@ export function createPracticeStore({
         ) {
           return
         }
-        recordOutcome()
         queue = []
         set({ learnSelection: selection })
         publishLearnProgress()
@@ -1391,10 +1312,9 @@ export function createPracticeStore({
       },
 
       endSession() {
-        // The End button (§7.2), any mode, any time. A pending ✔ counts toward
-        // the ending session; then build the Report (or none if nothing played).
+        // The End button (§7.2), any mode, any time: build the Report (or none
+        // if nothing played).
         if (get().report !== null) return
-        recordOutcome()
         concludeSession()
       },
 
@@ -1402,7 +1322,6 @@ export function createPracticeStore({
         // Start / Go again (§7.2): whatever was in flight is abandoned with no
         // Report, so the next start() begins fresh rather than resuming.
         if (!sessionLive) return
-        recordOutcome() // a pending ✔ still counts against the lifetime stats
         haltSession()
       },
 
@@ -1420,7 +1339,6 @@ export function createPracticeStore({
           set({ prompt: null })
           return
         }
-        recordOutcome() // a ✔ waiting out its advance window still counts
         machine.stop()
         flushActivity()
         set({ prompt: null })
@@ -1462,15 +1380,11 @@ export function createPracticeStore({
         if (get().mode === 'song') {
           songEngine.setPool(songPoolOf(pool)) // no-ops while paused
         } else if (get().prompt !== null) {
-          recordOutcome()
           nextPrompt()
         }
       },
 
       resetPresetProgress(presetId: string) {
-        // A pending ✔ on the active preset counts (and may master a chord)
-        // before the wipe, like every other pool change.
-        if (presetId === pool.presetId) recordOutcome()
         progressStore.reset(presetId)
         invalidateDaily() // any preset's wipe empties its share of §5.3
         if (presetId !== pool.presetId) return
@@ -1494,9 +1408,6 @@ export function createPracticeStore({
       },
 
       refreshUnlockOrder() {
-        // A pending ✔ counts (and may master) under the outgoing order,
-        // like every other pool change.
-        recordOutcome()
         // The order setting feeds resolution, so re-resolving picks it up.
         pool = resolvePool(get().presetId, get().diatonicKey)
         persistReconciliation()
@@ -1525,16 +1436,12 @@ export function createPracticeStore({
       },
 
       setChordAside(chordKey: string) {
-        // A pending ✔ counts (and may pass its chord) under the outgoing
-        // pool, like every other pool change.
-        recordOutcome()
         applyManualProgress(
           setAsideChord(pool.chordOrder, pool.progressRecord, chordKey),
         )
       },
 
       openChordForPlay(chordKey: string) {
-        recordOutcome()
         applyManualProgress(
           openChord(pool.chordOrder, pool.progressRecord, chordKey),
         )

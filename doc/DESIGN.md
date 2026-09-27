@@ -4,7 +4,7 @@ A web app for practicing piano chords and scales with a MIDI keyboard. The app s
 random chord or scale from a chosen preset, the user plays it on their connected MIDI
 keyboard, and the app validates the input and moves on to the next one.
 
-Spec version: **10.10.0** (2026-09-27) — chords and scales. Revision history lives in
+Spec version: **10.11.0** (2026-09-27) — chords and scales. Revision history lives in
 [CHANGELOG.md](CHANGELOG.md); this document describes only what the app *is* today.
 Both previously open questions are resolved (see [§9](#9-resolved-questions)). Build
 sequencing (what gets implemented first) is intentionally left outside this document.
@@ -134,7 +134,7 @@ build tag on Home (§7.1) says which build is actually running.
 
 ## 3. Domain Model
 
-**Terms.** Five words name the layers of what the app deals, broadest first. The
+**Terms.** Six words name the layers of what the app deals, broadest first. The
 spec and the code mean exactly these by them. The UI never says *item*: it says
 "chord" or "scale", for whichever side it is on (`components/sides.ts`).
 
@@ -151,6 +151,9 @@ spec and the code mean exactly these by them. The UI never says *item*: it says
   (§5.1).
 - **Prompt** — one combo dealt on the Stage, with its display name and example
   (§3.4).
+- **Rep** — one prompt played, from shown to its ✔, misses and retries included
+  (§6.2). It is what gets recorded — once, the moment its ✔ lands — and what the
+  feedback pill reports on (§7.3). An *attempt* is one try within a rep.
 
 Where a rule is about chords alone — voicings, inversions, Song mode — the spec says
 *chord*; where it holds for both kinds it says *item*.
@@ -734,9 +737,10 @@ lifecycle per prompt. It judges the *set* of held notes, so it serves chords and
    released. Notes still held from the previous prompt are never judged against the new
    one.
 2. **Evaluate on every held-set change:**
-   - Held set **satisfies the rule** (§6.3) → **correct** ✔: flash + reaction time +
-     optional chime, then auto-advance after a configurable delay (default 800 ms).
-     Notes pressed during the advance window are ignored; the next prompt arms per (1).
+   - Held set **satisfies the rule** (§6.3) → **correct** ✔: the rep is recorded
+     there and then, and the flash + reaction time + optional chime show what it
+     did; auto-advance follows after a configurable delay (default 800 ms). Notes
+     pressed during the advance window are ignored; the next prompt arms per (1).
    - Held set is **definitively unsatisfiable** → **miss** ✘, immediately. Definitive
      means no additional key press could fix it: a non-chord pitch class is held (with
      Strict extra notes on), the span max is exceeded, or doubling is violated under
@@ -750,11 +754,21 @@ lifecycle per prompt. It judges the *set* of held notes, so it serves chords and
    keys *before* any judgment abandons the attempt silently (self-correction isn't
    punished, and doesn't advance hint stages).
 
+**Recorded on the ✔.** A rep lands the moment it is judged correct, not when the
+next prompt is dealt: its combo record, any pass and unlock it earns (§5.1), the
+session's count and tallies and the Report log (§7.4) all move while its ✔ is on
+screen. So everything the flash says — the pace, a grade-up, `★ learned`, an
+unlock toast (§7.3) — is read back from what was just written rather than
+predicted ahead of it, and whatever cuts the advance window short (End, a pause, a
+preset switch) finds the rep already counted. A prompt is only ever left by
+answering it or ending the session (§7.3), so there is no ✔ that could later turn
+out not to count.
+
 **Time-to-correct ceiling.** A recorded time-to-correct is clamped to **10 000 ms**.
 A prompt left sitting — a pause to think, a distraction, a walk away from the
 keyboard — is not a 47-second recall, and one of them would otherwise drag the
 combo's recent average, and so its weighting (§5) and grade (§7.5), for the whole
-window after. The clamp is applied once, where the completed prompt is recorded, so
+window after. The clamp is applied once, where the rep is recorded on its ✔, so
 per-combo stats, unlock progress, the session tallies, the Report log and the day's
 summed time all see the same capped value; past it the feedback pill reads `10.0s+`
 (§7.3). The ceiling sits well above the §7.3 slow bar, so a clamped rep is always
@@ -1134,15 +1148,17 @@ counts a new progression in).
   Daily); ∞ keeps the count but has no length to fill, so its bar and
   readout track **today's goal minutes** instead (`🔥 6 / 10 min`, then
   `🔥 Streak safe` — §7.6), the only thing still pacing an endless session. It
-  advances as active time flushes, so it moves only while playing. **Learn** fills
+  advances as active time flushes, so it moves only while playing. A counted
+  length ticks on each rep's ✔ (§6.2). **Learn** fills
   the same bar with its set instead (`✓ 1 / 3 rehearsed`, §5.4) — the thing that
   actually ends it — beside a chip per selected chord, ticked as it comes up, and
   a compact `🔓 N/total` unlock count; Song: tempo
   and loop chips (the length doesn't apply). The old
   always-visible unlock chip is gone — Home's In play row carries the per-chord
   breakdown — but the transient unlock **toast** ("🔓 New chords unlocked:
-  A, E") still fires at the mid-session unlock moment, adding `· from next
-  session` while unlocks are held (§5.1) so the player isn't left waiting for them.
+  A, E") still fires at the mid-session unlock moment — the ✔ that earned it —
+  adding `· from next session` while unlocks are held (§5.1) so the player isn't
+  left waiting for them.
 - **Grade-up notice**: a combo's grade rides a *recent* window (§5), so it can
   climb mid-session; when it does, a line under the feedback pill says so
   ("📈 C maj grade up: D → C"), rather than leaving the news for the player's
@@ -1263,9 +1279,8 @@ counts a new progression in).
   and Song is clock-paced, so neither grades speed. When a rep takes a chord that
   was still new (§5.1: unlocked, not yet passed) to a passing grade,
   **`★ learned`** joins the grade-up line beneath the pill — the one moment that
-  word is news. It is the same pass call §5.1 makes, decided on the judgment
-  edge rather than on the advance, so the flash announcing it is still on
-  screen. Misses are always **visual-only** (§9). There is **no skip**: a prompt
+  word is news. It is the pass §5.1 records, which lands on the rep's ✔ (§6.2),
+  so the flash announcing it is still on screen. Misses are always **visual-only** (§9). There is **no skip**: a prompt
   is left only by answering it or by ending the session. A way out that costs
   nothing is taken on exactly the chords the drill exists for, and the weighting
   (§5) can only work from reps that happened — a skipped chord looks untouched

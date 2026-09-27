@@ -61,12 +61,8 @@ export function gradeScaleOf(key: string): number {
     : 1
 }
 
-export function comboGradeScale(combo: Combo): number {
-  return isScaleCombo(combo) ? getScaleShape(combo.shapeId).gradeMultiplier : 1
-}
-
 // The §6.2 recording ceiling for a combo of this grade scale.
-export function maxTimeToCorrectMs(gradeScale = 1): number {
+export function maxTimeToCorrectMs(gradeScale: number): number {
   return MAX_TIME_TO_CORRECT_MS * gradeScale
 }
 
@@ -128,7 +124,7 @@ export const NO_HISTORY: RecentStatsSource = { recentHistory: () => null }
 export function gradingOutcome(
   outcome: PromptOutcome,
   timeToCorrectMs: number | null,
-  gradeScale = 1,
+  gradeScale: number,
 ): PromptOutcome {
   if (outcome === 'missed') return 'missed'
   return timeToCorrectMs !== null &&
@@ -141,7 +137,7 @@ export function applyOutcome(
   record: ComboStatRecord | null,
   outcome: PromptOutcome,
   timeToCorrectMs: number | null,
-  gradeScale = 1,
+  gradeScale: number,
 ): ComboStatRecord {
   const base = record ?? {
     attempts: 0,
@@ -171,7 +167,7 @@ export function applyOutcome(
 
 export function recentHistoryOf(
   record: ComboStatRecord | null,
-  gradeScale = 1,
+  gradeScale: number,
 ): ComboRecentHistory | null {
   if (record === null || record.recentOutcomes.length === 0) return null
   return {
@@ -265,7 +261,7 @@ function speedFactor(avgTimeToCorrectMs: number, gradeScale: number): number {
 function scoreOf(
   accuracy: number,
   avgTimeToCorrectMs: number | null,
-  gradeScale = 1,
+  gradeScale: number,
 ): number {
   return (
     accuracy *
@@ -312,7 +308,7 @@ export function sessionScore(
   accuracy: number,
   avgTimeToCorrectMs: number | null,
 ): number {
-  return scoreOf(accuracy, avgTimeToCorrectMs)
+  return scoreOf(accuracy, avgTimeToCorrectMs, 1)
 }
 
 // Letter tiers over comboScore for the §7 chord stats page — a compact,
@@ -340,11 +336,11 @@ export const SLOW_TIME_MS = GRADE_TIME_MS.D
 // invented for the chip.
 export const FAST_TIME_MS = GRADE_TIME_MS.A
 
-export function slowTimeMs(gradeScale = 1): number {
+export function slowTimeMs(gradeScale: number): number {
   return SLOW_TIME_MS * gradeScale
 }
 
-export function fastTimeMs(gradeScale = 1): number {
+export function fastTimeMs(gradeScale: number): number {
   return FAST_TIME_MS * gradeScale
 }
 
@@ -420,7 +416,7 @@ function average(samples: readonly number[]): number | null {
 
 export function comboMetrics(
   record: ComboStatRecord,
-  gradeScale = 1,
+  gradeScale: number,
 ): ComboMetrics {
   const recent = recentHistoryOf(record, gradeScale)
   const score = comboScore(recent)
@@ -443,8 +439,7 @@ export function comboMetrics(
 // (§7.5)? Below the floor an F is arithmetic, not a verdict — the missing
 // reps are what produced it.
 function isProven(record: ComboStatRecord): boolean {
-  const recent = recentHistoryOf(record)
-  return recent !== null && recent.total >= GRADE_EVIDENCE_FLOOR
+  return record.recentOutcomes.length >= GRADE_EVIDENCE_FLOOR
 }
 
 // The grade as shown (§7.5). `pending` stands in for an F a combo hasn't had the
@@ -457,7 +452,7 @@ export type DisplayGrade = ComboGrade | 'pending'
 
 export function displayGrade(
   record: ComboStatRecord,
-  gradeScale = 1,
+  gradeScale: number,
 ): DisplayGrade {
   const { grade } = comboMetrics(record, gradeScale)
   return grade === 'F' && !isProven(record) ? 'pending' : grade
@@ -552,7 +547,7 @@ export function rankWorstCombos(
   const scored = pool.flatMap((combo) => {
     const record = stats.get(comboKey(combo))
     if (record === null || record.attempts === 0) return []
-    const recent = recentHistoryOf(record, comboGradeScale(combo))
+    const recent = recentHistoryOf(record, gradeScaleOf(comboKey(combo)))
     const recentMissRate = recent === null ? 0 : recent.misses / recent.total
     const lifetimeMissRate = 1 - record.firstTrySuccesses / record.attempts
     if (recentMissRate === 0 && lifetimeMissRate === 0) return []
@@ -593,7 +588,7 @@ export function rankMostImproved(
   const scored = pool.flatMap((combo) => {
     const record = stats.get(comboKey(combo))
     if (record === null || record.attempts < IMPROVED_MIN_ATTEMPTS) return []
-    const recent = recentHistoryOf(record)
+    const recent = recentHistoryOf(record, gradeScaleOf(comboKey(combo)))
     if (recent === null || recent.total < RECENT_OUTCOME_WINDOW) return []
     const lifetimeMissRate = 1 - record.firstTrySuccesses / record.attempts
     const improvement = lifetimeMissRate - recent.misses / recent.total
