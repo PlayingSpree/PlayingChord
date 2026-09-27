@@ -94,9 +94,9 @@ describe('daily legs (§5.3)', () => {
   const plan = (
     capMinutes: number,
     chordShare: number,
-    learned: Record<Side, number> = both,
+    passed: Record<Side, number> = both,
     playedToday: Record<Side, number> = none,
-  ): DailyPlan => ({ capMinutes, chordShare, learned, playedToday })
+  ): DailyPlan => ({ capMinutes, chordShare, passed, playedToday })
 
   it('splits the cap by the chord share, the scale leg taking the rest', () => {
     expect(dailyLegMinutes('chords', plan(10, 0.5))).toBe(5)
@@ -107,7 +107,7 @@ describe('daily legs (§5.3)', () => {
     expect(dailyLegMinutes('chords', plan(5, 0.25))).toBe(1.25)
   })
 
-  it('gives the whole cap to the only side with anything learned', () => {
+  it('gives the whole cap to the only side with anything passed', () => {
     const chordsOnly = plan(10, 0.25, { chords: 4, scales: 0 })
     expect(dailyLegMinutes('chords', chordsOnly)).toBe(10)
     expect(dailyLegMinutes('scales', chordsOnly)).toBe(0)
@@ -146,7 +146,7 @@ describe('daily legs (§5.3)', () => {
     expect(dueDailyLeg(almost)).toBe('scales')
   })
 
-  it('has no leg to run with nothing learned anywhere', () => {
+  it('has no leg to run with nothing passed anywhere', () => {
     expect(dueDailyLeg(plan(10, 0.5, none))).toBeNull()
   })
 })

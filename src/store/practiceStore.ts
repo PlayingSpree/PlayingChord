@@ -30,6 +30,7 @@ import {
   romanNumeral,
   openChord,
   setAsideChord,
+  carryProgressAcrossEdit,
   sanitizeSessionLength,
   DEFAULT_SESSION_LENGTH,
   SessionRun,
@@ -86,7 +87,7 @@ import {
   type PresetProgressSource,
 } from '../storage'
 import { settingsStore } from './settingsStore'
-import { libraryStore } from './libraryStore'
+import { libraryStore, type LibraryStoreState } from './libraryStore'
 
 // Selected preset + diatonic key, remembered like the MIDI device — in the
 // versioned schema (§8); the Phase 5 plain key migrates on first load. Since
@@ -193,7 +194,7 @@ export interface LearnChordProgress {
   rehearsed: boolean
 }
 
-// The learn loop's live state (§5.4). `filler` is the learned chords dealt
+// The learn loop's live state (§5.4). `filler` is the passed chords dealt
 // alongside the set to keep the pool at three; they are named so the sheet and
 // Stage can say what is being dealt, and they are deliberately absent from
 // `chords` — nothing about them ends the session.
@@ -236,9 +237,9 @@ export interface PracticeStoreState {
   diatonicKey: PitchClass
   prompt: Prompt | null
   // Did the rep the ✔ flash is showing lift a chord that was still being
-  // learned (§5.1: unlocked, not yet passed) to a passing grade? Set on the
+  // passed (§5.1: unlocked, not yet passed) to a passing grade? Set on the
   // judgment edge, where the rep is recorded and the pass applied (§6.2).
-  justLearned: boolean
+  justPassed: boolean
   // The ✔ pill's speed report for that rep (§7.3); null until a rep lands.
   pace: RepPace | null
   // The §7.3 ready gate: a Practice session (fresh or resumed) holds its first
@@ -266,14 +267,14 @@ export interface PracticeStoreState {
   // The learn loop's chord set (§5.4), same lifecycle as worstOnly: the
   // poolChordKeys the player picked in the sheet, in unlock order. Defaults to
   // the in-play chords not yet passed and is re-derived whenever the pool moves
-  // under it. Learn deals these plus enough learned chords to make three.
+  // under it. Learn deals these plus enough passed chords to make three.
   learnSelection: readonly string[]
   // Live state of that set (§5.4) — which of its chords have reached D on this
   // session's own reps, which is both the Stage's counter and what ends the
   // session. Empty outside Learn.
   learnProgress: LearnProgress
   // Did the rep the ✔ flash is showing just bring a selected chord up to the
-  // pass bar (§5.4)? Learn's counterpart to justLearned.
+  // pass bar (§5.4)? Learn's counterpart to justPassed.
   justRehearsed: boolean
   // Session length (§7.2): prompts or active minutes, ∞ for unlimited.
   // Session-only (not persisted). Applies to Learn and free practice; Song
@@ -311,7 +312,7 @@ export interface PracticeStoreState {
   justUnlocked: boolean
   justUnlockedLabels: readonly string[]
   // A combo that just climbed a grade (§7.3), shown under the ✔ pill for as
-  // long as that flash lasts — like justLearned, it is news about the rep on
+  // long as that flash lasts — like justPassed, it is news about the rep on
   // screen. Practice-only, and gated on enough attempts to mean something
   // (§5 chord score over the recent window).
   gradeUp: GradeUpFlash | null
@@ -368,23 +369,23 @@ export interface PracticeStoreState {
   // — the unlock frontier is a prefix (§5.1), so the control says so.
   chordsOpenedWith(chordKey: string): number
   // How many chords daily practice (§5.3) would draw from right now — the
-  // learned chords of every preset, deduplicated. Zero means the mode has
+  // passed chords of every preset, deduplicated. Zero means the mode has
   // nothing to drill and Home / the sheet offer it disabled. Computed on
   // demand from the persisted records, so it never goes stale between
   // sessions. Unlike the pool questions, this one spans every preset, so it
   // stays here rather than on any single Pool.
-  learnedChordCount(): number
+  passedChordCount(): number
   // The same count for both sides at once — what sizes the two Daily legs
   // (§5.3), which Home shows together whichever side is switched to.
-  learnedCounts(): Record<Side, number>
+  passedCounts(): Record<Side, number>
   // Everything the two Daily legs are sized from right now (§5.3): the cap
-  // and split, both sides' learned counts and today's Daily minutes.
+  // and split, both sides' passed counts and today's Daily minutes.
   dailyPlan(): DailyPlan
   // Ready the next Daily session (§5.3) — switch to its side and to Daily —
   // for the caller to start: the due leg, capped at what is left of it, or
   // once both legs are done today the uncapped Keep-going run, on the current
-  // side (the other when this one has nothing learned). Remembers the side
-  // Home was on, for returnFromDaily. false with nothing learned anywhere.
+  // side (the other when this one has nothing passed). Remembers the side
+  // Home was on, for returnFromDaily. false with nothing passed anywhere.
   prepareDaily(): boolean
   // Put Home back on the side it was on before Daily switched it (§7.1).
   returnFromDaily(): void
@@ -530,12 +531,12 @@ export function createPracticeStore({
     }
     persistReconciliation()
 
-    // The §5.3 daily pool: every preset's learned chords, folded together —
+    // The §5.3 daily pool: every preset's passed chords, folded together —
     // per side, since the scale leg drills scale presets and the chord leg
     // chord presets.
     // Cached because it resolves *every* preset (built-ins plus custom) and is
     // asked for on each prompt — both sides, since the leg's length depends on
-    // what the other side has learned; `invalidateDaily` marks them stale,
+    // what the other side has passed; `invalidateDaily` marks them stale,
     // which every path that can change a preset's pool or its progress does.
     // The side Home was on before a Daily run switched it (§7.1), restored on
     // the way back Home; null outside a run.
@@ -648,7 +649,7 @@ export function createPracticeStore({
     }
 
     // The unlock record moved — a pass, an unlock, a by-hand open or set-aside.
-    // Which chords are waiting to be learned moved with it, so the set reopens
+    // Which chords are waiting to be passed moved with it, so the set reopens
     // on the default (§5.4): a chord that just unlocked joins it, one that just
     // passed leaves it. Learn never passes anything, so this can't pull the set
     // out from under a live loop.
@@ -701,7 +702,7 @@ export function createPracticeStore({
     // Learn and free practice generate only from the selected preset's
     // unlocked chords (§5); Song bypasses this entirely (it draws from the
     // preset's raw pool) and daily practice replaces it with the cross-preset
-    // learned pool (§5.3). "Worst chords only" (free, §5/§7) and the learn
+    // passed pool (§5.3). "Worst chords only" (free, §5/§7) and the learn
     // loop's chord set (§5.4) then each narrow generation within the unlocked
     // set; an empty result (every unlocked chord already passed with nothing
     // ever missed, or a selection the pool no longer contains) falls back to
@@ -719,8 +720,8 @@ export function createPracticeStore({
           : combos.filter((combo) => !held.has(poolChordKey(combo)))
       const available = dealable(pool.inPlay)
       if (state.mode === 'daily') {
-        // Defensive: the mode is offered only when something is learned
-        // (learnedChordCount), but nextPrompt needs a non-empty pool (§5).
+        // Defensive: the mode is offered only when something is passed
+        // (passedChordCount), but nextPrompt needs a non-empty pool (§5).
         const daily = currentDailyPool()
         return daily.length > 0 ? daily : available
       }
@@ -751,7 +752,7 @@ export function createPracticeStore({
       const prompt = pool.promptFor(combo)
       set({
         prompt,
-        justLearned: false,
+        justPassed: false,
         pace: null,
         upcoming: queue.map((c) => ({
           key: comboKey(c),
@@ -817,7 +818,7 @@ export function createPracticeStore({
       set((state) => ({
         session: run.stats(),
         done: state.done + 1,
-        justLearned: result.justLearned,
+        justPassed: result.justPassed,
         justRehearsed: result.justRehearsed,
         gradeUp,
         pace: result.pace,
@@ -1074,7 +1075,7 @@ export function createPracticeStore({
       clearGradeFlash() // the ✔ it rode is gone with the prompt
       set({
         prompt: null,
-        justLearned: false,
+        justPassed: false,
         justRehearsed: false,
         awaitingReady: false,
       })
@@ -1096,7 +1097,7 @@ export function createPracticeStore({
       heldUnlocks = new Set() // they named chords in the old pool
       recentKeys = []
       queue = []
-      // The diatonic preset's pool follows its key, so the learned set can
+      // The diatonic preset's pool follows its key, so the passed set can
       // move under a selection change as well as a progress one (§5.3).
       invalidateDaily()
       clearUnlockFlash()
@@ -1133,7 +1134,7 @@ export function createPracticeStore({
       presetId: initialId,
       diatonicKey: initialKey,
       prompt: null,
-      justLearned: false,
+      justPassed: false,
       pace: null,
       awaitingReady: false,
       phase: 'idle',
@@ -1359,7 +1360,7 @@ export function createPracticeStore({
         // they were drawn from; a library edit can change rules or spellings
         // even when the preset itself is unchanged.
         queue = []
-        invalidateDaily() // a custom preset's learned chords can move with it
+        invalidateDaily() // a custom preset's passed chords can move with it
         if (pool.presetId !== current.presetId) {
           // The active preset vanished (deleted, or now empty) — the
           // resolver fell back; remember the fallback like any selection.
@@ -1413,7 +1414,7 @@ export function createPracticeStore({
         persistReconciliation()
         heldUnlocks = new Set() // the frontier now names different chords
         // Passed *indices* carry onto the new order (§5.1), so which chords
-        // count as learned moves with it — the daily pool with them.
+        // count as passed moves with it — the daily pool with them.
         invalidateDaily()
         clearUnlockFlash()
         clearGradeFlash()
@@ -1436,9 +1437,22 @@ export function createPracticeStore({
       },
 
       setChordAside(chordKey: string) {
-        applyManualProgress(
-          setAsideChord(pool.chordOrder, pool.progressRecord, chordKey),
+        const next = setAsideChord(
+          pool.chordOrder,
+          pool.progressRecord,
+          chordKey,
         )
+        // Setting aside the last item still waiting opens the next batch
+        // (§5.2). That is an unlock like a pass's, so a session paused under
+        // it holds the batch for the next one (§5.1) — a new session starts
+        // with nothing held anyway.
+        const opened = pool.chordOrder.slice(
+          pool.progressRecord.unlockedCount,
+          next.unlockedCount,
+        )
+        if (opened.length > 0)
+          heldUnlocks = new Set([...heldUnlocks, ...opened])
+        applyManualProgress(next)
       },
 
       openChordForPlay(chordKey: string) {
@@ -1455,11 +1469,11 @@ export function createPracticeStore({
         return pool.openedWith(chordKey)
       },
 
-      learnedChordCount() {
+      passedChordCount() {
         return dailyChordCount(currentDailyPool())
       },
 
-      learnedCounts() {
+      passedCounts() {
         return {
           chords: dailyChordCount(dailyPoolOf('chords')),
           scales: dailyChordCount(dailyPoolOf('scales')),
@@ -1470,7 +1484,7 @@ export function createPracticeStore({
         return {
           capMinutes: settings().dailyCapMinutes,
           chordShare: settings().dailyChordShare,
-          learned: get().learnedCounts(),
+          passed: get().passedCounts(),
           playedToday: activity.todayDailyMinutes(),
         }
       },
@@ -1482,11 +1496,7 @@ export function createPracticeStore({
         const other: Side = side === 'chords' ? 'scales' : 'chords'
         const target =
           leg ??
-          (plan.learned[side] > 0
-            ? side
-            : plan.learned[other] > 0
-              ? other
-              : null)
+          (plan.passed[side] > 0 ? side : plan.passed[other] > 0 ? other : null)
         if (target === null) return false
         dailyKeepGoing = leg === null
         // Only the first session of a run records it: the Report's hand-on to
@@ -1538,8 +1548,39 @@ export const resolveAppPool = createPoolResolver({
   stats: new PersistedComboStats(appStorage),
 })
 
+// An edit can move a custom preset's items around its unlock order, so each
+// edited preset's stored progress follows its items first (§5.1) — for every
+// preset, not just the active one, since only this moment knows both orders.
+function carryCustomProgress(
+  next: LibraryStoreState,
+  prev: LibraryStoreState,
+): void {
+  const rulesEdited = next.customRules !== prev.customRules
+  const before = voicingLibrary(prev.customRules)
+  const after = voicingLibrary(next.customRules)
+  const unlockByFifths = settingsStore.getState().settings.unlockByFifths
+  for (const preset of next.customPresets) {
+    const old = prev.customPresets.find((p) => p.id === preset.id)
+    const record = appProgress.get(preset.id)
+    if (old === undefined || record === null) continue
+    if (old === preset && !rulesEdited) continue
+    const carried = carryProgressAcrossEdit(
+      { preset: old, voicings: before },
+      { preset, voicings: after },
+      record,
+      unlockByFifths,
+    )
+    if (JSON.stringify(carried) !== JSON.stringify(record)) {
+      appProgress.set(preset.id, carried)
+    }
+  }
+}
+
 // Library edits (create/edit/delete/import) re-resolve immediately.
-libraryStore.subscribe(() => practiceStore.getState().refreshLibrary())
+libraryStore.subscribe((next, prev) => {
+  carryCustomProgress(next, prev)
+  practiceStore.getState().refreshLibrary()
+})
 
 export function usePractice<T>(selector: (state: PracticeStoreState) => T): T {
   return useStore(practiceStore, selector)

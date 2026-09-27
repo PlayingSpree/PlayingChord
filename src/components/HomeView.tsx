@@ -43,7 +43,7 @@ import { formatMinutes } from './daily'
 // config (preset / mode / length, §7.2).
 // The Continue card is about the *selected preset* — its unlock progress and
 // its in-play chords — which is what Learn, free practice and Song draw from.
-// Daily practice doesn't (§5.3: every preset's learned chords under a time
+// Daily practice doesn't (§5.3: every preset's passed chords under a time
 // cap), so it is a card of its own above, one click to start, rather than a
 // mode chip beside a preset it ignores.
 // Everything on the card is the switched-to side's (§7.1): the Chords |
@@ -136,8 +136,8 @@ export function HomeView({
   }, [presetId, progress, customRules])
 
   // What the learn loop would deal (§5.4): the chords currently selected — the
-  // sheet's picks, which default to the ones still being learned — and the
-  // learned chords that would keep it at three.
+  // sheet's picks, which default to the ones not yet passed — and the
+  // passed chords that would keep it at three.
   const learnFiller = useMemo(
     () => resolveAppPool(presetId, diatonicKey).fillerLabels(learnSet),
     // The pool is resolved fresh, so re-run on anything that moves it.
@@ -191,26 +191,29 @@ export function HomeView({
   }
   // Daily runs a chord leg then a scale leg (§5.3), each to its share of
   // the cap less what today has already played, so a run cut short picks up
-  // where it stopped. With nothing learned on either side the card reads as
+  // where it stopped. With nothing passed on either side the card reads as
   // locked; with both legs played out it reads as done for today and offers
-  // Keep going — the same learned pool, uncapped, until End. Starting
+  // Keep going — the same passed pool, uncapped, until End. Starting
   // switches Home to the leg's side, since a session runs on the store's
   // side — the way back Home switches it back (§7.1).
   const dailyLegs = SIDES.map((legSide) => ({
     side: legSide,
     share: dailyLegMinutes(legSide, plan),
     remaining: dailyLegRemaining(legSide, plan),
-    learned: plan.learned[legSide],
+    passed: plan.passed[legSide],
   }))
   const dueLeg = dueDailyLeg(plan)
-  const nothingLearned = SIDES.every((s) => plan.learned[s] === 0)
+  const nothingPassed = SIDES.every((s) => plan.passed[s] === 0)
   const startedToday = SIDES.some((s) => plan.playedToday[s] > 0)
-  const doneToday = !nothingLearned && dueLeg === null
+  const doneToday = !nothingPassed && dueLeg === null
   const startDaily = () => {
     if (prepareDaily()) onStart()
   }
 
+  // The next batch opens once every chord in play has passed (§5.1) — so the
+  // line says how many are still waiting, not "on the next pass".
   const nextBatch = Math.min(2, progress.total - progress.unlocked)
+  const waiting = inPlay.chips.filter((chip) => !chip.passed).length
   const unlockPct =
     progress.total > 0
       ? Math.round((100 * progress.unlocked) / progress.total)
@@ -239,7 +242,7 @@ export function HomeView({
         <Card
           className={cx(
             'flex flex-wrap items-center gap-x-4 gap-y-3 px-6 py-4',
-            nothingLearned && 'border-dashed',
+            nothingPassed && 'border-dashed',
           )}
         >
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -249,10 +252,10 @@ export function HomeView({
                 · {dailyCapMinutes} min{doneToday && ' · ✓ done today'}
               </span>
             </span>
-            {nothingLearned ? (
+            {nothingPassed ? (
               <span className="text-[15px] text-ink-muted">
                 Pass a chord or a scale first — daily practice drills what you
-                have learned, from every preset
+                have passed, from every preset
               </span>
             ) : (
               <span className="flex flex-wrap gap-x-5 text-[15px] text-ink-muted">
@@ -269,7 +272,7 @@ export function HomeView({
           </div>
           <RaisedButton
             variant={doneToday ? 'outline' : 'primary'}
-            disabled={nothingLearned}
+            disabled={nothingPassed}
             onClick={startDaily}
           >
             {doneToday
@@ -309,7 +312,11 @@ export function HomeView({
                   style={{ width: `${unlockPct}%` }}
                 />
               </div>
-              {nextBatch > 0 && <span>{nextBatch} unlock on next pass</span>}
+              {nextBatch > 0 && waiting > 0 && (
+                <span>
+                  pass {waiting} more to unlock {nextBatch}
+                </span>
+              )}
             </div>
 
             <div className="mt-1 flex flex-col gap-2">
@@ -428,7 +435,7 @@ export function HomeView({
               ))}
             </div>
 
-            {/* Learn deals a chosen set plus enough learned chords to make
+            {/* Learn deals a chosen set plus enough passed chords to make
                 three (§5.4), and runs until the set is rehearsed rather than to
                 a length — so, like daily, it says what it will deal. The set
                 itself is picked in the sheet. */}
@@ -513,15 +520,15 @@ export function HomeView({
 function legLine(leg: {
   share: number
   remaining: number
-  learned: number
+  passed: number
 }): string {
-  if (leg.learned === 0) return '· nothing learned yet'
+  if (leg.passed === 0) return '· nothing passed yet'
   if (leg.share === 0) return '· off'
   if (leg.remaining === 0) return `✓ ${formatMinutes(leg.share)} min done`
   if (leg.remaining < leg.share) {
-    return `${formatMinutes(leg.remaining)} of ${formatMinutes(leg.share)} min left · ${leg.learned} learned`
+    return `${formatMinutes(leg.remaining)} of ${formatMinutes(leg.share)} min left · ${leg.passed} passed`
   }
-  return `${formatMinutes(leg.share)} min · ${leg.learned} learned`
+  return `${formatMinutes(leg.share)} min · ${leg.passed} passed`
 }
 
 // The Chords | Scales switch (§7.1): a segmented control above the Continue

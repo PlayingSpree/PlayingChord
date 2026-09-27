@@ -141,7 +141,7 @@ describe('completeRep — the pass (§5.1/§7.3)', () => {
     expect(result.progress?.passed).toBe('0:maj')
     expect(result.progress?.record.masteredIndices).toEqual([0])
     expect(result.progress?.opened).toEqual([])
-    expect(result.justLearned).toBe(true)
+    expect(result.justPassed).toBe(true)
   })
 
   it('opens the next batch when the rep passes the last unlocked chord', () => {
@@ -163,7 +163,7 @@ describe('completeRep — the pass (§5.1/§7.3)', () => {
       context({ stats, pool: poolWith(stats) }),
     )
     expect(result.progress).toBeNull()
-    expect(result.justLearned).toBe(false)
+    expect(result.justPassed).toBe(false)
   })
 
   it('passes nothing for a chord that has already passed', () => {

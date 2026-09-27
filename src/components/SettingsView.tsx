@@ -326,7 +326,7 @@ function GoalSection() {
         {formatMinutes(
           settings.dailyCapMinutes * (1 - settings.dailyChordShare),
         )}{' '}
-        min — a side with nothing learned yet hands its time to the other
+        min — a side with nothing passed yet hands its time to the other
       </p>
       <Row label="Unlock in circle-of-fifths order">
         <Toggle

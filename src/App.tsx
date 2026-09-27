@@ -267,11 +267,11 @@ function StageView({
   const dailyLegLimit = usePractice((s) => s.dailyLegLimitMinutes)
 
   // Daily practice has no preset behind it — it draws the chords already
-  // learned, wherever they were learned (§5.3) — so the label names the pool
+  // passed, in whichever preset (§5.3) — so the label names the pool
   // rather than a preset that isn't governing anything.
   const presetName =
     mode === 'daily'
-      ? `Learned ${noun(side)}`
+      ? `Passed ${noun(side)}`
       : (presets.find((p) => p.id === presetId)?.name ?? 'Practice')
   const modeLabel = MODE_LABELS[mode]
   // The length applies to the practice modes (§7.2): prompts count reps,

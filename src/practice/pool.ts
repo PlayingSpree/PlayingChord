@@ -34,6 +34,7 @@ import {
   notPassedChordKeys,
   poolChordKey,
   reconcileProgress,
+  remapProgress,
   unlockedChordKeys,
   type ChordPassEntry,
   type PresetProgressRecord,
@@ -252,7 +253,7 @@ export class Pool {
   // ---- narrowings ---------------------------------------------------------
 
   // The §5/§7 "worst chords only" pool: chords with a miss on the record, plus
-  // the chords still being learned (§5.1: unlocked, not yet passed). A chord
+  // the unlocked chords not yet passed (§5.1). A chord
   // you've never passed belongs in a weak-spots drill even with a clean sheet —
   // most likely you've barely played it, and leaving it out means the toggle
   // can only revisit old mistakes and never the gaps. Worst first, so the
@@ -271,7 +272,7 @@ export class Pool {
     return [...worst.map(({ combo }) => combo), ...learning]
   }
 
-  // The learn loop's pool (§5.4): the selected chords plus the learned ones
+  // The learn loop's pool (§5.4): the selected chords plus the passed ones
   // dealt alongside them to keep three in play. Empty when the selection names
   // nothing this pool still contains — the caller falls back to the whole pool.
   learnSet(selection: readonly string[]): readonly Combo[] {
@@ -336,7 +337,7 @@ export class Pool {
     return defaultLearnSelection(this.chordOrder, this.progressRecord)
   }
 
-  // The learned chords that would be dealt alongside a selection to keep the
+  // The passed chords that would be dealt alongside a selection to keep the
   // pool at three, as labels for the sheet's summary line.
   fillerLabels(selection: readonly string[]): readonly string[] {
     return learnFillerChords(
@@ -388,6 +389,47 @@ export interface PoolSources {
   stats: ComboStatsSource
 }
 
+// A preset's unlock order (§5.1), from its expansion. Circle-of-fifths order
+// applies only to root-ordered (product) chord pools — diatonic/explicit orders
+// are deliberate as-is. Scale pools always unlock by accidental count, whatever
+// the setting.
+export function unlockOrderOf(
+  preset: Preset,
+  combos: readonly Combo[],
+  unlockByFifths: boolean,
+): string[] {
+  return chordOrderOf(
+    combos,
+    isScalePreset(preset)
+      ? 'keys'
+      : unlockByFifths && preset.pool.kind === 'product'
+        ? 'fifths'
+        : 'pool',
+  )
+}
+
+// A custom preset's stored progress carried across a library edit (§5.1): an
+// edit to the preset — or to a voicing rule that leaves one of its chords
+// unplayable — can move every item's place in the unlock order, so the marks
+// follow the items rather than the places. A diatonic pool is the exception:
+// its places are scale degrees, which is what survives a key change.
+export function carryProgressAcrossEdit(
+  before: { preset: Preset; voicings: VoicingLibrary },
+  after: { preset: Preset; voicings: VoicingLibrary },
+  record: PresetProgressRecord,
+  unlockByFifths: boolean,
+): PresetProgressRecord {
+  if (
+    before.preset.pool.kind === 'diatonic' &&
+    after.preset.pool.kind === 'diatonic'
+  ) {
+    return record
+  }
+  const orderOf = ({ preset, voicings }: typeof before) =>
+    unlockOrderOf(preset, expandPreset(preset, voicings).combos, unlockByFifths)
+  return remapProgress(orderOf(before), orderOf(after), record)
+}
+
 export type PoolResolver = (presetId: string, diatonicKey: PitchClass) => Pool
 
 export function createPoolResolver(sources: PoolSources): PoolResolver {
@@ -406,16 +448,10 @@ export function createPoolResolver(sources: PoolSources): PoolResolver {
       expansion = expandPreset(preset, voicings)
     }
 
-    // Circle-of-fifths unlock order (§5.1) applies only to root-ordered
-    // (product) chord pools — diatonic/explicit orders are deliberate as-is.
-    // Scale pools always unlock by accidental count, whatever the setting.
-    const chordOrder = chordOrderOf(
+    const chordOrder = unlockOrderOf(
+      preset,
       expansion.combos,
-      isScalePreset(preset)
-        ? 'keys'
-        : sources.unlockByFifths() && preset.pool.kind === 'product'
-          ? 'fifths'
-          : 'pool',
+      sources.unlockByFifths(),
     )
     // A custom pool can shrink under its saved progress, so what was stored is
     // reconciled against the real size before anything reads it.

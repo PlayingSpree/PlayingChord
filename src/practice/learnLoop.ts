@@ -59,17 +59,17 @@ export function sanitizeLearnSelection(
 }
 
 // The chords the loop deals: the selection, padded to MIN_ACTIVE_CHORDS with
-// chords already learned (§5.4). The floor is §5.2's, for §5.2's reason — a
+// chords already passed (§5.4). The floor is §5.2's, for §5.2's reason — a
 // drill needs something to alternate between, and the no-immediate-repeat
 // exclusion is min(3, pool − 1), so a one-chord set would otherwise be the same
 // prompt over and over. Filler is drawn in *reverse* unlock order: the chords
 // learned most recently are the ones that sit next to what is being learned now.
 //
-// Only passed chords fill — an unselected chord that is still being learned is a
+// Only passed chords fill — an unselected chord that is not yet passed is a
 // chord the player just declined to work on, and dealing it anyway would make
 // the selection a suggestion. If the preset has too few passed chords to reach
 // the floor, the pool is simply narrower; it is never padded with something that
-// isn't learned.
+// isn't passed.
 export function learnFillerChords(
   chordOrder: readonly string[],
   record: PresetProgressRecord,

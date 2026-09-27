@@ -15,6 +15,22 @@ artifact and are not recoverable.
 
 ---
 
+## 10.12.0 — 2026-09-27
+
+**Passed, one word; the unlock queue can't stall.** *Learned* is retired as a
+second name for *passed*: the Stage says `★ passed`, the Daily card counts
+`12 passed`, and Daily's pool is *Passed chords*. Learn keeps *rehearsed*. The
+unlock gate is now a state rather than something only a pass checks: setting
+aside the last item still waiting opens the next batch on the spot, and so does
+a custom preset's pool growing under a finished record. Before, either one left
+the queue waiting for a pass that could never come. An edit to a custom preset
+(or to a voicing rule it uses) now carries its progress by item rather than by
+position, so a removed or reordered chord no longer moves a pass onto a chord
+that was never played. Home's unlock line says what the batch waits on
+(`pass 2 more to unlock 2`) in place of *on next pass* (§3, §5.1–§5.4, §7).
+
+---
+
 ## 10.11.0 — 2026-09-27
 
 **A rep is recorded on its ✔.** A correct answer lands the moment it is judged —

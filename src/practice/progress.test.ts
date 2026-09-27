@@ -11,7 +11,6 @@ import {
   filterUnlockedCombos,
   INITIAL_UNLOCK_COUNT,
   initialProgress,
-  isChordInLearning,
   isFullyUnlocked,
   isSetAside,
   MIN_ACTIVE_CHORDS,
@@ -20,6 +19,7 @@ import {
   poolChordKey,
   recordChordAttempt,
   reconcileProgress,
+  remapProgress,
   setAsideChord,
   UNLOCK_BATCH_SIZE,
   unlockedChordKeys,
@@ -208,6 +208,77 @@ describe('initialProgress / reconcileProgress (§5)', () => {
     }
     expect(reconcileProgress(record, 12).masteredIndices).toEqual([0, 1, 3])
   })
+
+  it('reconcile opens the next batch when a pool grows under a finished record', () => {
+    // Fully unlocked and fully passed at 6; a library edit grows the pool.
+    const record = passedExcept({
+      unlockedCount: 6,
+      masteredIndices: [],
+      setAsideIndices: [],
+    })
+    expect(reconcileProgress(record, 10).unlockedCount).toBe(
+      6 + UNLOCK_BATCH_SIZE,
+    )
+  })
+
+  it('reconcile heals a record stalled behind a set-aside chord', () => {
+    const record: PresetProgressRecord = {
+      unlockedCount: 4,
+      masteredIndices: [0, 1, 2],
+      setAsideIndices: [3],
+    }
+    expect(reconcileProgress(record, 12).unlockedCount).toBe(
+      4 + UNLOCK_BATCH_SIZE,
+    )
+  })
+})
+
+describe('remapProgress (§5.1 custom-preset edit)', () => {
+  it('moves marks with their items when one is removed from the middle', () => {
+    const record: PresetProgressRecord = {
+      unlockedCount: 4,
+      masteredIndices: [0, 2],
+      setAsideIndices: [1],
+    }
+    // b is removed: its set-aside goes with it, c's pass moves up to 1.
+    expect(
+      remapProgress(['a', 'b', 'c', 'd', 'e'], ['a', 'c', 'd', 'e'], record),
+    ).toEqual({
+      unlockedCount: 3,
+      masteredIndices: [0, 1],
+      setAsideIndices: [],
+    })
+  })
+
+  it('keeps an item unlocked when it moves past the frontier', () => {
+    const record: PresetProgressRecord = {
+      unlockedCount: 3,
+      masteredIndices: [0, 1],
+      setAsideIndices: [],
+    }
+    // a moves to 4, so the frontier reaches it and opens d and e, not passed.
+    expect(
+      remapProgress(
+        ['a', 'b', 'c', 'd', 'e', 'f'],
+        ['b', 'c', 'd', 'e', 'a', 'f'],
+        record,
+      ),
+    ).toEqual({
+      unlockedCount: 5,
+      masteredIndices: [0, 4],
+      setAsideIndices: [],
+    })
+  })
+
+  it('leaves a record alone when the order is unchanged', () => {
+    const order = orderOf(8)
+    const record: PresetProgressRecord = {
+      unlockedCount: 5,
+      masteredIndices: [0, 3],
+      setAsideIndices: [1],
+    }
+    expect(remapProgress(order, order, record)).toEqual(record)
+  })
 })
 
 describe('unlockedChordKeys / filterUnlockedCombos (§5 gating)', () => {
@@ -377,6 +448,34 @@ describe('set aside / open by hand (§5.2)', () => {
     expect(openChord(order, record, '0:min')).toBe(record)
   })
 
+  it('setting aside the last chord still waiting opens the next batch', () => {
+    const record = passedExcept(
+      { unlockedCount: 4, masteredIndices: [], setAsideIndices: [] },
+      3,
+    )
+    const next = setAsideChord(order, record, '3:maj')
+    expect(next.setAsideIndices).toEqual([3])
+    expect(next.unlockedCount).toBe(4 + UNLOCK_BATCH_SIZE)
+  })
+
+  it('setting aside opens nothing while another chord is still waiting', () => {
+    const record = passedExcept(
+      { unlockedCount: 4, masteredIndices: [], setAsideIndices: [] },
+      2,
+      3,
+    )
+    expect(setAsideChord(order, record, '3:maj').unlockedCount).toBe(4)
+  })
+
+  it('setting aside in a fully unlocked pool has nothing to open', () => {
+    const small = orderOf(4)
+    const record = passedExcept(
+      { unlockedCount: 4, masteredIndices: [], setAsideIndices: [] },
+      3,
+    )
+    expect(setAsideChord(small, record, '3:maj').unlockedCount).toBe(4)
+  })
+
   it('a set-aside chord does not hold up the next unlock', () => {
     // Every unlocked chord passed except the one that was benched.
     const record: PresetProgressRecord = {
@@ -412,22 +511,6 @@ describe('set aside / open by hand (§5.2)', () => {
       setAsideIndices: [1, 3.5 as number, -1],
     }
     expect(reconcileProgress(record, 12).setAsideIndices).toEqual([1])
-  })
-})
-
-describe('isChordInLearning (§5.1)', () => {
-  const order = orderOf(4)
-
-  it('is true only for an unlocked chord that has not passed', () => {
-    const record: PresetProgressRecord = {
-      unlockedCount: 3,
-      masteredIndices: [0],
-      setAsideIndices: [],
-    }
-    expect(isChordInLearning(order, record, '0:maj')).toBe(false) // passed
-    expect(isChordInLearning(order, record, '1:maj')).toBe(true)
-    expect(isChordInLearning(order, record, '3:maj')).toBe(false) // locked
-    expect(isChordInLearning(order, record, '0:min')).toBe(false) // not in pool
   })
 })
 

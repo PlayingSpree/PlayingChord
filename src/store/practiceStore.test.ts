@@ -735,12 +735,12 @@ describe('practiceStore — unlock progress (§5)', () => {
     // Recorded on the judgment edge: the pass has landed while the ✔ flash
     // that announces it is still up.
     expect(s.store.getState().phase).toBe('advancing')
-    expect(s.store.getState().justLearned).toBe(true)
+    expect(s.store.getState().justPassed).toBe(true)
     expect(s.store.getState().progress.passed).toBe(1)
 
     vi.advanceTimersByTime(ADVANCE)
     expect(s.store.getState().progress.passed).toBe(1)
-    expect(s.store.getState().justLearned).toBe(false) // the next prompt clears it
+    expect(s.store.getState().justPassed).toBe(false) // the next prompt clears it
   })
 
   it('does not flag a failing rep, or a chord that already passed', () => {
@@ -750,22 +750,22 @@ describe('practiceStore — unlock progress (§5)', () => {
     })
     const s = setup({ presets: oneChord })
 
-    vi.advanceTimersByTime(6000) // F on speed alone: not learned
+    vi.advanceTimersByTime(6000) // F on speed alone: not passed
     s.press(...correctNotes(chordOf(s.store.getState().prompt)))
     s.releaseAll()
-    expect(s.store.getState().justLearned).toBe(false)
+    expect(s.store.getState().justPassed).toBe(false)
     vi.advanceTimersByTime(ADVANCE)
 
     // A clean rep lifts it out of F — that one is the callout…
     s.press(...correctNotes(chordOf(s.store.getState().prompt)))
     s.releaseAll()
-    expect(s.store.getState().justLearned).toBe(true)
+    expect(s.store.getState().justPassed).toBe(true)
     vi.advanceTimersByTime(ADVANCE)
 
     // …and the next one, on the now-passed chord, says nothing.
     s.press(...correctNotes(chordOf(s.store.getState().prompt)))
     s.releaseAll()
-    expect(s.store.getState().justLearned).toBe(false)
+    expect(s.store.getState().justPassed).toBe(false)
   })
 
   it('a missed-then-corrected prompt does not pass', () => {
@@ -1306,7 +1306,7 @@ describe('practiceStore — the learn loop (§5.4)', () => {
     }
   })
 
-  it('fills a one-chord set out to three with learned chords', () => {
+  it('fills a one-chord set out to three with passed chords', () => {
     const s = setup({ presets: sixRoots, progress: partlyPassed() })
     s.store.getState().setMode('learn')
     s.store.getState().setLearnSelection(['5:maj'])
@@ -1316,7 +1316,7 @@ describe('practiceStore — the learn loop (§5.4)', () => {
       playSlowAndAdvance(s, chordOf(s.store.getState().prompt))
     }
     // The selected chord plus the two most recently passed ones (roots 3, 0);
-    // the chords still being learned that weren't picked stay out.
+    // the chords not yet passed that weren't picked stay out.
     expect([...seen].sort()).toEqual([0, 3, 5])
   })
 
@@ -1613,9 +1613,9 @@ describe('practiceStore — session length & report (§7.2/§7.4)', () => {
 })
 
 // Daily practice (§5.3): the maintenance drill over every chord already
-// learned, wherever it was learned, run to a persisted time cap.
+// passed, in whichever preset, run to a persisted time cap.
 describe('practiceStore — daily practice (§5.3)', () => {
-  // Two presets: C/D major learned in the first, F minor in the second, and
+  // Two presets: C/D major passed in the first, F minor in the second, and
   // E major reached but not passed anywhere.
   const twoPresets = (): readonly Preset[] => [
     {
@@ -1640,11 +1640,11 @@ describe('practiceStore — daily practice (§5.3)', () => {
     },
   ]
 
-  const learnedProgress = () => {
+  const passedProgress = () => {
     const progress = new InMemoryPresetProgress()
     progress.set('first', {
       unlockedCount: 4,
-      // C maj, D maj learned; E maj and G maj unlocked but not passed.
+      // C maj, D maj passed; E maj and G maj unlocked but not passed.
       masteredIndices: [0, 1],
       setAsideIndices: [],
     })
@@ -1660,7 +1660,7 @@ describe('practiceStore — daily practice (§5.3)', () => {
     extra: Parameters<typeof createPracticeStore>[0] = {},
   ) => {
     const s = setup(
-      { presets: twoPresets, progress: learnedProgress(), ...extra },
+      { presets: twoPresets, progress: passedProgress(), ...extra },
       false,
     )
     s.store.getState().setMode('daily')
@@ -1668,12 +1668,12 @@ describe('practiceStore — daily practice (§5.3)', () => {
     return s
   }
 
-  it('counts the learned chords of every preset', () => {
-    const s = setup({ presets: twoPresets, progress: learnedProgress() }, false)
-    expect(s.store.getState().learnedChordCount()).toBe(3)
+  it('counts the passed chords of every preset', () => {
+    const s = setup({ presets: twoPresets, progress: passedProgress() }, false)
+    expect(s.store.getState().passedChordCount()).toBe(3)
   })
 
-  it('deals learned chords from every preset and nothing else', () => {
+  it('deals passed chords from every preset and nothing else', () => {
     const s = dailySetup()
     const seen = new Set<string>()
     for (let i = 0; i < 30; i++) {
@@ -1695,11 +1695,11 @@ describe('practiceStore — daily practice (§5.3)', () => {
   it('never moves the selected preset’s unlock progress', () => {
     // The active preset is the first, where E maj and G maj are unlocked but
     // unpassed — daily deals neither, and passes nothing it does deal.
-    const progress = learnedProgress()
+    const progress = passedProgress()
     const s = dailySetup({ progress })
     for (let i = 0; i < 20; i++) {
       playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
-      expect(s.store.getState().justLearned).toBe(false)
+      expect(s.store.getState().justPassed).toBe(false)
     }
     expect(s.store.getState().progress).toMatchObject({
       unlocked: 4,
@@ -1731,7 +1731,7 @@ describe('practiceStore — daily practice (§5.3)', () => {
     expect(s.store.getState().report!.suggestion).toBeNull() // free only (§7.4)
   })
 
-  // The chord presets plus one learned scale preset, so both Daily legs run.
+  // The chord presets plus one passed scale preset, so both Daily legs run.
   const withScales = (): readonly Preset[] => [
     ...twoPresets(),
     {
@@ -1742,8 +1742,8 @@ describe('practiceStore — daily practice (§5.3)', () => {
       shapeIds: ['block'],
     },
   ]
-  const bothLearned = () => {
-    const progress = learnedProgress()
+  const bothPassed = () => {
+    const progress = passedProgress()
     progress.set('scales', {
       unlockedCount: 1,
       masteredIndices: [0],
@@ -1756,15 +1756,15 @@ describe('practiceStore — daily practice (§5.3)', () => {
     dailyChordShare,
   })
 
-  it('runs the chord leg to its share when scales are learned too', () => {
+  it('runs the chord leg to its share when scales are passed too', () => {
     // The 10-minute cap splits ¾ / ¼ (§5.3), so the chord leg ends at 7.5
     // minutes, not 10.
     const s = dailySetup({
       presets: withScales,
-      progress: bothLearned(),
+      progress: bothPassed(),
       settings: splitSettings(0.75),
     })
-    expect(s.store.getState().learnedCounts()).toEqual({ chords: 3, scales: 1 })
+    expect(s.store.getState().passedCounts()).toEqual({ chords: 3, scales: 1 })
     for (let i = 0; i < 22; i++) {
       vi.advanceTimersByTime(20_000)
       playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
@@ -1781,7 +1781,7 @@ describe('practiceStore — daily practice (§5.3)', () => {
     activity.addMinutes(3, 'chords') // an earlier chord leg, ended early
     const s = dailySetup({
       presets: withScales,
-      progress: bothLearned(),
+      progress: bothPassed(),
       settings: splitSettings(0.5),
       activity,
     })
@@ -1802,7 +1802,7 @@ describe('practiceStore — daily practice (§5.3)', () => {
     const s = setup(
       {
         presets: withScales,
-        progress: bothLearned(),
+        progress: bothPassed(),
         settings: splitSettings(0.5),
         activity,
       },
@@ -1836,15 +1836,15 @@ describe('practiceStore — daily practice (§5.3)', () => {
     expect(s.store.getState().report).toBeNull() // runs until End
   })
 
-  it('has no Daily to ready with nothing learned anywhere', () => {
+  it('has no Daily to ready with nothing passed anywhere', () => {
     const s = setup({ presets: withScales }, false)
     expect(s.store.getState().prepareDaily()).toBe(false)
     expect(s.store.getState().mode).not.toBe('daily')
   })
 
   it('picks up chords passed in free practice without a reload', () => {
-    const s = setup({ presets: twoPresets, progress: learnedProgress() }, false)
-    expect(s.store.getState().learnedChordCount()).toBe(3)
+    const s = setup({ presets: twoPresets, progress: passedProgress() }, false)
+    expect(s.store.getState().passedChordCount()).toBe(3)
 
     // Pass the rest of the active preset in free practice — clean, fast reps
     // until each grades D or better (§5.1) — and the daily pool grows with it.
@@ -1854,14 +1854,14 @@ describe('practiceStore — daily practice (§5.3)', () => {
       playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
     }
     expect(s.store.getState().progress.passed).toBe(4)
-    expect(s.store.getState().learnedChordCount()).toBe(5)
+    expect(s.store.getState().passedChordCount()).toBe(5)
   })
 
   it('drops a set-aside chord out of the daily pool too (§5.2)', () => {
-    const s = setup({ presets: twoPresets, progress: learnedProgress() }, false)
+    const s = setup({ presets: twoPresets, progress: passedProgress() }, false)
     s.store.getState().setChordAside('0:maj')
     expect(s.store.getState().progress.setAside).toBe(1)
-    expect(s.store.getState().learnedChordCount()).toBe(2)
+    expect(s.store.getState().passedChordCount()).toBe(2)
   })
 })
 
@@ -2667,7 +2667,7 @@ describe('practiceStore — sides (§7.1)', () => {
     expect(bestStreak.best()).toBe(0)
   })
 
-  it('counts learned chords for Daily on the switched-to side only', () => {
+  it('counts passed chords for Daily on the switched-to side only', () => {
     const progress = new InMemoryPresetProgress()
     progress.set('major-triads', {
       unlockedCount: 3,
@@ -2675,8 +2675,8 @@ describe('practiceStore — sides (§7.1)', () => {
       setAsideIndices: [],
     })
     const { store } = setup({ progress }, false)
-    expect(store.getState().learnedChordCount()).toBeGreaterThan(0)
+    expect(store.getState().passedChordCount()).toBeGreaterThan(0)
     store.getState().setSide('scales')
-    expect(store.getState().learnedChordCount()).toBe(0)
+    expect(store.getState().passedChordCount()).toBe(0)
   })
 })

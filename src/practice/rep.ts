@@ -96,7 +96,7 @@ export interface RepResult {
   // the unlock queue. For the store to persist; nothing here has.
   progress: RepProgress | null
   // The pass is announced on the pill (§7.3).
-  justLearned: boolean
+  justPassed: boolean
   // This rep took a *selected* learn-loop item to the pass bar (§5.4).
   justRehearsed: boolean
   // This combo climbed a letter on enough evidence to mean it (§7.3). Whether
@@ -153,7 +153,7 @@ export function completeRep(
         ? { key, label: ctx.pool.comboLabel(combo), outcome, timeToCorrectMs }
         : null,
     progress,
-    justLearned: policy.announcesLearned && progress !== null,
+    justPassed: policy.announcesPassed && progress !== null,
     justRehearsed:
       policy.announcesRehearsed &&
       ctx.learnSelection.includes(chordKey) &&

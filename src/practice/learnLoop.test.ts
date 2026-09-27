@@ -68,8 +68,8 @@ describe('sanitizeLearnSelection (§5.4)', () => {
 })
 
 describe('learnFillerChords (§5.4)', () => {
-  it('pads a short selection with learned chords, most recent first', () => {
-    // a…d passed, e still being learned: e alone needs two companions, and it
+  it('pads a short selection with passed chords, most recent first', () => {
+    // a…d passed, e not yet passed: e alone needs two companions, and it
     // gets the two chords passed nearest to it.
     expect(learnFillerChords(ORDER, record(5, [0, 1, 2, 3]), ['e'])).toEqual([
       'd',
@@ -82,7 +82,7 @@ describe('learnFillerChords (§5.4)', () => {
     expect(learnFillerChords(ORDER, rec, ['c', 'd', 'e'])).toEqual([])
   })
 
-  it('never pads with a chord that is still being learned', () => {
+  it('never pads with a chord that is not yet passed', () => {
     // Only `a` is passed, so `e` gets one companion and stays under the floor
     // rather than dealing the chords the player declined.
     expect(learnFillerChords(ORDER, record(5, [0]), ['e'])).toEqual(['a'])

@@ -188,7 +188,7 @@ function FeedbackPill() {
   const hint = usePractice((s) => s.hint)
   const song = usePractice((s) => s.song)
   const mode = usePractice((s) => s.mode)
-  const justLearned = usePractice((s) => s.justLearned)
+  const justPassed = usePractice((s) => s.justPassed)
   const justRehearsed = usePractice((s) => s.justRehearsed)
   const gradeUp = usePractice((s) => s.gradeUp)
 
@@ -265,7 +265,7 @@ function FeedbackPill() {
   // splitting the moment between the pill and the line under it.
   const advancing = phase === 'advancing'
   const showGradeUp = gradeUp !== null && advancing
-  const showLearned = justLearned && advancing
+  const showPassed = justPassed && advancing
   const showRehearsed = justRehearsed && advancing
 
   return (
@@ -276,7 +276,7 @@ function FeedbackPill() {
       {content}
       {/* Out of flow: the line keeps the feedback area a fixed height, so the
           keyboard below it doesn't hop every time a grade climbs. */}
-      {(showGradeUp || showLearned || showRehearsed) && (
+      {(showGradeUp || showPassed || showRehearsed) && (
         <span className="absolute top-full mt-1 inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-primary-tint px-3.5 py-0.5 text-sm font-semibold text-primary-light">
           {showGradeUp && (
             <>
@@ -286,10 +286,10 @@ function FeedbackPill() {
             </>
           )}
           {/* The rep that took a chord still new to a passing grade
-              (§5.1) — the one moment "learned" is news. */}
-          {showLearned && <span className="font-extrabold">★ learned</span>}
+              (§5.1) — the one moment "passed" is news. */}
+          {showPassed && <span className="font-extrabold">★ passed</span>}
           {/* Learn's counterpart (§5.4): a selected chord just reached the pass
-              bar on this session's reps. A different word from `learned`
+              bar on this session's reps. A different word from `passed`
               because it is a different claim — nothing was unlocked by it. */}
           {showRehearsed && <span className="font-extrabold">✓ rehearsed</span>}
         </span>

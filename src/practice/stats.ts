@@ -360,9 +360,9 @@ export function gradeRank(grade: ComboGrade): number {
 }
 
 // The §5.1 pass bar, stated in the letters the player already reads: a chord is
-// learned once its grade reaches D — every letter but F. F is the one grade that
+// passed once its grade reaches D — every letter but F. F is the one grade that
 // isn't a grade at all (below D's second at flawless accuracy, or missing more
-// than it lands), so "learned" is "no longer failing it", and the same window of
+// than it lands), so "passed" is "no longer failing it", and the same window of
 // recent reps that letters the chord on Home decides whether it passes.
 export const PASS_MIN_GRADE: ComboGrade = 'D'
 
@@ -444,7 +444,7 @@ function isProven(record: ComboStatRecord): boolean {
 
 // The grade as shown (§7.5). `pending` stands in for an F a combo hasn't had the
 // chance to disprove yet — everything else shows its letter, including a
-// below-floor D, because passing is its own proof (§5.1) and the `★ learned`
+// below-floor D, because passing is its own proof (§5.1) and the `★ passed`
 // pill must never contradict the badge beside it. Display only: comboScore
 // still returns the floored number, so §5 weighting keeps drilling the combo
 // and the pass gate keeps seeing the real letter.

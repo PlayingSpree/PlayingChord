@@ -319,7 +319,7 @@ export function SessionSheet({
 // busywork. Read of the *draft* preset, like WorstOnlyRow — the sheet's picks
 // don't reach the store until Start.
 //
-// A one- or two-chord set is fine to pick: the loop deals learned chords
+// A one- or two-chord set is fine to pick: the loop deals passed chords
 // alongside it to keep three in play (§5.4), and the line below says which,
 // so the pool is never a surprise on the Stage.
 function LearnSetPicker({
@@ -412,7 +412,7 @@ function WorstOnlyRow({
   onChange: (next: boolean) => void
 }) {
   // Would the toggle have anything to narrow to (§5)? Asked of the *drafted*
-  // preset, and read once per open like the learned count above.
+  // preset, and read once per open like the passed count above.
   const canDrill = useMemo(
     () => resolveAppPool(presetId, diatonicKey).worstOnly().length > 0,
     [presetId, diatonicKey],

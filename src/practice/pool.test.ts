@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { BUILT_IN_VOICING_LIBRARY, type PitchClass } from '../theory'
-import { createPoolResolver, type PoolResolver, type PoolSources } from './pool'
+import {
+  carryProgressAcrossEdit,
+  createPoolResolver,
+  type PoolResolver,
+  type PoolSources,
+} from './pool'
 import { builtInPresets, builtInScalePresets, type Preset } from './presets'
 import {
   initialProgress,
@@ -134,6 +139,58 @@ describe('pool resolution (§4/§5.1)', () => {
     const labels = pool.chordOrder.map((key) => pool.label(key))
     expect(labels.some((label) => label.startsWith('B♭'))).toBe(true)
     expect(labels.some((label) => label.startsWith('A♯'))).toBe(false)
+  })
+})
+
+describe('carryProgressAcrossEdit (§5.1)', () => {
+  const explicit = (roots: PitchClass[]): Preset => ({
+    id: 'mine',
+    name: 'Mine',
+    pool: {
+      kind: 'explicit',
+      chords: roots.map((root) => ({ root, typeId: 'maj' })),
+    },
+    voicingIds: ['any'],
+  })
+  const lib = BUILT_IN_VOICING_LIBRARY
+
+  it('keeps a pass on its chord when an edit removes one before it', () => {
+    // C D E F with E passed; D is removed, so E now sits at 1.
+    const record: PresetProgressRecord = {
+      unlockedCount: 4,
+      masteredIndices: [2],
+      setAsideIndices: [],
+    }
+    expect(
+      carryProgressAcrossEdit(
+        { preset: explicit([0, 2, 4, 5]), voicings: lib },
+        { preset: explicit([0, 4, 5]), voicings: lib },
+        record,
+        false,
+      ),
+    ).toEqual({ unlockedCount: 3, masteredIndices: [1], setAsideIndices: [] })
+  })
+
+  it('carries a diatonic pool by position, like a key change', () => {
+    const diatonic = (key: PitchClass): Preset => ({
+      id: 'mine',
+      name: 'Mine',
+      pool: { kind: 'diatonic', key },
+      voicingIds: ['any'],
+    })
+    const record: PresetProgressRecord = {
+      unlockedCount: 4,
+      masteredIndices: [0, 1],
+      setAsideIndices: [],
+    }
+    expect(
+      carryProgressAcrossEdit(
+        { preset: diatonic(0), voicings: lib },
+        { preset: diatonic(7), voicings: lib },
+        record,
+        false,
+      ),
+    ).toBe(record)
   })
 })
 
@@ -310,7 +367,7 @@ describe('pool narrowings (§5/§5.4)', () => {
     const keys = open.learnSet(['0:maj']).map(poolChordKey)
     expect(keys).toContain('0:maj')
     // Padded up to three with chords already passed, never with unselected
-    // chords still being learned.
+    // chords not yet passed.
     expect(keys).toHaveLength(3)
   })
 })

@@ -4,7 +4,7 @@ import { gradeScaleOf, type PromptOutcome } from './stats'
 // start and is stats-neutral — completed prompts feed neither the per-combo
 // records nor the session tallies (§5), though active minutes still count.
 // The two practice modes hide the voicing and record everything: **daily**
-// drills every chord already learned, across every preset, under a time cap
+// drills every chord already passed, across every preset, under a time cap
 // (§5.3), and **free** is the configured drill — a preset, its unlock gate and
 // its narrows, at whatever length was picked (§7.2). Song (§6.5) is
 // clock-paced: a looped diatonic progression judged per bar.
@@ -47,7 +47,7 @@ export interface ModePolicy {
   // left to pass (§5.3).
   movesUnlockProgress: boolean
   // May the ✔ pill announce a chord reaching the pass bar (§7.3)?
-  announcesLearned: boolean
+  announcesPassed: boolean
   // May it announce a combo climbing a grade (§7.3)?
   announcesGradeUp: boolean
   // May it announce a selected chord reaching the loop's bar (§5.4)?
@@ -71,7 +71,7 @@ export const MODE_POLICY: Record<SessionMode, ModePolicy> = {
     graded: false,
     revealsAnswer: true,
     movesUnlockProgress: false,
-    announcesLearned: false,
+    announcesPassed: false,
     announcesGradeUp: false,
     announcesRehearsed: true,
     supportsWorstOnly: false,
@@ -86,7 +86,7 @@ export const MODE_POLICY: Record<SessionMode, ModePolicy> = {
     graded: true,
     revealsAnswer: false,
     movesUnlockProgress: false,
-    announcesLearned: false,
+    announcesPassed: false,
     announcesGradeUp: true,
     announcesRehearsed: false,
     supportsWorstOnly: false,
@@ -101,7 +101,7 @@ export const MODE_POLICY: Record<SessionMode, ModePolicy> = {
     graded: true,
     revealsAnswer: false,
     movesUnlockProgress: true,
-    announcesLearned: true,
+    announcesPassed: true,
     announcesGradeUp: true,
     announcesRehearsed: false,
     supportsWorstOnly: true,
@@ -116,7 +116,7 @@ export const MODE_POLICY: Record<SessionMode, ModePolicy> = {
     graded: false,
     revealsAnswer: false,
     movesUnlockProgress: false,
-    announcesLearned: false,
+    announcesPassed: false,
     announcesGradeUp: false,
     announcesRehearsed: false,
     supportsWorstOnly: false,

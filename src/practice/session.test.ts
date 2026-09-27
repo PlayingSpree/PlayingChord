@@ -104,7 +104,7 @@ describe('MODE_POLICY invariants (§7)', () => {
 
   it('only announces a pass in a mode that can record one (§5.1/§7.3)', () => {
     for (const policy of policies) {
-      if (policy.announcesLearned) {
+      if (policy.announcesPassed) {
         expect(policy.movesUnlockProgress).toBe(true)
       }
     }

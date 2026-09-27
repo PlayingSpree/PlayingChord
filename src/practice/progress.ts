@@ -146,7 +146,47 @@ export function reconcileProgress(
   while (unlockedCount - setAsideIndices.length < minActive) {
     setAsideIndices.pop()
   }
-  return { unlockedCount, masteredIndices, setAsideIndices }
+  // A pool that grew under a finished record has room for the next batch, and
+  // no pass is left to open it.
+  return settleUnlock(
+    { unlockedCount, masteredIndices, setAsideIndices },
+    totalChords,
+  )
+}
+
+// Carries a record across a custom-preset edit that reshaped its pool (§5.1):
+// passed and set-aside marks follow their items to wherever they now sit, and
+// every item that was unlocked stays unlocked. The frontier is a prefix, so it
+// reaches the furthest of them — an item the edit put in front of it opens
+// with them, not passed. Items the edit removed take their marks with them.
+// Positional carry-over is for pools whose positions *are* the identity — the
+// diatonic key and the unlock-order setting — and the caller keeps those.
+export function remapProgress(
+  oldOrder: readonly string[],
+  newOrder: readonly string[],
+  record: PresetProgressRecord,
+): PresetProgressRecord {
+  const position = new Map(newOrder.map((key, index) => [key, index]))
+  const moved = (indices: Iterable<number>): number[] => {
+    const next: number[] = []
+    for (const index of indices) {
+      const key = oldOrder[index]
+      const to = key === undefined ? undefined : position.get(key)
+      if (to !== undefined) next.push(to)
+    }
+    return next
+  }
+  const unlocked = moved(
+    Array.from({ length: record.unlockedCount }, (_, index) => index),
+  )
+  return reconcileProgress(
+    {
+      unlockedCount: unlocked.length > 0 ? Math.max(...unlocked) + 1 : 0,
+      masteredIndices: moved(record.masteredIndices),
+      setAsideIndices: moved(record.setAsideIndices),
+    },
+    newOrder.length,
+  )
 }
 
 // The chords actually in play: unlocked and not set aside (§5.2). Every
@@ -194,10 +234,15 @@ export function setAsideChord(
 ): PresetProgressRecord {
   if (!canSetAside(chordOrder, record, chordKey)) return record
   const index = chordOrder.indexOf(chordKey)
-  return {
-    ...record,
-    setAsideIndices: [...record.setAsideIndices, index].sort((a, b) => a - b),
-  }
+  // Setting aside the last item still waiting on its pass completes the batch
+  // (§5.2), so the next one opens now — nothing else would ever open it.
+  return settleUnlock(
+    {
+      ...record,
+      setAsideIndices: [...record.setAsideIndices, index].sort((a, b) => a - b),
+    },
+    chordOrder.length,
+  )
 }
 
 // Opens a chord for play, whichever way it is closed (§5.2) — the single
@@ -250,7 +295,7 @@ export function unlockedChordKeys(
 
 // The in-play chords that are *not yet* passed, as poolChordKeys — for
 // Learn mode's "not passed only" setting (§5.1/§7), which narrows
-// generation to chords still being learned within the unlocked set.
+// generation to chords not yet passed within the unlocked set.
 export function notPassedChordKeys(
   chordOrder: readonly string[],
   record: PresetProgressRecord,
@@ -262,20 +307,6 @@ export function notPassedChordKeys(
       .slice(0, record.unlockedCount)
       .filter((_, index) => !passed.has(index) && !aside.has(index)),
   )
-}
-
-// Is this chord unlocked but not yet passed — still being learned (§5.1)? The
-// same two conditions recordChordAttempt gates on before it looks at the grade,
-// so the Stage can say a rep was the one that learned the chord (§7.3). Only
-// reached for a chord that was just dealt, so it can't be one set aside.
-export function isChordInLearning(
-  chordOrder: readonly string[],
-  record: PresetProgressRecord,
-  chordKey: string,
-): boolean {
-  const index = chordOrder.indexOf(chordKey)
-  if (index < 0 || index >= record.unlockedCount) return false
-  return !record.masteredIndices.includes(index)
 }
 
 // Per-chord status (§7 unlock chip drill-down): every pool chord in unlock
@@ -348,27 +379,45 @@ export function recordChordAttempt(
   const index = chordOrder.indexOf(chordKey)
   if (index < 0 || index >= record.unlockedCount) return unchanged
   if (record.masteredIndices.includes(index)) return unchanged
-  const masteredIndices = [...record.masteredIndices, index].sort(
-    (a, b) => a - b,
+  const next = settleUnlock(
+    {
+      ...record,
+      masteredIndices: [...record.masteredIndices, index].sort((a, b) => a - b),
+    },
+    chordOrder.length,
   )
-  const unlockedInPool = Math.min(record.unlockedCount, chordOrder.length)
-  // Set-aside chords are held out of the gate as well as out of the pool
-  // (§5.2): a chord you never see dealt can never be passed, so counting it
-  // as outstanding would stall the queue for good — the opposite of what
-  // setting it aside is for. The debt stays visible on Home instead.
-  const passedSet = new Set(masteredIndices)
-  const allPassed = activeIndices(record, unlockedInPool).every((i) =>
-    passedSet.has(i),
-  )
-  const canGrow = record.unlockedCount < chordOrder.length
-  const unlockedCount =
-    allPassed && canGrow
-      ? Math.min(record.unlockedCount + UNLOCK_BATCH_SIZE, chordOrder.length)
-      : record.unlockedCount
   return {
-    record: { ...record, unlockedCount, masteredIndices },
+    record: next,
     changed: true,
-    justUnlocked: unlockedCount > record.unlockedCount,
+    justUnlocked: next.unlockedCount > record.unlockedCount,
+  }
+}
+
+// The §5.1 gate: once every item in play is passed, the next batch opens —
+// whatever brought the record there. A pass is the usual way, but setting the
+// last outstanding item aside (§5.2) and a pool growing under a finished record
+// arrive at the same place, and none may leave the queue waiting on a pass
+// that can't come: an item already passed doesn't pass again. Set-aside items
+// are held out of the gate as well as out of the pool — one never dealt can
+// never be passed, so counting it as outstanding would stall the queue for
+// good, the opposite of what setting it aside is for. The debt stays visible
+// on Home instead.
+function settleUnlock(
+  record: PresetProgressRecord,
+  totalChords: number,
+): PresetProgressRecord {
+  if (record.unlockedCount >= totalChords) return record
+  const passed = new Set(record.masteredIndices)
+  const outstanding = activeIndices(record, record.unlockedCount).some(
+    (index) => !passed.has(index),
+  )
+  if (outstanding) return record
+  return {
+    ...record,
+    unlockedCount: Math.min(
+      record.unlockedCount + UNLOCK_BATCH_SIZE,
+      totalChords,
+    ),
   }
 }
 

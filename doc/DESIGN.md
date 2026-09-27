@@ -4,7 +4,7 @@ A web app for practicing piano chords and scales with a MIDI keyboard. The app s
 random chord or scale from a chosen preset, the user plays it on their connected MIDI
 keyboard, and the app validates the input and moves on to the next one.
 
-Spec version: **10.11.0** (2026-09-27) — chords and scales. Revision history lives in
+Spec version: **10.12.0** (2026-09-27) — chords and scales. Revision history lives in
 [CHANGELOG.md](CHANGELOG.md); this document describes only what the app *is* today.
 Both previously open questions are resolved (see [§9](#9-resolved-questions)). Build
 sequencing (what gets implemented first) is intentionally left outside this document.
@@ -29,7 +29,7 @@ sequencing (what gets implemented first) is intentionally left outside this docu
   **Report** — session grade, trend deltas, passed/shaky chords (§7).
 - **Session modes**: **Learn** (a *loop*: pick a few chords, drill them with the
   example voicing shown until each grades D on the session's own reps; §5.4 —
-  stats-neutral, so it unlocks nothing), two practice modes — **Daily** (every chord already learned,
+  stats-neutral, so it unlocks nothing), two practice modes — **Daily** (every chord already passed,
   then every scale, across every preset, to a split time cap; §5.3) and **Free** (default: a preset, its
   unlock gate and its narrows, to a chosen length) — and **Song**
   (a 2–4-chord progression from the active preset's pool looped to a metronome — the
@@ -77,7 +77,7 @@ sequencing (what gets implemented first) is intentionally left outside this docu
 - Practice runs as explicit sessions — a chosen number of prompts or of active
   minutes, started from Home — each ending in a report with a session grade and
   trend deltas (§7.4). One of them, **daily practice**, needs no choosing at all:
-  everything already learned, to a standing time cap (§5.3).
+  everything already passed, to a standing time cap (§5.3).
 - Simulate playing a real song: loop a short random progression from the selected
   preset against a fixed tempo, training chord *transitions* under time pressure
   (Song mode, §6.5).
@@ -143,7 +143,7 @@ spec and the code mean exactly these by them. The UI never says *item*: it says
 - **Kind** — the `chord` / `scale` tag a combo, prompt or preset carries, which is
   how the code that cares tells them apart (§3.4).
 - **Item** — one chord (root + chord type, §3.2) or one scale (root + scale type,
-  §3.6): an entry in a preset's pool. It is what unlocks, passes (is *learned*), is
+  §3.6): an entry in a preset's pool. It is what unlocks, passes, is
   set aside and is picked for a learn set (§5.1–§5.4).
 - **Combo** — an item played one way: `(root, chord type, voicing rule)` or
   `(root, scale type, shape)`, one per voicing or shape its preset lists. Stats,
@@ -496,10 +496,12 @@ flashcard-style batches instead of the whole pool at once:
 - A fresh preset starts with the **first 3** items unlocked (clamped to the pool).
 - An item is **passed** by a free-practice attempt after which its **grade is D or
   better** (§7.5) — every letter but F. The pass bar is therefore the grade the
-  player already reads everywhere else rather than a private threshold: "learned"
+  player already reads everywhere else rather than a private threshold: "passed"
   means the recent window of reps is no longer failing, not real mastery, hence
-  the wording. (9.2.0 replaced the original bar — one first-try success under
-  2000 ms — because a single lucky rep passed a chord the stats still graded F,
+  the word — one word for it everywhere, on the Stage, Home and the Report
+  alike (10.12.0 retired *learned* as a second name for the same state).
+  (9.2.0 replaced the original bar — one first-try success under 2000 ms —
+  because a single lucky rep passed a chord the stats still graded F,
   and because a steady-but-unhurried player could never unlock anything at all.)
   With the §5 evidence floor the bar is **about two clean reps** at an ordinary
   pace rather than one — one rep is 1/5 of a window, which only clears D if it
@@ -515,6 +517,11 @@ flashcard-style batches instead of the whole pool at once:
   the third deals only items that are passed already (§5.3).
 - Once **every** unlocked item is passed, the **next 2** unlock, repeating until
   the whole pool is open — after which generation behaves exactly as above.
+  Set-aside items don't count (§5.2). The gate is a state, not an event: however
+  the record gets there — a pass, setting aside the last item still waiting
+  (§5.2), a custom preset's pool growing under a finished record — the next
+  batch opens then. Otherwise nothing could open it, since an item already
+  passed never passes again.
 - **A mid-session unlock waits for the next session** (setting, default on). The
   batch is opened, saved, toasted and listed on the Report the moment it is earned,
   but nothing deals it until a session starts: the drill in progress keeps the pool
@@ -534,7 +541,14 @@ flashcard-style batches instead of the whole pool at once:
 - **Persistence:** one record per preset id — the unlocked count plus the passed
   items as *indices into the unlock order*, not item identities, so the diatonic
   preset's progress means "scale degree N" and survives a key change. A custom
-  preset's pool shrinking under its saved record reconciles (clamps) on load.
+  preset's pool is different: an edit to it — or to a voicing rule that leaves
+  one of its chords unplayable — can move every item's place, so at the edit
+  the record is carried over **by item**: passed and set-aside marks follow
+  their items, every item that was unlocked stays unlocked (the frontier
+  reaches the furthest of them, opening anything the edit put in front of it,
+  not passed), and a removed item takes its marks with it. A custom diatonic
+  pool keeps positional carry-over, like the built-in one. A pool shrinking
+  under its saved record also reconciles (clamps) on load.
   Progress can be reset per preset in Settings. (The persisted field is still named
   `masteredIndices` in the JSON schema — a wording-only rename isn't worth a schema
   migration, §8.)
@@ -556,7 +570,10 @@ player is willing to carry right now — the two controls on Home's In play row
   be passed, so counting it as outstanding would stall the queue permanently —
   the opposite of what benching an item you can't play is for. The debt is
   carried in the open instead, on the In play row, where a set-aside item sits
-  in its own dimmed state with its grade still on it.
+  in its own dimmed state with its grade still on it. Setting aside the last
+  item still waiting on its pass therefore completes the batch, and the next
+  one opens on the spot (§5.1) — outside a session, so the next session deals
+  it.
 - **The floor:** setting one aside must leave at least **3** items in play —
   the same number a fresh preset opens with, so a preset can never be whittled
   below its own starting width, and a drill always has something to alternate
@@ -604,8 +621,8 @@ because it is today, not because you picked anything (`practice/daily.ts`).
   seconds of its share a leg counts as done, rather than coming back as a
   seconds-long session.
 - **Keep going** is what Daily offers once today's legs are done: the same
-  learned pool, **uncapped**, until End — on the side Home (or the Report's
-  leg) is on, or the other when that side has nothing learned. The capped legs
+  passed pool, **uncapped**, until End — on the side Home (or the Report's
+  leg) is on, or the other when that side has nothing passed. The capped legs
   stay the default because not having to decide when to stop is the point of
   the drill; the uncapped run is for the day you want more of the same, and no
   other mode offers it — free practice is one preset's unlocked items, new ones
@@ -617,22 +634,21 @@ because it is today, not because you picked anything (`practice/daily.ts`).
   chord leg doesn't. A ratio rather than minutes, so changing the cap never
   leaves a split that no longer fits it. A leg can be a fraction of a minute (¼
   of 5); the clock is active time, so it ends where it should, and the readout
-  shows one decimal. A side with **nothing learned** yet has its leg skipped and
+  shows one decimal. A side with **nothing passed** yet has its leg skipped and
   hands its time to the other, so a player who hasn't started scales still gets
   the whole drill (`dailyLegMinutes`).
 - **The pool is every item already passed, in every preset** (built-in and
   custom), deduplicated by combo — the same item played the same way (voicing
   or shape) is one drillable thing however many presets happen to contain it, which is
-  also how the stats are keyed (§5). §5.1 already calls a passed item
-  *learned*; this is that word taken literally and collected in one place.
+  also how the stats are keyed (§5).
 - **Set-aside items are out of it** (§5.2), in whichever preset they were
   benched. The bench is a statement about playing the item, not about one
   preset.
 - **Nothing in it can pass, so it never moves the unlock queue.** Every item
   it deals is passed already and passing is a latch (§5.1) — so no batch can
   open mid-session, and the mode needs no rule of its own to say so. Learning
-  stays in Learn and free practice; daily practice is where learned items go
-  to stay learned. It records per-combo stats exactly like free practice does,
+  stays in Learn and free practice; daily practice is where passed items go
+  to stay passing. It records per-combo stats exactly like free practice does,
   which is what makes it maintenance rather than a rehearsal: an item that
   rots shows up in its grade and gets weighted back to the front (§5).
 - **It is capped in time, not prompts** — 5 / 10 / 15 / 20 **active** minutes
@@ -650,7 +666,7 @@ because it is today, not because you picked anything (`practice/daily.ts`).
   starts it from a card of its own, and the session sheet, which drafts a
   preset and a mode together, doesn't offer it (§7.1, §7.2).
 - **Unavailable until something is passed** — of either kind: with nothing
-  learned there is nothing to maintain, so Home's Daily card reads locked rather
+  passed there is nothing to maintain, so Home's Daily card reads locked rather
   than starting an empty session. The Report's set-aside offer (§7.4) is
   likewise free-practice-only — an offer made after a cross-preset session
   would act on whichever preset happened to be selected.
@@ -677,12 +693,12 @@ the pass bar (`practice/learnLoop.ts`).
   a hand pick holds only until then. Keeping the old pick
   would leave Learn drilling items already passed while the new ones waited.
 - **At least three items are dealt.** A short set is padded with items already
-  **learned** (passed, §5.1), most recently learned first — the ones that sit
+  **passed** (§5.1), most recently passed first — the ones that sit
   nearest to what is being learned now. The floor is §5.2's and it is the same
   number for the same reason: a drill needs something to alternate between, and
   the no-immediate-repeat exclusion is `min(3, pool − 1)`, so a one-item set
   would otherwise be the same prompt over and over. Only *passed* items pad. An
-  unselected item that is still being learned is one the player just declined to
+  unselected item not yet passed is one the player just declined to
   work on, and dealing it anyway would make the selection a suggestion. A preset
   with too few passed items to reach the floor simply deals a narrower pool.
 - **A selected item is `rehearsed`** once its grade reaches **D or better** — the
@@ -701,7 +717,7 @@ the pass bar (`practice/learnLoop.ts`).
   on screen from the first rep, so a pass won here would be worth less than one
   won in Practice, and letting it ratchet the pool open would quietly devalue
   every unlock. The two words are kept apart wherever both could appear: the Stage
-  says `✓ rehearsed` where Practice says `★ learned` (§7.3), and the Report lists
+  says `✓ rehearsed` where Practice says `★ passed` (§7.3), and the Report lists
   *Rehearsed* where Practice lists *Chords passed*, with a line pointing at free
   practice as where these items actually unlock (§7.4).
 - **No length.** Learn's end condition is its set, so the §7.2 length picker
@@ -757,7 +773,7 @@ lifecycle per prompt. It judges the *set* of held notes, so it serves chords and
 **Recorded on the ✔.** A rep lands the moment it is judged correct, not when the
 next prompt is dealt: its combo record, any pass and unlock it earns (§5.1), the
 session's count and tallies and the Report log (§7.4) all move while its ✔ is on
-screen. So everything the flash says — the pace, a grade-up, `★ learned`, an
+screen. So everything the flash says — the pace, a grade-up, `★ passed`, an
 unlock toast (§7.3) — is read back from what was just written rather than
 predicted ahead of it, and whatever cuts the advance window short (End, a pause, a
 preset switch) finds the rep already counted. A prompt is only ever left by
@@ -1012,7 +1028,8 @@ The entry screen — the app boots here, not into practice. The no-device gate
   side, the sheet stays on it, and changing side means going back Home.
 - **Continue card** (primary): the active preset's name with a **Change**
   control (the preset picker, incl. the diatonic key picker); unlock progress —
-  `N/total chords unlocked`, a bar, and how many unlock on the next pass (§5.1);
+  `N/total chords unlocked`, a bar, and what the next batch waits on —
+  `pass 2 more to unlock 2`, counting the in-play chords not yet passed (§5.1);
   an **In play** chip row — every unlocked chord with its letter grade (chord
   score §5 → S–F, or `pending` where the evidence floor hasn't been reached, §7.5),
   not-yet-passed chords tagged *new* instead of lettered at all, played or not —
@@ -1038,8 +1055,8 @@ The entry screen — the app boots here, not into practice. The no-device gate
 - **Daily card**: a slim full-width card at the top, **above** the switch —
   Daily spans both sides (§5.3), so it sits with nothing that the switch
   governs. It shows the cap and both legs as they stand today —
-  `Chords 5 min · 12 learned`, `2 of 5 min left`, `✓ 5 min done`, or why a leg
-  won't run (*nothing learned yet*, *off*) — and its own button, one click with
+  `Chords 5 min · 12 passed`, `2 of 5 min left`, `✓ 5 min done`, or why a leg
+  won't run (*nothing passed yet*, *off*) — and its own button, one click with
   nothing to configure: the drill you run because it is today should cost no
   choices. It reads **Start daily**, **Continue daily** once today's Daily has
   begun, and — once both legs are played out, with `✓ done today` beside the
@@ -1090,7 +1107,7 @@ session config, so they take effect as they're set.
 - **Chords to learn** (Learn, §5.4): a chip per chord in play in the drafted
   preset, the not-yet-passed ones pre-ticked and tagged *new* as on
   Home's In play row (§7.1), with a line saying what the loop
-  will deal — how many chords must reach D, and which learned chords come along
+  will deal — how many chords must reach D, and which passed chords come along
   to make three. Read of the *drafted* preset like *Worst chords only*, and reset
   to that preset's default when the preset or key changes: the keys name chords in
   a pool that is no longer the one being configured. **Start** is unavailable with
@@ -1141,7 +1158,7 @@ counts a new progression in).
   (§5) and Song counts itself in (§6.5), so neither gates. The on-screen
   keyboard stays live behind the panel for warming up.
 - **Top bar, per mode**: the session label (preset + mode) opening the sheet —
-  Daily has no preset, so it names its leg's pool instead: `Learned chords · ☀ Daily` —
+  Daily has no preset, so it names its leg's pool instead: `Passed chords · ☀ Daily` —
   an
   **End** button, and in the center — the practice modes: a progress bar
   with `done / length`, or `⏱ 3 / 10 min` when the length is timed (always, in
@@ -1163,9 +1180,9 @@ counts a new progression in).
   climb mid-session; when it does, a line under the feedback pill says so
   ("📈 C maj grade up: D → C"), rather than leaving the news for the player's
   next visit to the chord stats page (§7.5). It belongs to the rep that earned
-  it, so it is decided on the same judgment edge as the `learned` callout and
+  it, so it is decided on the same judgment edge as the `passed` callout and
   lasts exactly as long as that rep's ✔ flash — a toast on a window of its own
-  arrived after the prompt it was about had already gone. The **`★ learned`**
+  arrived after the prompt it was about had already gone. The **`★ passed`**
   callout (§5.1) shares this line rather than the pill above it: both are the
   same news at two scales — this combo climbed a letter, this chord is no longer
   failing — and they almost always land on the same rep, so splitting them left
@@ -1179,7 +1196,7 @@ counts a new progression in).
   climb there would announce something no record will hold, and Song's bar
   chips already report themselves. Learn has its own callout on the same line —
   **`✓ rehearsed`**, when a rep takes a selected chord to the pass bar (§5.4) —
-  worded apart from `★ learned` because it is a different claim: nothing was
+  worded apart from `★ passed` because it is a different claim: nothing was
   unlocked by it.
 - **Session modes**:
   - **Learn**: the prompt's `example` voicing is shown from the start — highlighted on
@@ -1192,7 +1209,7 @@ counts a new progression in).
     - **Chords to learn**: which of the preset's in-play chords this loop is
       for, defaulting to the ones not yet passed (§5.4).
   - **Daily**: free practice's screen exactly — voicing hidden, staff per its
-    setting, stats recorded — over the cross-preset learned pool, run to its cap
+    setting, stats recorded — over the cross-preset passed pool, run to its cap
     (§5.3). Its one setting (in the session sheet) is that cap; there is no
     preset, no narrow and no length.
   - **Free** (default): the voicing is hidden from the keyboard — recall from the
@@ -1278,7 +1295,7 @@ counts a new progression in).
   `10.0s+` — what was actually recorded. Learn shows the answer from the start
   and Song is clock-paced, so neither grades speed. When a rep takes a chord that
   was still new (§5.1: unlocked, not yet passed) to a passing grade,
-  **`★ learned`** joins the grade-up line beneath the pill — the one moment that
+  **`★ passed`** joins the grade-up line beneath the pill — the one moment that
   word is news. It is the pass §5.1 records, which lands on the rep's ✔ (§6.2),
   so the flash announcing it is still on screen. Misses are always **visual-only** (§9). There is **no skip**: a prompt
   is left only by answering it or by ending the session. A way out that costs
@@ -1395,8 +1412,8 @@ all sessions, for the side Home is switched to (§7.1), titled *Chord progress* 
   report, is the §5 combo score in letters. The learn loop (§5.4) uses the same
   math on its own session-local reps — same letters, same D-or-better bar,
   different evidence — and the word for clearing it there is **rehearsed**, not
-  *passed* or *learned*: those two are earned on the persisted record, and only
-  they move the pool. Both of its axes are stated in the
+  *passed*: that is earned on the persisted record, and only it moves the
+  pool. Both of its axes are stated in the
   units the player reads and both step one letter at a time, so the letter is
   predictable rather than the output of a curve — **a second costs a letter, and
   so does a miss**:
@@ -1417,7 +1434,7 @@ all sessions, for the side Home is switched to (§7.1), titled *Chord progress* 
     the §5 evidence floor — a below-floor F is arithmetic, not a verdict, and the
     missing reps are what produced it. Neutral, never red, for that reason. Only
     the F is hidden: a below-floor **D still shows its letter**, because passing is
-    its own proof (§5.1) and the badge must never contradict the `★ learned`
+    its own proof (§5.1) and the badge must never contradict the `★ passed`
     callout (§7.3). Display only — the score underneath is the floored one, so §5
     weighting keeps drilling the combo and the pass gate keeps reading the real
     letter. A chord folds to `pending` only when nothing *proven* is failing: one

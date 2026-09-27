@@ -158,7 +158,7 @@ describe('displayGrade / worstChordDisplayGrade (§7.5 `pending`)', () => {
 
   it('shows a below-floor letter as itself — passing is its own proof', () => {
     // Two clean reps grade D and pass the chord, so the badge has to say D:
-    // a `pending` beside the ★ learned pill would contradict it.
+    // a `pending` beside the ★ passed pill would contradict it.
     expect(displayGrade(cleanRecord(2, 2500), 1)).toBe('D')
   })
 
