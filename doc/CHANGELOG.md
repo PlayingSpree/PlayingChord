@@ -15,6 +15,14 @@ artifact and are not recoverable.
 
 ---
 
+## 10.9.0 — 2026-09-27
+
+**New until passed.** Home's In play row and Learn's picker tag every
+not-yet-passed item *new*, played or not — the 10.5.0 *new* / *learning* split by
+first persisted rep is withdrawn. Unlock rules are unchanged (§7.1, §7.2).
+
+---
+
 ## 10.8.0 — 2026-09-27
 
 **Learn hands off to free practice.** A Learn Report's primary button is *Free

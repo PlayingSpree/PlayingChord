@@ -424,7 +424,7 @@ function LearnSetPicker({
             {choice.label}
             {!choice.passed && (
               <span className="text-[11px] font-bold uppercase tracking-wide text-info-light">
-                {choice.played ? 'learning' : 'new'}
+                new
               </span>
             )}
           </Chip>

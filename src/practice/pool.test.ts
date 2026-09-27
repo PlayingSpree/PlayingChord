@@ -203,17 +203,6 @@ describe('pool grades (§5.1/§7.5)', () => {
     expect(resolve('triads', 0).displayGrade('0:maj')).toBe('pending')
   })
 
-  it('marks a chord played from its first persisted rep — `new` vs `learning` (§7.1)', () => {
-    const { resolve, stats } = setup()
-    const played = () =>
-      resolve('triads', 0)
-        .passList()
-        .find((entry) => entry.key === '0:maj')?.played
-    expect(played()).toBe(false)
-    stats.record('0:maj:any', 'missed', 9000)
-    expect(played()).toBe(true)
-  })
-
   it('takes an alternate source, which is how the learn loop grades (§5.4)', () => {
     const { resolve, stats } = setup()
     reps(stats, '0:maj:any', 0) // a lifetime record…

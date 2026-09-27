@@ -299,7 +299,7 @@ function FeedbackPill() {
               <span className="font-extrabold">{gradeUp.to}</span>
             </>
           )}
-          {/* The rep that took a chord still in learning to a passing grade
+          {/* The rep that took a chord still new to a passing grade
               (§5.1) — the one moment "learned" is news. */}
           {showLearned && <span className="font-extrabold">★ learned</span>}
           {/* Learn's counterpart (§5.4): a selected chord just reached the pass

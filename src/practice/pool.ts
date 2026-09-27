@@ -87,10 +87,6 @@ export interface PoolProgress {
 // resolved through this pool's spelling.
 export interface PoolChordEntry extends ChordPassEntry {
   label: string
-  // Any persisted reps at all — what splits a not-yet-passed chord into `new`
-  // (never played) and `learning` (§7.1). Learn's reps are session-only
-  // (§5.4), so they don't count.
-  played: boolean
 }
 
 // Swapping in a rep that hasn't been written yet, which is how the ✔ pill calls
@@ -338,7 +334,6 @@ export class Pool {
     return {
       ...entry,
       label: this.label(entry.key),
-      played: this.displayGrade(entry.key) !== null,
     }
   }
 

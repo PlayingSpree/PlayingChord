@@ -381,7 +381,7 @@ export type KeyedRecord = readonly [key: string, record: ComboStatRecord]
 // A chord's grade for Home's "In play" row (§7.1) when it spans several
 // voicing combos: the *worst* (lowest-scoring) combo's grade, surfacing the
 // weakest voicing rather than averaging it away. null when no combo has any
-// history yet (the chord reads as "learning" instead of graded).
+// history yet (the chord reads as `new` instead of graded).
 export function worstChordGrade(
   records: readonly KeyedRecord[],
 ): ComboGrade | null {

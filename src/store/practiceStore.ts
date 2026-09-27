@@ -181,7 +181,6 @@ export interface UnlockProgress {
 // display label resolved through the active expansion (diatonic spelling).
 export interface ChordPassDisplayEntry extends ChordPassEntry {
   label: string
-  played: boolean // any persisted reps — `new` vs `learning` (§7.1)
 }
 
 // One chord of the learn loop's set (§5.4) as the Stage and sheet read it: its

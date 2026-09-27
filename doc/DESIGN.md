@@ -4,7 +4,7 @@ A web app for practicing piano chords and scales with a MIDI keyboard. The app s
 random chord or scale from a chosen preset, the user plays it on their connected MIDI
 keyboard, and the app validates the input and moves on to the next one.
 
-Spec version: **10.8.0** (2026-09-27) — chords and scales. Revision history lives in
+Spec version: **10.9.0** (2026-09-27) — chords and scales. Revision history lives in
 [CHANGELOG.md](CHANGELOG.md); this document describes only what the app *is* today.
 Both previously open questions are resolved (see [§9](#9-resolved-questions)). Build
 sequencing (what gets implemented first) is intentionally left outside this document.
@@ -966,9 +966,10 @@ The entry screen — the app boots here, not into practice. The no-device gate
   `N/total chords unlocked`, a bar, and how many unlock on the next pass (§5.1);
   an **In play** chip row — every unlocked chord with its letter grade (chord
   score §5 → S–F, or `pending` where the evidence floor hasn't been reached, §7.5),
-  not-yet-passed chords tagged instead of lettered at all — *new* until their
-  first persisted rep, *learning* after it (Learn's reps are session-only, §5.4,
-  so they don't count) — chords
+  not-yet-passed chords tagged *new* instead of lettered at all, played or not —
+  an item is new until it passes, so the unlock story has two states rather than
+  three (a *new* / *learning* split by first rep was tried in 10.5.0 and read as
+  one distinction too many) — chords
   set aside by hand dimmed beside them (§5.2), plus one
   `🔒 N locked` chip — this row is the per-chord breakdown that used to live
   behind the top-bar unlock chip. The 🔒 chip is a **disclosure**: clicking it
@@ -1023,7 +1024,7 @@ session config, so they take effect as they're set.
   mode in every mode — like Song's settings a persisted preference, set as it's
   picked.
 - **Chords to learn** (Learn, §5.4): a chip per chord in play in the drafted
-  preset, the not-yet-passed ones pre-ticked and tagged *new* / *learning* as on
+  preset, the not-yet-passed ones pre-ticked and tagged *new* as on
   Home's In play row (§7.1), with a line saying what the loop
   will deal — how many chords must reach D, and which learned chords come along
   to make three. Read of the *drafted* preset like *Worst chords only*, and reset
@@ -1210,7 +1211,7 @@ counts a new progression in).
   (time-to-correct includes retries), and past the §6.2 ceiling the pill reads
   `10.0s+` — what was actually recorded. Learn shows the answer from the start
   and Song is clock-paced, so neither grades speed. When a rep takes a chord that
-  was still in learning (§5.1: unlocked, not yet passed) to a passing grade,
+  was still new (§5.1: unlocked, not yet passed) to a passing grade,
   **`★ learned`** joins the grade-up line beneath the pill — the one moment that
   word is news. It is the same pass call §5.1 makes, decided on the judgment
   edge rather than on the advance, so the flash announcing it is still on
