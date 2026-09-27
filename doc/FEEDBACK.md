@@ -1,2 +1,4 @@
-[x] Move passed noti from feedback chip to grade up chip
-[x] Remove skip
+[] Chord - Random sharp flat
+[] Grade - Change learning to new (simplify unlock)
+[x] Learn end page to free mode instead of retry
+[] Seperate daily button from preset

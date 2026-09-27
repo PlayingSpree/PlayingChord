@@ -15,6 +15,14 @@ artifact and are not recoverable.
 
 ---
 
+## 10.8.0 — 2026-09-27
+
+**Learn hands off to free practice.** A Learn Report's primary button is *Free
+practice* — a free-practice session on the same preset — in place of *Go again*,
+since free practice is where rehearsed items actually pass (§5.4, §7.4).
+
+---
+
 ## 10.7.0 — 2026-09-25
 
 **Installable and offline.** The app is a PWA: it can be installed as its own

@@ -17,7 +17,8 @@ import { noun, Noun } from './sides'
 // trailing-baseline deltas and lifetime increments, an unlock banner, the
 // passed / still-shaky columns, the goal line, and Go again / Home. Learn
 // sessions are stats-neutral (§5) — the reduced variant shows only prompts,
-// active time and the goal line. Reads `report` from the store; the parent
+// active time and the goal line, and its primary action is Free practice
+// rather than Go again. Reads `report` from the store; the parent
 // only routes here while it is non-null.
 export function ReportView({
   onGoAgain,
@@ -31,6 +32,7 @@ export function ReportView({
   // it, so the store's side is the session's (§7.4).
   const side = usePractice((s) => s.side)
   const goalMinutes = useSettings((s) => s.settings.dailyGoalMinutes)
+  const setMode = usePractice((s) => s.setMode)
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -173,15 +175,21 @@ export function ReportView({
           {goalLine(report, goalMinutes)}
         </p>
 
+        {/* A finished loop has nothing left to repeat — the set is rehearsed,
+            and passing it happens in free practice (§5.4) — so Learn's next
+            step is that session, on the same preset, not another loop. */}
         <div className="flex gap-3">
           <RaisedButton
             autoFocus
             variant="primary"
             size="lg"
             className="flex-1"
-            onClick={onGoAgain}
+            onClick={() => {
+              if (learn) setMode('free')
+              onGoAgain()
+            }}
           >
-            Go again ▶
+            {learn ? 'Free practice ▶' : 'Go again ▶'}
           </RaisedButton>
           <RaisedButton variant="outline" size="lg" onClick={onHome}>
             Home

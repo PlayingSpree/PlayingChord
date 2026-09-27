@@ -4,7 +4,7 @@ A web app for practicing piano chords and scales with a MIDI keyboard. The app s
 random chord or scale from a chosen preset, the user plays it on their connected MIDI
 keyboard, and the app validates the input and moves on to the next one.
 
-Spec version: **10.6.0** (2026-09-25) — chords and scales. Revision history lives in
+Spec version: **10.8.0** (2026-09-27) — chords and scales. Revision history lives in
 [CHANGELOG.md](CHANGELOG.md); this document describes only what the app *is* today.
 Both previously open questions are resolved (see [§9](#9-resolved-questions)). Build
 sequencing (what gets implemented first) is intentionally left outside this document.
@@ -637,7 +637,7 @@ the pass bar (`practice/learnLoop.ts`).
   first rep. It **reopens on that default whenever the unlock record moves** — a
   pass, an unlock, a by-hand open or set-aside (§5.2), a reset — so an item that
   just unlocked in free practice joins it and one that just passed leaves it;
-  a hand pick holds only until then (Go again repeats it). Keeping the old pick
+  a hand pick holds only until then. Keeping the old pick
   would leave Learn drilling items already passed while the new ones waited.
 - **At least three items are dealt.** A short set is padded with items already
   **learned** (passed, §5.1), most recently learned first — the ones that sit
@@ -1299,7 +1299,11 @@ count as prompts, a hit being a first-try success (§6.5).
   telling you to give up.
 - **Goal line**: today's state after the session ("🔥 Streak safe — 10/10 min
   done today", or the minutes remaining).
-- **Go again** (a fresh session with the same sheet config) / **Home**.
+- **Go again** (a fresh session with the same sheet config) / **Home**. A Learn
+  Report offers **Free practice** in Go again's place — a free-practice session on
+  the same preset. The loop's own line already says free practice is where its
+  items unlock (§5.4), and a finished set has nothing left to repeat; the rare
+  second loop is a Start away on Home.
 
 ### 7.5 Progress & chord stats
 
