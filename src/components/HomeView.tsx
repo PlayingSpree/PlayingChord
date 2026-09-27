@@ -15,7 +15,6 @@ import {
   dailyLegMinutes,
   dailyLegRemaining,
   dueDailyLeg,
-  worstChordDisplayGrade,
   type DisplayGrade,
   type Side,
 } from '../practice'
@@ -93,25 +92,19 @@ export function HomeView({
   const presetName = presets.find((p) => p.id === presetId)?.name ?? 'Practice'
 
   // In-play chips: unlocked chords with their worst-combo grade (§7.1), plus
-  // the locked ones behind the 🔒 chip. Read the persisted per-combo stats
-  // once — Home re-mounts after every session, so the grades reflect the
-  // latest play. `customRules` in the deps keeps it in step with a library
-  // edit.
+  // the locked ones behind the 🔒 chip. Each grade is the pool's own fold, the
+  // figure the pass is judged on (§5.1) — Home re-mounts after every session,
+  // so it reflects the latest play. `customRules` in the deps keeps it in step
+  // with a library edit.
   const inPlay = useMemo(() => {
-    const comboStats = appStorage.state.comboStats
     const entries = chordPassStatus()
-    const withGrade = (chord: (typeof entries)[number]) => {
-      const records = Object.entries(comboStats).filter(([key]) =>
-        key.startsWith(`${chord.key}:`),
-      )
-      return {
-        key: chord.key,
-        label: chord.label,
-        passed: chord.passed,
-        grade: worstChordDisplayGrade(records),
-        canSetAside: canSetChordAside(chord.key),
-      }
-    }
+    const withGrade = (chord: (typeof entries)[number]) => ({
+      key: chord.key,
+      label: chord.label,
+      passed: chord.passed,
+      grade: chord.grade,
+      canSetAside: canSetChordAside(chord.key),
+    })
     const chips = entries
       .filter((chord) => chord.unlocked && !chord.setAside)
       .map(withGrade)

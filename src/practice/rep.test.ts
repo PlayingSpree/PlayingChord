@@ -139,7 +139,7 @@ describe('completeRep — the pass (§5.1/§7.3)', () => {
   it('passes a chord being learned that this rep takes to the bar', () => {
     const result = completeRep(clean, C, context())
     expect(result.progress?.passed).toBe('0:maj')
-    expect(result.progress?.record.masteredIndices).toEqual([0])
+    expect(result.progress?.pool.progressRecord.masteredIndices).toEqual([0])
     expect(result.progress?.opened).toEqual([])
     expect(result.justPassed).toBe(true)
   })
@@ -150,7 +150,7 @@ describe('completeRep — the pass (§5.1/§7.3)', () => {
     const result = completeRep(clean, C, context({ stats, pool }))
     // F and G, the next two in the unlock order.
     expect(result.progress?.opened).toEqual(['5:maj', '7:maj'])
-    expect(result.progress?.record.unlockedCount).toBe(5)
+    expect(result.progress?.pool.progressRecord.unlockedCount).toBe(5)
   })
 
   it('passes nothing when the rep does not reach the bar', () => {

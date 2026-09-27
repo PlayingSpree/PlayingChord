@@ -14,11 +14,7 @@
 
 import { comboKey, type Combo } from './combos'
 import type { Pool } from './pool'
-import {
-  poolChordKey,
-  recordChordAttempt,
-  type PresetProgressRecord,
-} from './progress'
+import { poolChordKey } from './progress'
 import { MODE_POLICY, type SessionEvent, type SessionMode } from './session'
 import {
   comboMetrics,
@@ -78,9 +74,9 @@ export interface RepPace {
   fast: boolean
 }
 
-// The §5.1 unlock record after a rep that passed its item.
+// The pool after a rep that passed its item (§5.1).
 export interface RepProgress {
-  record: PresetProgressRecord
+  pool: Pool
   // The item this rep passed.
   passed: string
   // Items the pass opened by completing the unlocked batch, in unlock order;
@@ -178,21 +174,9 @@ function passOf(
   pool: Pool,
   source: ComboStatsSource,
 ): RepProgress | null {
-  const update = recordChordAttempt(
-    pool.chordOrder,
-    pool.progressRecord,
-    chordKey,
-    pool.chordGrade(chordKey, source),
-  )
-  if (!update.changed) return null
-  return {
-    record: update.record,
-    passed: chordKey,
-    opened: pool.chordOrder.slice(
-      pool.progressRecord.unlockedCount,
-      update.record.unlockedCount,
-    ),
-  }
+  const next = pool.pass(chordKey, source)
+  if (next === pool) return null
+  return { pool: next, passed: chordKey, opened: next.openedSince(pool) }
 }
 
 // The §7.3 grade-up chip. Both grades must rest on at least the most-improved

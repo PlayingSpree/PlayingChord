@@ -15,6 +15,17 @@ artifact and are not recoverable.
 
 ---
 
+## 10.13.0 — 2026-09-27
+
+**Home grades what the pass grades.** A chord's letter on Home's In play row is
+folded over the active preset's own combos only, which is the figure its pass
+is judged on (§5.1). Before, it took every voicing of that chord ever recorded,
+so a voicing drilled in another preset, or one whose rule was since deleted,
+could leave a chord reading F on Home while it passed in the preset on screen
+(§7.1).
+
+---
+
 ## 10.12.1 — 2026-09-27
 
 **One rule for what gets dealt.** A batch that a library edit opens (a custom

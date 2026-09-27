@@ -4,7 +4,7 @@ A web app for practicing piano chords and scales with a MIDI keyboard. The app s
 random chord or scale from a chosen preset, the user plays it on their connected MIDI
 keyboard, and the app validates the input and moves on to the next one.
 
-Spec version: **10.12.1** (2026-09-27) — chords and scales. Revision history lives in
+Spec version: **10.13.0** (2026-09-27) — chords and scales. Revision history lives in
 [CHANGELOG.md](CHANGELOG.md); this document describes only what the app *is* today.
 Both previously open questions are resolved (see [§9](#9-resolved-questions)). Build
 sequencing (what gets implemented first) is intentionally left outside this document.
@@ -1038,7 +1038,9 @@ The entry screen — the app boots here, not into practice. The no-device gate
   `pass 2 more to unlock 2`, counting the in-play chords not yet passed (§5.1);
   an **In play** chip row — every unlocked chord with its letter grade (chord
   score §5 → S–F, or `pending` where the evidence floor hasn't been reached, §7.5),
-  not-yet-passed chords tagged *new* instead of lettered at all, played or not —
+  folded over the active preset's own combos only — the pass's figure (§5.1), so
+  a voicing drilled in another preset, or one whose rule was deleted, doesn't
+  color it — not-yet-passed chords tagged *new* instead of lettered at all, played or not —
   an item is new until it passes, so the unlock story has two states rather than
   three (a *new* / *learning* split by first rep was tried in 10.5.0 and read as
   one distinction too many) — chords

@@ -413,6 +413,55 @@ describe('pool progress questions (§5.1/§5.2)', () => {
     ])
   })
 
+  it('grades the pass list on this pool’s combos only (§5.1/§7.1)', () => {
+    const { resolve, stats } = setup()
+    // C major missed over and over in a voicing this pool doesn't list —
+    // another preset's, or a deleted rule's.
+    for (let i = 0; i < 10; i++) stats.record('0:maj:rootless', 'missed', 9000)
+    const pool = resolve('triads', 0)
+    expect(pool.passList()[0]?.grade).toBeNull()
+    expect(pool.chordGrade('0:maj')).toBeNull()
+
+    stats.record('0:maj:any', 'missed', 9000)
+    expect(pool.passList()[0]?.grade).toBe(pool.displayGrade('0:maj'))
+    expect(pool.passList()[0]?.grade).not.toBeNull()
+  })
+
+  it('passes a chord whose grade reaches the bar, and opens the batch it completes', () => {
+    const { resolve, stats } = setup()
+    const pool = resolve('triads', 0)
+    // Not a pass without a grade.
+    expect(pool.pass('0:maj')).toBe(pool)
+    for (const key of ['0:maj', '2:maj', '4:maj']) {
+      for (let i = 0; i < 5; i++) stats.record(`${key}:any`, 'first-try', 500)
+    }
+    const once = pool.pass('0:maj').pass('2:maj')
+    expect(once.progressRecord.masteredIndices).toEqual([0, 1])
+    expect(once.openedSince(pool)).toEqual([])
+    // Already passed: nothing moves.
+    expect(once.pass('0:maj')).toBe(once)
+    expect(once.pass('4:maj').openedSince(once)).toEqual(['5:maj', '7:maj'])
+  })
+
+  it('grades a pass on the records it is given (§5.4)', () => {
+    const { resolve } = setup()
+    const pool = resolve('triads', 0)
+    const session = new InMemoryComboStats()
+    for (let i = 0; i < 5; i++) session.record('0:maj:any', 'first-try', 500)
+    expect(pool.pass('0:maj')).toBe(pool)
+    expect(pool.pass('0:maj', session).progressRecord.masteredIndices).toEqual([
+      0,
+    ])
+  })
+
+  it('keeps a learn set to what is in play, in unlock order (§5.4)', () => {
+    const pool = setup().resolve('triads', 0)
+    expect(pool.sanitizeLearnSet(['4:maj', '9:maj', '0:maj', 'gone'])).toEqual([
+      '0:maj',
+      '4:maj',
+    ])
+  })
+
   it('sets a chord aside only while enough stays in play (§5.2)', () => {
     const pool = setup().resolve('triads', 0)
     // Three in play is the floor, so nothing can go.

@@ -35,6 +35,7 @@ import {
   openChord,
   poolChordKey,
   reconcileProgress,
+  recordChordAttempt,
   remapProgress,
   setAsideChord,
   unlockedChordKeys,
@@ -45,6 +46,7 @@ import {
   defaultLearnSelection,
   learnFillerChords,
   learnPoolChordKeys,
+  sanitizeLearnSelection,
   selectableLearnChords,
 } from './learnLoop'
 import {
@@ -89,6 +91,12 @@ export interface PoolProgress {
 // resolved through this pool's spelling.
 export interface PoolChordEntry extends ChordPassEntry {
   label: string
+}
+
+// A chord on Home's In play row (§7.1): its standing plus its grade, folded over
+// this pool's combos only — the figure the pass is judged on (§5.1).
+export interface PoolPassEntry extends PoolChordEntry {
+  grade: DisplayGrade | null
 }
 
 export interface PoolParts {
@@ -148,6 +156,20 @@ export class Pool {
       voicings: this.#voicings,
       stats: this.#stats,
     })
+  }
+
+  // The same pool after a rep of this chord (§5.1): passed, if its grade on
+  // `source` — this rep included — has reached the bar while it is unlocked
+  // and not yet passed; itself otherwise. Passing the last one outstanding
+  // opens the next batch, which openedSince reads back.
+  pass(chordKey: string, source: ComboStatsSource = this.#stats): Pool {
+    const update = recordChordAttempt(
+      this.chordOrder,
+      this.progressRecord,
+      chordKey,
+      this.chordGrade(chordKey, source),
+    )
+    return this.#moved(update.record)
   }
 
   // The same pool with a chord set aside by hand (§5.2), or itself when it
@@ -321,12 +343,16 @@ export class Pool {
 
   // ---- progress questions -------------------------------------------------
 
-  // Every pool chord in unlock order with its locked/unlocked/passed status and
-  // display label — the unlock chip's drill-down (§7) and Home's In play row.
-  passList(): PoolChordEntry[] {
-    return chordPassList(this.chordOrder, this.progressRecord).map((entry) =>
-      this.#display(entry),
-    )
+  // Every pool chord in unlock order with its locked/unlocked/passed status,
+  // display label and grade — Home's In play row (§7.1). The grade is this
+  // pool's fold, so a chord can't read red there and pass here: records of
+  // voicings the pool doesn't list, from another preset or a deleted rule,
+  // don't count.
+  passList(): PoolPassEntry[] {
+    return chordPassList(this.chordOrder, this.progressRecord).map((entry) => ({
+      ...this.#display(entry),
+      grade: this.displayGrade(entry.key),
+    }))
   }
 
   // May this chord be set aside right now (§5.2)? False once doing so would
@@ -364,6 +390,17 @@ export class Pool {
       ...entry,
       label: this.label(entry.key),
     }
+  }
+
+  // A selection kept to what the picker may offer, in unlock order — a stale
+  // key (a preset or key change, a library edit, a set-aside) drops out. Empty
+  // means nothing left to learn.
+  sanitizeLearnSet(selection: readonly string[]): string[] {
+    return sanitizeLearnSelection(
+      this.chordOrder,
+      this.progressRecord,
+      selection,
+    )
   }
 
   // What the picker opens with: the in-play chords not yet passed, or the most

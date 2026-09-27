@@ -23,7 +23,6 @@ import {
   isLearnSetComplete,
   MODE_POLICY,
   rehearsedChords,
-  sanitizeLearnSelection,
   sessionLengthReached,
   romanNumeral,
   carryProgressAcrossEdit,
@@ -36,8 +35,8 @@ import {
   type ChordPool,
   type ChordPrompt,
   type Pool,
+  type PoolPassEntry,
   type GradeUpFlash,
-  type ChordPassEntry,
   type Combo,
   type DailyPlan,
   type ComboStatsSource,
@@ -170,12 +169,6 @@ export interface UnlockProgress {
   // a set-aside — which moves neither of the counts above — still changes
   // this object, and Home's In play row re-derives from it.
   setAside: number
-}
-
-// One chord's status in the unlock chip's per-chord drill-down (§7), with a
-// display label resolved through the active expansion (diatonic spelling).
-export interface ChordPassDisplayEntry extends ChordPassEntry {
-  label: string
 }
 
 // One chord of the learn loop's set (§5.4) as the Stage and sheet read it: its
@@ -350,7 +343,7 @@ export interface PracticeStoreState {
   refreshUnlockOrder(): void
   // Every pool chord in unlock order with its locked/unlocked/passed status
   // and display label — the unlock chip's per-chord drill-down (§7).
-  chordPassStatus(): readonly ChordPassDisplayEntry[]
+  chordPassStatus(): readonly PoolPassEntry[]
   // §5.2 by-hand pool control, from Home and the Report. Both no-op when the
   // move isn't available (the MIN_ACTIVE_CHORDS floor, an already-open chord),
   // so the caller can offer them without re-deriving the rules.
@@ -631,11 +624,7 @@ export function createPracticeStore({
     // in play drops out, and a selection emptied that way falls back to the
     // default rather than leaving the loop with nothing to finish.
     const syncLearnSelection = () => {
-      const sanitized = sanitizeLearnSelection(
-        pool.chordOrder,
-        pool.progressRecord,
-        get().learnSelection,
-      )
+      const sanitized = pool.sanitizeLearnSet(get().learnSelection)
       const selection =
         sanitized.length > 0 ? sanitized : pool.defaultLearnSet()
       set({ learnSelection: selection })
@@ -673,10 +662,10 @@ export function createPracticeStore({
     // has nothing left to pass, §5.3). An unlock goes to the dealer, which
     // holds the new chords for the next session or lets them straight in
     // (holdNewUnlocks, §5.1).
-    const applyRepProgress = ({ record, passed, opened }: RepProgress) => {
+    const applyRepProgress = ({ pool: next, passed, opened }: RepProgress) => {
       // Collected for the Report (§7.4).
       run.notePassed(pool.label(passed))
-      pool = pool.withProgress(record)
+      pool = next
       progressStore.set(pool.presetId, pool.progressRecord)
       invalidateDaily() // a chord just passed — it joins the daily pool (§5.3)
       set({ progress: pool.progress })
@@ -1021,11 +1010,7 @@ export function createPracticeStore({
         goal: currentGoal(),
         chords: pool.reportChords(run.events),
         setAside: pool.setAsideChords(),
-        unlockedTotals: {
-          unlocked: pool.progressRecord.unlockedCount,
-          passed: pool.progressRecord.masteredIndices.length,
-          total: pool.chordOrder.length,
-        },
+        unlockedTotals: pool.progress,
         learnRemaining: get()
           .learnProgress.chords.filter((chord) => !chord.rehearsed)
           .map((chord) => chord.label),
@@ -1257,11 +1242,7 @@ export function createPracticeStore({
       },
 
       setLearnSelection(chordKeys: readonly string[]) {
-        const selection = sanitizeLearnSelection(
-          pool.chordOrder,
-          pool.progressRecord,
-          chordKeys,
-        )
+        const selection = pool.sanitizeLearnSet(chordKeys)
         const current = get().learnSelection
         if (
           selection.length === current.length &&
