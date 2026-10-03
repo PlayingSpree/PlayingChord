@@ -4,7 +4,13 @@
 // storage/ behind the same interface.
 
 import { comboKey, isScaleCombo, parseComboKey, type Combo } from './combos'
-import { getScaleShape, type Hand, type VoicingLibrary } from '../theory'
+import {
+  getScaleShape,
+  getScaleType,
+  gradeMultiplier,
+  type Hand,
+  type VoicingLibrary,
+} from '../theory'
 
 export type PromptOutcome = 'first-try' | 'missed'
 
@@ -50,14 +56,17 @@ export const MAX_TIME_TO_CORRECT_MS = 10_000
 // A combo's grade scale (§3.6): the multiplier its every grade second — the
 // speed ramp's cut points and the ceiling above — is stretched by, so a
 // letter costs the same *fraction* of a 29-note run as of a chord. Chords
-// are 1; a scale combo takes its shape's multiplier. It is a property of the
-// combo, so it is read off the key wherever a record is, and nothing about it
-// is persisted.
+// are 1; a scale combo takes its shape and type's multiplier. It is a
+// property of the combo, so it is read off the key wherever a record is, and
+// nothing about it is persisted.
 export function gradeScaleOf(key: string): number {
   if (!key.startsWith('s:')) return 1
   const combo = parseComboKey(key)
   return combo !== null && isScaleCombo(combo)
-    ? getScaleShape(combo.shapeId).gradeMultiplier
+    ? gradeMultiplier(
+        getScaleShape(combo.shapeId),
+        getScaleType(combo.scaleTypeId),
+      )
     : 1
 }
 

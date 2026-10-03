@@ -4,6 +4,7 @@ import {
   SCALE_SHAPES,
   SCALE_TYPES,
   formatSpelling,
+  getScaleType,
   spellRoot,
   type PitchClass,
   type ScaleShapeId,
@@ -20,8 +21,9 @@ import { useLibrary } from '../store/libraryStore'
 import { Chip, TextField } from './fields'
 
 // The scale side of the §4 preset editor: roots × scale types × shapes, with
-// no voicing references and nothing to warn about — every scale plays in
-// every shape, so any non-empty pick is drillable.
+// no voicing references. The one thing to warn about is an arpeggio paired
+// with `block`, which has no such combo and is dropped at expansion (§3.6) —
+// only a preset with nothing left to drill can't be saved.
 
 const BUILT_IN_PRESET_IDS = [...builtInPresets(), ...builtInScalePresets()].map(
   (p) => p.id,
@@ -70,6 +72,12 @@ export function ScalePresetEditor({
   if (roots.length === 0) problems.push('Pick a root')
   if (scaleTypes.length === 0) problems.push('Pick a scale type')
   if (shapeIds.length === 0) problems.push('Pick a shape')
+  if (problems.length === 0 && comboCount === 0) {
+    problems.push('No drillable combos — arpeggios have no block shape')
+  }
+  const blockArpeggios =
+    shapeIds.includes('block') &&
+    scaleTypes.some((id) => getScaleType(id).family === 'arpeggio')
 
   const toggle = <T,>(list: readonly T[], item: T): T[] =>
     list.includes(item) ? list.filter((x) => x !== item) : [...list, item]
@@ -123,6 +131,11 @@ export function ScalePresetEditor({
       ) : (
         <p className="text-xs text-slate-400">
           {comboCount} combo{comboCount === 1 ? '' : 's'} to drill
+        </p>
+      )}
+      {blockArpeggios && comboCount > 0 && (
+        <p className="text-xs text-warn">
+          ⚠ Arpeggios have no block shape — those combos are skipped
         </p>
       )}
 

@@ -2,9 +2,9 @@ import { pitchClass, type PitchClass } from './notes'
 import type { ChordInterval } from './chordTypes'
 
 // Scale types are data, beside the chord types (DESIGN.md §3.6): id, display
-// name, tonality (which key-naming rule spells the tonic, §3.6 Spelling),
-// intervals with their degrees (as chord intervals carry, §3.2) and the
-// fingering per root.
+// name, family (a scale, or an arpeggio — a triad played as a run), tonality
+// (which key-naming rule spells the tonic, §3.6 Spelling), intervals with
+// their degrees (as chord intervals carry, §3.2) and the fingering per root.
 //
 // Fingering is shown, never judged. Each row is the standard ABRSM fingering
 // (Piano Scales & Arpeggios, 2021 syllabus) for one octave ascending from
@@ -74,11 +74,47 @@ const MELODIC_MINOR_FINGERING: readonly FingeringRow[] = [
   ['12312345', '43214321'], // B
 ]
 
+// Arpeggio rows are two octaves ascending, as the chart prints them (Joy
+// Morin, Scale & Arpeggio Fingerings for Piano, colorinmypiano.com — B♭
+// major takes its first fingering, not the alternative). A run of leaps
+// crosses where the stepwise rule in scaleFingering can't work it out, so
+// the inner root's finger is read off the row rather than derived (§3.6).
+const MAJOR_ARPEGGIO_FINGERING: readonly FingeringRow[] = [
+  ['1231235', '5421421'], // C
+  ['2124124', '2142142'], // D♭
+  ['1231235', '5321321'], // D
+  ['2124124', '2142142'], // E♭
+  ['1231235', '5321321'], // E
+  ['1231235', '5421421'], // F
+  ['1231235', '5321321'], // F♯ — no white key, so the thumbs take F♯
+  ['1231235', '5421421'], // G
+  ['2124124', '2142142'], // A♭
+  ['1231235', '5321321'], // A
+  ['2124124', '2142142'], // B♭
+  ['1231235', '5321321'], // B
+]
+
+const MINOR_ARPEGGIO_FINGERING: readonly FingeringRow[] = [
+  ['1231235', '5421421'], // C
+  ['2124124', '2142142'], // C♯
+  ['1231235', '5421421'], // D
+  ['1231235', '5421421'], // E♭ — no white key, so the thumbs take E♭
+  ['1231235', '5421421'], // E
+  ['1231235', '5421421'], // F
+  ['2124124', '2142142'], // F♯
+  ['1231235', '5421421'], // G
+  ['2124124', '2142142'], // G♯
+  ['1231235', '5421421'], // A
+  ['2312312', '3213212'], // B♭
+  ['1231235', '5421421'], // B
+]
+
 // [semitones from root, scale degree] per note, as in chordTypes.ts.
 const TABLE = [
   [
     'major',
     'major',
+    'scale',
     'major',
     [
       [0, 1],
@@ -94,6 +130,7 @@ const TABLE = [
   [
     'natural-minor',
     'natural minor',
+    'scale',
     'minor',
     [
       [0, 1],
@@ -109,6 +146,7 @@ const TABLE = [
   [
     'harmonic-minor',
     'harmonic minor',
+    'scale',
     'minor',
     [
       [0, 1],
@@ -126,6 +164,7 @@ const TABLE = [
   [
     'melodic-minor',
     'melodic minor',
+    'scale',
     'minor',
     [
       [0, 1],
@@ -138,20 +177,49 @@ const TABLE = [
     ],
     MELODIC_MINOR_FINGERING,
   ],
+  [
+    'major-arpeggio',
+    'major arpeggio',
+    'arpeggio',
+    'major',
+    [
+      [0, 1],
+      [4, 3],
+      [7, 5],
+    ],
+    MAJOR_ARPEGGIO_FINGERING,
+  ],
+  [
+    'minor-arpeggio',
+    'minor arpeggio',
+    'arpeggio',
+    'minor',
+    [
+      [0, 1],
+      [3, 3],
+      [7, 5],
+    ],
+    MINOR_ARPEGGIO_FINGERING,
+  ],
 ] as const
 
 export type ScaleTypeId = (typeof TABLE)[number][0]
 
 export type Hand = 'rh' | 'lh'
 
+// Ascending, tonic to tonic: one octave for a scale, two for an arpeggio.
 export interface ScaleFingering {
-  rh: readonly number[] // one octave ascending, tonic to tonic
+  rh: readonly number[]
   lh: readonly number[]
 }
+
+// An arpeggio has no block shape and fingers from its two-octave row (§3.6).
+export type ScaleFamily = 'scale' | 'arpeggio'
 
 export interface ScaleType {
   id: ScaleTypeId
   name: string
+  family: ScaleFamily
   tonality: 'major' | 'minor'
   intervals: readonly ChordInterval[]
   fingering: readonly ScaleFingering[] // indexed by root pitch class
@@ -160,9 +228,10 @@ export interface ScaleType {
 const digits = (fingers: string): number[] => [...fingers].map(Number)
 
 export const SCALE_TYPES: readonly ScaleType[] = TABLE.map(
-  ([id, name, tonality, intervals, fingering]) => ({
+  ([id, name, family, tonality, intervals, fingering]) => ({
     id,
     name,
+    family,
     tonality,
     intervals: intervals.map(([semitones, degree]) => ({ semitones, degree })),
     fingering: fingering.map(([rh, lh]) => ({
@@ -195,15 +264,18 @@ export function scalePitchClasses(scale: Scale): PitchClass[] {
 }
 
 // The ascending fingering for an `octaves`-long run, one finger per note
-// (octaves × 7 + 1). The book's one-octave row starts and ends where a hand
-// can start and stop; a longer run instead crosses at each inner tonic,
+// (octaves × degrees + 1). The book's one-octave row starts and ends where a
+// hand can start and stop; a longer run instead crosses at each inner tonic,
 // which takes whichever finger continues the pattern between the 7th degree
 // before it and the 2nd degree after it. Ascending, the RH's fingers climb
 // until the thumb passes under and the LH's fall until a finger crosses
 // over the thumb, so that finger is one step on from the 7th's when the
 // thumb is the tonic's neighbour on the crossing side (B♭ minor RH: A♭ 3,
 // B♭ 4, C 1), else one step back from the 2nd's (C major RH: B 4, C 1, D 2).
-// Descending plays the same fingers in reverse.
+// An arpeggio's two-octave row already holds its inner root's finger: one
+// octave drops the middle octave and three repeat it (C major RH: 1 2 3 5,
+// 1 2 3 1 2 3 5, 1 2 3 1 2 3 1 2 3 5). Descending plays the same fingers in
+// reverse.
 export function scaleFingering(
   scale: Scale,
   hand: Hand,
@@ -212,6 +284,17 @@ export function scaleFingering(
   const row = scale.type.fingering[pitchClass(scale.root)]
   if (!row) throw new Error(`No fingering for root ${scale.root}`)
   const f = row[hand]
+  if (scale.type.family === 'arpeggio') {
+    const degrees = scale.type.intervals.length
+    const end = f[2 * degrees]
+    if (end === undefined) return []
+    const fingers = f.slice(0, degrees)
+    for (let octave = 1; octave < octaves; octave++) {
+      fingers.push(...f.slice(degrees, 2 * degrees))
+    }
+    fingers.push(end)
+    return fingers
+  }
   const first = f[0]
   const second = f[1]
   const last = f[f.length - 1]

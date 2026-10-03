@@ -2,9 +2,12 @@ import {
   ALL_PITCH_CLASSES,
   BUILT_IN_VOICING_LIBRARY,
   getChordType,
+  getScaleShape,
+  getScaleType,
   MAJOR_SCALE_SEMITONES,
   pitchClass,
   realizeVoicing,
+  shapeFits,
   spellMajorScaleDegree,
   type ChordTypeId,
   type Hand,
@@ -133,11 +136,14 @@ export function expandPreset(
   hands: readonly Hand[] = ['rh'],
 ): ExpandedPreset {
   if (isScalePreset(preset)) {
-    // Every scale plays in every shape — nothing to drop. A scale spells
-    // itself from its own key (§3.6), so there's no pool spelling either.
+    // Only an arpeggio's block is dropped — it has none (§3.6, §4). A scale
+    // spells itself from its own key, so there's no pool spelling either.
     const combos: ScaleCombo[] = poolScales(preset.pool).flatMap(
       ({ root, scaleTypeId }) =>
         preset.shapeIds.flatMap((shapeId) => {
+          if (!shapeFits(getScaleShape(shapeId), getScaleType(scaleTypeId))) {
+            return []
+          }
           const shapeHands = new Set(
             hands.map((hand) => shapeHand(shapeId, hand)),
           )
@@ -245,7 +251,7 @@ export function builtInPresets(
   ]
 }
 
-// The 8 built-in scale presets (§4), all 12 roots. The longer shapes get a
+// The 11 built-in scale presets (§4), all 12 roots. The longer shapes get a
 // couple of built-ins so they are reachable without the editor; any other
 // combination is a custom preset.
 export function builtInScalePresets(): readonly ScalePreset[] {
@@ -300,5 +306,13 @@ export function builtInScalePresets(): readonly ScalePreset[] {
       'updown-2',
     ),
     preset('major-block-scales', 'Major block scales', ['major'], 'block'),
+    preset('major-arpeggios', 'Major arpeggios', ['major-arpeggio'], 'up-1'),
+    preset('minor-arpeggios', 'Minor arpeggios', ['minor-arpeggio'], 'up-1'),
+    preset(
+      'arpeggios-2-octaves',
+      'Major + minor arpeggios · 2 octaves ↕',
+      ['major-arpeggio', 'minor-arpeggio'],
+      'updown-2',
+    ),
   ]
 }

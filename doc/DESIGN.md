@@ -4,7 +4,7 @@ A web app for practicing piano chords and scales with a MIDI keyboard. The app s
 random chord or scale from a chosen preset, the user plays it on their connected MIDI
 keyboard, and the app validates the input and moves on to the next one.
 
-Spec version: **10.14.0** (2026-09-27) — chords and scales. Revision history lives in
+Spec version: **10.15.0** (2026-10-03) — chords, scales and arpeggios. Revision history lives in
 [CHANGELOG.md](CHANGELOG.md); this document describes only what the app *is* today.
 Both previously open questions are resolved (see [§9](#9-resolved-questions)). Build
 sequencing (what gets implemented first) is intentionally left outside this document.
@@ -55,7 +55,8 @@ sequencing (what gets implemented first) is intentionally left outside this docu
   weighting, Learn / Daily / Free, the Report — with their own theory, judging
   (§6.6) and display. A **Chords | Scales** switch at the top of Home splits the
   app in two (§7.1): each side has its own presets, modes, pool and progress; only
-  the daily goal, the streak and Settings are shared.
+  the daily goal, the streak and Settings are shared. Major and minor
+  **arpeggios** live on the Scales side as scale types of their own (§3.6).
 
 ---
 
@@ -145,7 +146,7 @@ spec and the code mean exactly these by them. The UI never says *item*: it says
 - **Kind** — the `chord` / `scale` tag a combo, prompt or preset carries, which is
   how the code that cares tells them apart (§3.4).
 - **Item** — one chord (root + chord type, §3.2) or one scale (root + scale type,
-  §3.6): an entry in a preset's pool. It is what unlocks, passes, is
+  §3.6; an arpeggio is a scale type): an entry in a preset's pool. It is what unlocks, passes, is
   set aside and is picked for a learn set (§5.1–§5.4).
 - **Combo** — an item played one way: `(root, chord type, voicing rule)` or
   `(root, scale type, shape, hand)`, one per voicing — or per shape and hand dealt —
@@ -288,6 +289,20 @@ natural minor, and drilling a scale that changes on the way down is a technique
 exercise, not a recall one). Modes and pentatonics are one-entry additions when
 wanted. A **scale** is a root plus a type, exactly as a chord is.
 
+**Arpeggios** are scale types too: `major-arpeggio` and `minor-arpeggio` carry a
+triad's intervals and degrees (root, 3rd, 5th) and its major or minor tonality. An
+arpeggio is that triad played as a run, so it is the same recall drill on a chord's
+tones: it is named, spelled, keyed, judged and graded exactly as a scale is ("E♭
+major arpeggio", §6.6). That is why it is a scale type rather than a third side or
+a chord voicing. The run machinery already plays any list of intervals, while the
+Chords side judges notes held together. Every scale type is either a scale or an
+arpeggio, and an arpeggio differs in only two places: it fingers differently
+(below), and it has no `block` shape, because held at once it is the triad itself,
+which the Chords side already drills. The UI keeps the side's noun, so it counts
+arpeggios as "scales" too. Dominant and diminished sevenths are data additions when
+wanted. Arpeggios that start on the 3rd or 5th are out, because a run starts on its
+root (§6.6).
+
 A **shape** is the scale's counterpart of a voicing rule (§3.3): *how* the scale is
 played, and like a voicing a separate axis of the drill. It is a fixed built-in
 library — there is no shape builder, because the space is small and every point in
@@ -303,18 +318,25 @@ it is already listed:
 | `updown-3` | 3 octaves up and down | 43 | 11 |
 | `block` | every note at once, within an octave | 7–8 | 2 |
 
+The note counts and multipliers are a seven-note scale's. An arpeggio plays three
+notes an octave: `up-1` is 4 notes (×1), `updown-2` is 13 (×3) and `updown-3` is 19
+(×5).
+
 The first six are **runs**, judged as a sequence (§6.6); up-and-down plays the top
 note once (C…C′…C). `block` is a set of held notes and is judged exactly like a
 chord (§6.2). Three octaves is the ceiling: four need 49+ keys, more than the
 on-screen keyboard draws and more than many controllers have.
 
 The **grade multiplier** (×) is what lets one grade table serve both a two-hand
-chord and a 43-note run. A shape scales the whole §5 speed ramp — every grade
+chord and a 43-note run. A scale combo scales the whole §5 speed ramp — every grade
 second and the §6.2 ceiling — by its multiplier, so a letter always costs the
 same *fraction* of the run instead of a flat second that a 29-note scale would
-burn through by its third note. For runs it is about a quarter-second per note,
-rounded; an S therefore means roughly four notes a second including the start,
-hard but reachable, as the top of the scale is meant to be (§7.5).
+burn through by its third note. It is a quarter-second per note: the rep's note
+count over four, rounded, and at least 1. That is the table's column for a scale,
+and it gives an arpeggio's shorter runs smaller multipliers. An S therefore means
+roughly four notes a second including the start, hard but reachable, as the top of
+the scale is meant to be (§7.5). The multiplier depends on both the shape and the
+type, so it is worked out from the combo and never stored.
 
 A **scale combo** is `(root, scaleType, shape, hand)` — a shape changes both the
 time a rep takes and what it tests, so "D major, 2 octaves up and down" and "D
@@ -350,7 +372,11 @@ raised degrees appear as accidentals — which is how a player meets them in pri
 **Fingering** is shown, never judged: the standard (ABRSM) fingering per root, scale
 type, hand and octave count, as data on the scale type. Minor forms that finger
 differently from the natural minor carry their own entry. `block` has none — there
-is no standard one. Where the keyboard shows a run, it also marks the keys the
+is no standard one. An arpeggio's fingering is stored as two octaves, the form it is
+printed in, because a run of leaps crosses where the scale rule for stepwise runs
+can't work it out. The crossing finger on the inner root is in the data, and one or
+three octaves drop or repeat the middle octave. The thumb stays off the black keys
+except where an arpeggio has no white key (F♯ major, E♭ minor). Where the keyboard shows a run, it also marks the keys the
 **thumb** plays (§6.6), for the prompt's hand — the two thumbs land on different
 keys. The fingering names each note under its finger, so it can be hidden to keep a
 run pure recall (*Show fingering*, §6.6).
@@ -403,10 +429,15 @@ all 12 roots:
 13. Major scales · 2 octaves ↕ — `updown-2`
 14. Minor scales · 2 octaves ↕ — all three forms, `updown-2`
 15. Major block scales — `block`
+16. Major arpeggios — `up-1`
+17. Minor arpeggios — `up-1`
+18. Major + minor arpeggios · 2 octaves ↕ — `updown-2`
 
 The longer shapes get a couple of built-ins so they are reachable without the
 editor, not a copy of every preset per shape; any other combination is a custom
-preset.
+preset. An arpeggio's `block` combo doesn't exist (§3.6). A preset that pairs them
+drops it at expansion, as unsatisfiable chord combos are dropped, and the editor
+warns about it.
 
 **Validation:** the preset editor warns when a chord type in the pool can't satisfy one
 of the preset's voicing rules (e.g. 5+-tone extended chords vs. `closed`'s span ≤ 11).
@@ -442,7 +473,7 @@ existed carries no kind and loads as a chord preset.
   S-speed combo earns, so drilling a combo to an S never makes it crowd out an
   untouched one. Drives both weighted pick below and the §7 chord stats grade.
   A **scale combo's** ramp is the same ramp with every second — the cut points and
-  the ceiling — multiplied by its shape's grade multiplier (§3.6): `up-1` runs full
+  the ceiling — multiplied by its grade multiplier (§3.6): a scale's `up-1` runs full
   credit to 2 s, D at 10 s, zero at 20 s.
 - **Recent window**: the last **10** outcomes, the most ever kept per combo (§8).
   Ten is a multiple of the five grade bands, so every cut point lands exactly on a
@@ -818,8 +849,8 @@ summed time all see the same capped value; past it the feedback pill reads `10.0
 (§7.3). The ceiling sits well above the §7.3 slow bar, so a clamped rep is always
 already flagged slow — the clamp only decides *how far* past it counts. The §7.3
 ready gate handles the other end of the same problem — the walk-up before the
-*first* prompt. A scale prompt's ceiling is 10 000 ms times its shape's grade
-multiplier (§3.6) — 20 s for a one-octave run, 110 s for a three-octave round
+*first* prompt. A scale prompt's ceiling is 10 000 ms times its grade
+multiplier (§3.6) — 20 s for a one-octave scale run, 110 s for a three-octave round
 trip — for the same reason the whole ramp scales.
 
 A rep that *reaches* the ceiling enters the **grade** window as a miss, even
@@ -1331,7 +1362,7 @@ counts a new progression in).
   mirror image — the flash turns blue with a **`· fast`** chip, marking the reps
   that hold an A on speed alone. Between the two bars the pill is plain green: a
   perfectly ordinary answer says nothing extra. For a scale both bars — and the
-  `10.0s+` ceiling readout — are multiplied by the shape's grade multiplier
+  `10.0s+` ceiling readout — are multiplied by the combo's grade multiplier
   (§3.6), for the reason they are grade seconds in the first place. Both chips follow the number
   displayed, so a slow answer after a retry gets it too
   (time-to-correct includes retries), and past the §6.2 ceiling the pill reads
@@ -1373,7 +1404,7 @@ count as prompts, a hit being a first-try success (§6.5).
   grade, so session and per-chord grades mean the same thing, and a session's
   letter reads on the same round seconds (§7.5). Note the top of the scale is
   literal: an S session is a flawless one averaging under a second. In a scale
-  session each prompt's time is divided by its shape's grade multiplier (§3.6)
+  session each prompt's time is divided by its combo's grade multiplier (§3.6)
   before averaging, so a session of mixed shapes grades on the same footing its
   combos do; the *Avg time-to-correct* card still shows plain seconds. Song sessions have no time samples → full speed credit, exactly
   as §5 scores such combos. Learn sessions are stats-neutral (§5): no grade, no
@@ -1488,8 +1519,8 @@ all sessions, for the side Home is switched to (§7.1), titled *Chord progress* 
     weighting keeps drilling the combo and the pass gate keeps reading the real
     letter. A chord folds to `pending` only when nothing *proven* is failing: one
     proven F still reads red however many unproven combos sit beside it.
-  - **Scales** grade on the same table with every second multiplied by the shape's
-    grade multiplier (§3.6): a one-octave run is S ≤ 2 s … D ≤ 10 s. The letter
+  - **Scales** grade on the same table with every second multiplied by the combo's
+    grade multiplier (§3.6): a one-octave scale run is S ≤ 2 s … D ≤ 10 s. The letter
     means the same across kinds — a fixed share of the drill per letter — rather
     than the same number of seconds.
   - So an **S means flawless and inside a second** — the top of the scale is

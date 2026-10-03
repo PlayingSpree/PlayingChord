@@ -676,13 +676,19 @@ describe('grade scale (§3.6 per-combo grade multiplier)', () => {
     return comboMetrics(record!, scale).grade
   }
 
-  it('reads the shape’s multiplier off a scale key, 1 off anything else', () => {
+  it('reads the combo’s multiplier off a scale key, 1 off anything else', () => {
     expect(gradeScaleOf('0:maj:any')).toBe(1)
     expect(gradeScaleOf(UP_1)).toBe(2)
     expect(gradeScaleOf(UPDOWN_2)).toBe(7)
     expect(gradeScaleOf('s:0:major:up-9')).toBe(1) // stale shape
     expect(gradeScaleOf('s:0:major:updown-3')).toBe(11)
     expect(gradeScaleOf('0:maj:any')).toBe(1)
+  })
+
+  it('gives an arpeggio’s shorter runs smaller multipliers', () => {
+    expect(gradeScaleOf('s:0:major-arpeggio:up-1')).toBe(1)
+    expect(gradeScaleOf('s:9:minor-arpeggio:updown-2:lh')).toBe(3)
+    expect(gradeScaleOf('s:0:major-arpeggio:updown-3')).toBe(5)
   })
 
   it('grades an up-1 run S at 2 s through D at 10 s', () => {

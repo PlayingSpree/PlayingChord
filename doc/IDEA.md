@@ -5,7 +5,7 @@
 - ~~Practice loop - Split practice mode into daily practice (All learned chord + cap at set time) + free practice (custom preset + time)~~ — shipped in 9.11.0 (DESIGN.md §5.3)
 - ~~Learning loop - Learn new unlocked chord. Select few chord to learn. Practice until all chord is D or better (Keep at least 3. Filled with learned chord).~~ — shipped in 9.12.0 (DESIGN.md §5.4)
 - Preset revamp - preset page + preset maker (Maybe voicing + chord combo rework?)
-- Arpeggio
+- ~~Arpeggio~~ — shipped in 10.15.0: major and minor triads (DESIGN.md §3.6)
 
 ## Minor
 - Preset calibation - calibate when using preset first time to quickly unlock known chord

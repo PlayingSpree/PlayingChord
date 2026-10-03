@@ -4,18 +4,25 @@ import { SCALE_TYPES, getScaleType, type Scale } from './scaleTypes'
 import {
   SCALE_SHAPES,
   getScaleShape,
+  gradeMultiplier,
   isScaleShapeId,
+  shapeFits,
   shapeNoteCount,
   type ScaleShapeId,
 } from './scaleShapes'
 import { realizeScale } from './realize'
 
 const cMajor: Scale = { root: 0, type: getScaleType('major') }
+const majorArpeggio = getScaleType('major-arpeggio')
 
 describe('shape library (§3.6)', () => {
   it('matches the spec table: ids, note counts, grade multipliers', () => {
     expect(
-      SCALE_SHAPES.map((s) => [s.id, shapeNoteCount(s), s.gradeMultiplier]),
+      SCALE_SHAPES.map((s) => [
+        s.id,
+        shapeNoteCount(s),
+        gradeMultiplier(s, cMajor.type),
+      ]),
     ).toEqual([
       ['up-1', 8, 2],
       ['updown-1', 15, 4],
@@ -25,6 +32,30 @@ describe('shape library (§3.6)', () => {
       ['updown-3', 43, 11],
       ['block', 7, 2],
     ])
+  })
+
+  it('gives an arpeggio’s three notes an octave their own counts', () => {
+    expect(
+      SCALE_SHAPES.filter((s) => s.kind === 'run').map((s) => [
+        s.id,
+        shapeNoteCount(s, 3),
+        gradeMultiplier(s, majorArpeggio),
+      ]),
+    ).toEqual([
+      ['up-1', 4, 1],
+      ['updown-1', 7, 2],
+      ['up-2', 7, 2],
+      ['updown-2', 13, 3],
+      ['up-3', 10, 3],
+      ['updown-3', 19, 5],
+    ])
+  })
+
+  it('fits every shape to a scale, every run but no block to an arpeggio', () => {
+    for (const shape of SCALE_SHAPES) {
+      expect(shapeFits(shape, cMajor.type)).toBe(true)
+      expect(shapeFits(shape, majorArpeggio)).toBe(shape.kind === 'run')
+    }
   })
 
   it('labels shapes as the Stage shows them', () => {
@@ -74,7 +105,9 @@ describe('realizeScale (§3.6)', () => {
           if (shape.kind !== 'run') continue
           const notes = realizeScale(s, shape)
           const label = `${type.id} root=${root} ${shape.id}`
-          expect(notes, label).toHaveLength(shapeNoteCount(shape))
+          expect(notes, label).toHaveLength(
+            shapeNoteCount(shape, type.intervals.length),
+          )
           expect(pitchClass(notes[0] ?? -1), label).toBe(root)
           if (shape.updown) expect(notes.at(-1), label).toBe(notes[0])
           const top = shape.updown ? notes.length >> 1 : notes.length - 1

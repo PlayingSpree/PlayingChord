@@ -23,12 +23,14 @@ const HANDS: readonly Hand[] = ['rh', 'lh']
 const BLACK_KEYS = new Set([1, 3, 6, 8, 10])
 
 describe('scale types (§3.6)', () => {
-  it('lists the four built-in types', () => {
-    expect(SCALE_TYPES.map((t) => t.id)).toEqual([
-      'major',
-      'natural-minor',
-      'harmonic-minor',
-      'melodic-minor',
+  it('lists the four scales and two arpeggios', () => {
+    expect(SCALE_TYPES.map((t) => [t.id, t.family])).toEqual([
+      ['major', 'scale'],
+      ['natural-minor', 'scale'],
+      ['harmonic-minor', 'scale'],
+      ['melodic-minor', 'scale'],
+      ['major-arpeggio', 'arpeggio'],
+      ['minor-arpeggio', 'arpeggio'],
     ])
     expect(isScaleTypeId('major')).toBe(true)
     expect(isScaleTypeId('dorian')).toBe(false)
@@ -41,8 +43,12 @@ describe('scale types (§3.6)', () => {
     expect(semis('natural-minor')).toEqual([0, 2, 3, 5, 7, 8, 10])
     expect(semis('harmonic-minor')).toEqual([0, 2, 3, 5, 7, 8, 11])
     expect(semis('melodic-minor')).toEqual([0, 2, 3, 5, 7, 9, 11])
+    expect(semis('major-arpeggio')).toEqual([0, 4, 7])
+    expect(semis('minor-arpeggio')).toEqual([0, 3, 7])
     for (const type of SCALE_TYPES) {
-      expect(type.intervals.map((i) => i.degree)).toEqual([1, 2, 3, 4, 5, 6, 7])
+      expect(type.intervals.map((i) => i.degree)).toEqual(
+        type.family === 'scale' ? [1, 2, 3, 4, 5, 6, 7] : [1, 3, 5],
+      )
     }
   })
 
@@ -56,12 +62,12 @@ describe('scale types (§3.6)', () => {
 })
 
 describe('fingering (§3.6)', () => {
-  it('has a one-octave row for every root × type × hand', () => {
+  it('has a row for every root × type × hand: one octave, or two for an arpeggio', () => {
     for (const type of SCALE_TYPES) {
       expect(type.fingering).toHaveLength(12)
       for (const row of type.fingering) {
         for (const hand of HANDS) {
-          expect(row[hand]).toHaveLength(8)
+          expect(row[hand]).toHaveLength(type.family === 'scale' ? 8 : 7)
           for (const finger of row[hand]) {
             expect(finger).toBeGreaterThanOrEqual(1)
             expect(finger).toBeLessThanOrEqual(5)
@@ -105,6 +111,7 @@ describe('fingering (§3.6)', () => {
   // over it (LH), and the thumb never lands on a black key.
   it('is a well-formed, thumb-on-white fingering for every scale and length', () => {
     for (const type of SCALE_TYPES) {
+      if (type.family !== 'scale') continue
       for (const root of ALL_PITCH_CLASSES) {
         const s: Scale = { root, type }
         for (const octaves of [1, 2, 3]) {
@@ -147,6 +154,67 @@ describe('fingering (§3.6)', () => {
     expect(rh(1, 'harmonic-minor')).toEqual([3, 4, 1, 2, 3, 1, 2, 3])
     expect(rh(1, 'melodic-minor')).toEqual([2, 3, 1, 2, 3, 4, 1, 2])
     expect(rh(6, 'melodic-minor')).toEqual([2, 3, 1, 2, 3, 4, 1, 2])
+  })
+})
+
+describe('arpeggio fingering (§3.6)', () => {
+  it('reads C major as the chart prints it, dropping or repeating the middle octave', () => {
+    const c = scale(0, 'major-arpeggio')
+    expect(scaleFingering(c, 'rh', 1)).toEqual([1, 2, 3, 5])
+    expect(scaleFingering(c, 'rh', 2)).toEqual([1, 2, 3, 1, 2, 3, 5])
+    expect(scaleFingering(c, 'rh', 3)).toEqual([1, 2, 3, 1, 2, 3, 1, 2, 3, 5])
+    expect(scaleFingering(c, 'lh', 1)).toEqual([5, 4, 2, 1])
+    expect(scaleFingering(c, 'lh', 3)).toEqual([5, 4, 2, 1, 4, 2, 1, 4, 2, 1])
+  })
+
+  it('keeps the inner root’s crossing finger from the row', () => {
+    // E♭ major: thumbs on G, the inner E♭ RH 4 though the run starts on 2.
+    const eFlat = scale(3, 'major-arpeggio')
+    expect(scaleFingering(eFlat, 'rh', 2)).toEqual([2, 1, 2, 4, 1, 2, 4])
+    expect(scaleFingering(eFlat, 'lh', 2)).toEqual([2, 1, 4, 2, 1, 4, 2])
+    // B♭ minor: the LH crosses with 3 but ends on 2.
+    const bFlatMinor = scale(10, 'minor-arpeggio')
+    expect(scaleFingering(bFlatMinor, 'lh', 1)).toEqual([3, 2, 1, 2])
+    expect(scaleFingering(bFlatMinor, 'lh', 3)).toEqual([
+      3, 2, 1, 3, 2, 1, 3, 2, 1, 2,
+    ])
+  })
+
+  // Catches a mistyped digit: one finger per note, the thumb off the black
+  // keys except in the two arpeggios with no white key, and only a start,
+  // an end or a turn-around (the top) takes the 5th finger.
+  it('is well formed for every arpeggio and length', () => {
+    const allBlack = new Set(['major-arpeggio:6', 'minor-arpeggio:3'])
+    for (const type of SCALE_TYPES) {
+      if (type.family !== 'arpeggio') continue
+      for (const root of ALL_PITCH_CLASSES) {
+        const s: Scale = { root, type }
+        for (const octaves of [1, 2, 3]) {
+          const notes = realizeScale(
+            s,
+            getScaleShape(`up-${octaves}` as 'up-1'),
+          )
+          for (const hand of HANDS) {
+            const fingers = scaleFingering(s, hand, octaves)
+            const label = `${type.id} root=${root} ${hand} ×${octaves}`
+            expect(fingers, label).toHaveLength(notes.length)
+            fingers.forEach((finger, i) => {
+              const note = notes[i]
+              if (finger === 1 && note !== undefined) {
+                expect(
+                  BLACK_KEYS.has(pitchClass(note)) &&
+                    !allBlack.has(`${type.id}:${root}`),
+                  label,
+                ).toBe(false)
+              }
+              if (finger === 5) {
+                expect(i === 0 || i === fingers.length - 1, label).toBe(true)
+              }
+            })
+          }
+        }
+      }
+    }
   })
 })
 

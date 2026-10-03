@@ -259,7 +259,7 @@ describe('scale presets (§4)', () => {
     ])
   })
 
-  it('ships presets 8–15, all 12 roots, in the spec’s shapes', () => {
+  it('ships presets 8–18, all 12 roots, in the spec’s shapes', () => {
     const summary = builtInScalePresets().map((p) => [
       p.id,
       p.pool.scaleTypes.length,
@@ -274,10 +274,32 @@ describe('scale presets (§4)', () => {
       ['major-scales-2-octaves', 1, 'updown-2'],
       ['minor-scales-2-octaves', 3, 'updown-2'],
       ['major-block-scales', 1, 'block'],
+      ['major-arpeggios', 1, 'up-1'],
+      ['minor-arpeggios', 1, 'up-1'],
+      ['arpeggios-2-octaves', 2, 'updown-2'],
     ])
     for (const preset of builtInScalePresets()) {
       expect(preset.pool.roots).toHaveLength(12)
     }
+  })
+
+  it('drops an arpeggio’s block — it has none (§3.6)', () => {
+    const preset: Preset = {
+      kind: 'scale',
+      id: 'p',
+      name: 'P',
+      pool: {
+        kind: 'product',
+        roots: [0],
+        scaleTypes: ['major', 'major-arpeggio'],
+      },
+      shapeIds: ['up-1', 'block'],
+    }
+    expect(expandPreset(preset).combos.map(comboKey)).toEqual([
+      's:0:major:up-1',
+      's:0:major:block',
+      's:0:major-arpeggio:up-1',
+    ])
   })
 
   it('never collides with a chord preset id', () => {

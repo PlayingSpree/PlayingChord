@@ -230,6 +230,7 @@ describe('scale spelling (§3.6)', () => {
 
   it('uses every letter exactly once in all 48 scales', () => {
     for (const type of SCALE_TYPES) {
+      if (type.family !== 'scale') continue
       for (const root of ALL_PITCH_CLASSES) {
         const letters = spellScale({ root, type }).map((n) => n.letter)
         expect(new Set(letters).size, `${type.id} root=${root}`).toBe(7)
@@ -261,6 +262,13 @@ describe('scale spelling (§3.6)', () => {
       'B',
     ])
     expect(nameOf(8, 'harmonic-minor')).toBe('G♯ harmonic minor')
+  })
+
+  it('names and spells an arpeggio from its key, as its scale', () => {
+    expect(nameOf(3, 'major-arpeggio')).toBe('E♭ major arpeggio')
+    expect(nameOf(8, 'minor-arpeggio')).toBe('G♯ minor arpeggio')
+    expect(spellScaleAs(1, 'major-arpeggio')).toEqual(['D♭', 'F', 'A♭'])
+    expect(spellScaleAs(3, 'minor-arpeggio')).toEqual(['E♭', 'G♭', 'B♭'])
   })
 
   it('spells G♯ harmonic minor with F𝄪', () => {

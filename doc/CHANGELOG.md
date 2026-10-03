@@ -15,6 +15,20 @@ artifact and are not recoverable.
 
 ---
 
+## 10.15.0 — 2026-10-03
+
+**Arpeggios.** Major and minor triad arpeggios are two new scale types on the Scales
+side (§3.6), so they are named, spelled, keyed, judged, graded and unlocked exactly
+as a scale is. They have no `block` shape, because a held arpeggio is just the
+chord; a preset that pairs them drops those combos, and the editor warns about it
+(§4). Their fingering is stored as two octaves, the form it is printed in (§3.6). The
+grade multiplier is now a quarter-second per note played, worked out from the
+combo, so the existing scale values stay the same and the shorter arpeggio runs
+get their own (§3.6). Three new built-in presets: Major arpeggios, Minor arpeggios,
+and Major + minor arpeggios · 2 octaves ↕ (§4).
+
+---
+
 ## 10.14.0 — 2026-09-27
 
 **Each hand's scales on their own record.** A scale run's hand is now part of its
