@@ -88,3 +88,15 @@ stats and weighted generation are keyed per **combo** `(root, typeId, voicingId)
 - Exceptions: simple, unambiguous requests (a one-line fix, a rename, a typo) and
   read-only work (answering questions, exploring or explaining code, running
   tests) can proceed without confirmation.
+
+## Task tracker (TickTick)
+
+This project's open tasks live in TickTick (`ticktick` MCP server): list **🤖Claude Projects**
+(project id `6abf47718f088b3af757530f`), column **PlayingChord** (id `6abf477c8f089f3768f08dd7`). The user edits it from the phone app, so re-read it instead of
+relying on what the session saw earlier.
+
+- "Add a todo" / "remind me to …" → create a task there. Keep the title short; put the detail in `content`.
+- "What's left?" / "my tasks" → list its open tasks.
+- After finishing work a task covers, offer to mark it complete. At the end of a session, offer to log known follow-ups; don't add tasks unasked.
+- Don't write `#` followed by a word or number in titles or content: TickTick turns it into a tag. Write "item 3", not "#3".
+- Keep secrets, credentials and vulnerability details out of task text; point to the local file instead.
