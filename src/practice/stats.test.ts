@@ -11,6 +11,7 @@ import {
   FAST_TIME_MS,
   fastTimeMs,
   gradeScaleOf,
+  handStandings,
   GRADE_EVIDENCE_FLOOR,
   gradeRank,
   IMPROVED_MIN_ATTEMPTS,
@@ -624,6 +625,40 @@ describe('allComboRows (§7 chord stats page)', () => {
       [comboKey(combo(1))]: record,
     })
     expect(rows.map((r) => r.key)).toEqual([comboKey(combo(1))])
+  })
+})
+
+describe('handStandings (§7.5 by-hand progress)', () => {
+  const window = (misses: number): ComboStatRecord => {
+    let record: ComboStatRecord | null = null
+    for (let i = 0; i < RECENT_OUTCOME_WINDOW; i++) {
+      const outcome = i < misses ? 'missed' : 'first-try'
+      record = applyOutcome(record, outcome, 1000, 2)
+    }
+    return record!
+  }
+
+  it('sets each hand’s runs side by side; blocks and chords stay out', () => {
+    const rows = allComboRows({
+      's:0:major:up-1': window(0),
+      's:7:major:up-1': window(0),
+      's:0:major:up-1:lh': window(10),
+      's:0:major:block': window(0),
+      '0:maj:any': window(0),
+    })
+    expect(handStandings(rows)).toEqual([
+      { hand: 'rh', played: 2, passing: 2, recentFirstTry: 1 },
+      { hand: 'lh', played: 1, passing: 0, recentFirstTry: 0 },
+    ])
+  })
+
+  it('reads an unplayed hand as nothing played', () => {
+    expect(handStandings([])[1]).toEqual({
+      hand: 'lh',
+      played: 0,
+      passing: 0,
+      recentFirstTry: null,
+    })
   })
 })
 

@@ -4,7 +4,7 @@ A web app for practicing piano chords and scales with a MIDI keyboard. The app s
 random chord or scale from a chosen preset, the user plays it on their connected MIDI
 keyboard, and the app validates the input and moves on to the next one.
 
-Spec version: **10.13.0** (2026-09-27) — chords and scales. Revision history lives in
+Spec version: **10.14.0** (2026-09-27) — chords and scales. Revision history lives in
 [CHANGELOG.md](CHANGELOG.md); this document describes only what the app *is* today.
 Both previously open questions are resolved (see [§9](#9-resolved-questions)). Build
 sequencing (what gets implemented first) is intentionally left outside this document.
@@ -84,7 +84,8 @@ sequencing (what gets implemented first) is intentionally left outside this docu
 - Track a **daily practice-time goal and streak** to encourage regular practice.
 - Drill **scales** the same way chords are drilled — the name is the prompt, the notes
   are recalled, and recall is graded on accuracy and time (§3.6, §6.6) — with the
-  standard fingering shown alongside as a reference.
+  standard fingering shown alongside as a reference, and each hand's runs tracked
+  on their own so a lagging hand is dealt, graded and seen as such.
 
 ### Non-goals
 
@@ -98,7 +99,8 @@ sequencing (what gets implemented first) is intentionally left outside this docu
   so it is never judged, and neither is evenness (§3.6).
 - No hand-split drills (e.g. "left hand plays the root, right hand plays the chord") — a
   single chord played anywhere on the keyboard. Scales likewise never check which hand
-  plays them, and hands-together scales are out of scope.
+  plays them: a run's hand is *declared* by the player and kept apart in the stats
+  (§3.6), never verified. Hands-together scales are out of scope.
 - No omitted-tone voicings (shell voicings, rootless voicings) — extended chords are
   drilled with all chord tones present (resolved, §9).
 - No non-MIDI input fallback — with no MIDI device connected the app shows a blocking
@@ -146,9 +148,9 @@ spec and the code mean exactly these by them. The UI never says *item*: it says
   §3.6): an entry in a preset's pool. It is what unlocks, passes, is
   set aside and is picked for a learn set (§5.1–§5.4).
 - **Combo** — an item played one way: `(root, chord type, voicing rule)` or
-  `(root, scale type, shape)`, one per voicing or shape its preset lists. Stats,
-  grades and weights are kept per combo (§5); an item's grade is its worst combo's
-  (§5.1).
+  `(root, scale type, shape, hand)`, one per voicing — or per shape and hand dealt —
+  its preset lists. Stats, grades and weights are kept per combo (§5); an item's
+  grade is its worst combo's (§5.1).
 - **Prompt** — one combo dealt on the Stage, with its display name and example
   (§3.4).
 - **Rep** — one prompt played, from shown to its ✔, misses and retries included
@@ -314,10 +316,26 @@ burn through by its third note. For runs it is about a quarter-second per note,
 rounded; an S therefore means roughly four notes a second including the start,
 hard but reachable, as the top of the scale is meant to be (§7.5).
 
-A **scale combo** is `(root, scaleType, shape)` — a shape changes both the time a
-rep takes and what it tests, so "D major, 2 octaves up and down" and "D major, 1
-octave up" have separate stats, grades and weights, just as two voicings of one
-chord do (§5).
+A **scale combo** is `(root, scaleType, shape, hand)` — a shape changes both the
+time a rep takes and what it tests, so "D major, 2 octaves up and down" and "D
+major, 1 octave up" have separate stats, grades and weights, just as two voicings of
+one chord do (§5).
+
+**Hand.** A run is played with one hand, and the two hands learn a key separately —
+the left hand's fingering is the right's mirrored, not repeated — so the hand is
+part of the combo: "E♭ major, LH" has its own stats, grade and weight beside "E♭
+major, RH". MIDI can't see hands, so the hand is **declared, never checked**: the
+player picks which hand runs are dealt for with the **Scale hand** setting — RH /
+LH / Both, default RH (§6.6) — and the prompt names the hand it wants (§7.3).
+*Both* deals every run once per hand, so the §5 weighting leans on whichever hand
+is weaker without any rule of its own, and since an item's grade is its worst
+combo's over the combos dealt (§5.1), a scale passes only once **both** hands reach
+D. That is what makes a lagging hand hold the unlock queue until it catches up —
+the push to practice it. One hand dealt, the other's record stands aside rather
+than counting against the item. `block` — every note at once, which no one hand can
+hold — has no hand, and expands once whatever the setting says. The hand is a
+combo, not an item: unlocking, passing, setting aside and the learn set stay per
+scale (§5.1–§5.4).
 
 **Spelling.** A scale is spelled strictly by degree — each letter once — so
 harmonic and melodic minor can need a double sharp (G♯ harmonic minor's F𝄪), which
@@ -333,8 +351,9 @@ raised degrees appear as accidentals — which is how a player meets them in pri
 type, hand and octave count, as data on the scale type. Minor forms that finger
 differently from the natural minor carry their own entry. `block` has none — there
 is no standard one. Where the keyboard shows a run, it also marks the keys the
-**thumb** plays (§6.6), for one hand at a time — the two thumbs land on different
-keys, and hands are never checked, so which one is a setting.
+**thumb** plays (§6.6), for the prompt's hand — the two thumbs land on different
+keys. The fingering names each note under its finger, so it can be hidden to keep a
+run pure recall (*Show fingering*, §6.6).
 
 **Example.** A scale prompt's example is its full run from a root near middle C (for
 `block`, the one octave), used by the keyboard overlays exactly as a chord's example
@@ -406,7 +425,8 @@ existed carries no kind and loads as a chord preset.
 - A preset's pool expands to **combos** of (chord × voicingId). Stats are keyed per combo
   — `(root, typeId, voicingId)` — so missing "C maj7, 2nd inversion" doesn't up-weight
   root-position C maj7 (§8). A scale preset's pool expands the same way, to
-  `(root, scaleType, shape)` combos (§3.6). Everything below — score, window,
+  `(root, scaleType, shape, hand)` combos — each run shape once per hand the Scale
+  hand setting deals, `block` once (§3.6). Everything below — score, window,
   weighting, queue, narrows — reads a combo only through its key, so it applies to
   scale combos unchanged; where a rule holds for both kinds it speaks of *items*
   (§3).
@@ -509,10 +529,12 @@ flashcard-style batches instead of the whole pool at once:
   With the §5 evidence floor the bar is **about two clean reps** at an ordinary
   pace rather than one — one rep is 1/5 of a window, which only clears D if it
   also lands inside S's second, where a single rep is unambiguous evidence.
-  An item spanning several combos — voicings or shapes — takes the **worst**
-  combo's grade, the same figure Home's In play row shows, so an item can't read
-  red there and pass
-  here; combos with no history yet don't count against it. Passing is a **latch** —
+  An item spanning several combos — voicings, or shapes and hands — takes the
+  **worst** combo's grade, the same figure Home's In play row shows, so an item
+  can't read red there and pass
+  here; combos with no history yet don't count against it, and only the combos
+  the preset deals are folded — for a scale, the hands the Scale hand setting
+  deals (§3.6). Passing is a **latch** —
   an item whose grade later falls back to F stays passed and its unlock stays
   open, since the unlock queue is a ratchet and the live grade is reported
   elsewhere anyway. Learn-mode prompts, Song-mode bars and daily
@@ -966,13 +988,21 @@ run exactly as they take a chord.
 - **Learn** overlays the whole run from the start and marks the **next expected
   key** as the run advances — the example, followed along. Practice shows only the
   progress so far and escalates per §6.4.
+- **The hand is never judged.** Every rule above holds whichever hand plays; the
+  prompt's hand (§3.6) decides only which combo the rep is recorded under and whose
+  fingering is shown.
 - **Thumb marks.** Wherever the run is overlaid — all of it in Learn, the rest of it
-  after a Practice reveal — the keys the chosen hand's thumb plays carry a `1`
+  after a Practice reveal — the keys the prompt's hand's thumb plays carry a `1`
   (§3.6 fingering), on top of whatever other mark the key shows. Never before the
   run is shown: marking a key before then would give away a note being recalled.
-  The hand is **Fingering hand**: Off / RH / LH, default RH, a persisted preference
-  set in the session sheet on the Scales side and in Settings (§7.2, §7.6). The
-  prompt's fingering line follows the same pick (§7.3).
+- **Two settings**, both persisted preferences set in the session sheet on the
+  Scales side and in Settings (§7.2, §7.6), each applied as it's picked:
+  **Scale hand** — RH / LH / Both, default RH — which hands' runs are dealt
+  (§3.6); and **Show fingering** — on by default — the prompt's fingering line
+  (§7.3) and these thumb marks. Off hides both: the line names every note under its
+  finger, so turning it off is how a run stays pure recall. (Before 10.14.0 one
+  *Fingering hand* setting — Off / RH / LH — did both jobs; `LH` carries over as
+  the left hand and `Off` as fingering hidden.)
 
 ---
 
@@ -1109,9 +1139,9 @@ session config, so they take effect as they're set.
   (§7.3) appear under the row while that mode is selected: Learn's *Chords to
   learn*, Free's *Worst chords only*, Song's *Tempo* / *Chords per
   progression* / *Show example*.
-  On the Scales side a *Fingering hand* row (Off / RH / LH, §6.6) sits under the
-  mode in every mode — like Song's settings a persisted preference, set as it's
-  picked.
+  On the Scales side a *Hand* row (RH / LH / Both) and a *Show fingering* toggle
+  (§6.6) sit under the mode in every mode — like Song's settings persisted
+  preferences, set as they're picked.
 - **Chords to learn** (Learn, §5.4): a chip per chord in play in the drafted
   preset, the not-yet-passed ones pre-ticked and tagged *new* as on
   Home's In play row (§7.1), with a line saying what the loop
@@ -1262,17 +1292,22 @@ counts a new progression in).
   chord-name size setting so they stay readable from the same distance as the name.
 - **Scale prompts**: the name large as ever ("E♭ major"), the shape as the text
   label where a chord shows its voicing ("2 octaves ↕", "block"; omitted for
-  `up-1`, as `any` is for chords) led by a small *scale* tag — on that line, not
-  beside the name, so the name row stays name + preview and the tag stands alone
-  there for `up-1` — and the **fingering** under it, the ascending fingers of the
-  *Fingering hand* (§6.6: `RH 1 2 3 1 2 3 4 5`, or `LH 5 4 3 2 1 3 2 1`) —
-  never judged (§3.6), and absent for `block` or with the setting off: one hand's
-  line is the one being played, and the other's would only crowd it. Each finger
+  `up-1`, as `any` is for chords) led by a small *scale* tag and, for a run, a
+  **hand** tag (`RH` / `LH`, §3.6) — on that line, not beside the name, so the
+  name row stays name + preview and the tags stand alone there for `up-1`. The
+  hand tag shows whether or not the fingering does: with both hands dealt it is
+  half of what the prompt asks. Under it the **fingering**, the ascending fingers
+  of the prompt's hand (§6.6: `1 2 3 1 2 3 4 5` for RH, `5 4 3 2 1 3 2 1` for LH)
+  — never judged (§3.6), and absent for `block` or with *Show fingering* off: one
+  hand's line is the one being played, and the other's would only crowd it. Each finger
   sits over the name of the note it plays, spelled by degree as on the staff, and
   every `1` is filled like the keyboard's thumb mark, so the thumb crossings read at
   a glance. The staff, when on, draws the one-octave
   ascending line in the treble clef near middle C, spelled by degree (§3.6). The
-  upcoming preview labels scales the same way.
+  upcoming preview labels scales the same way, and every scale label outside the
+  prompt — preview, lists, stats, Report — adds a run's hand after its shape
+  ("D major — 2 octaves ↕ · LH", "D major — RH"): unlike the `up-1` shape it is
+  never omitted, since the two hands are two different records.
 - **Keyboard visual**: shows currently held notes live; in Practice, after misses,
   overlays escalate per the hint stages (§6.4), always color + shape/icon; Learn mode
   overlays the example voicing from the start instead. When a note falls outside the
@@ -1410,6 +1445,12 @@ all sessions, for the side Home is switched to (§7.1), titled *Chord progress* 
   practiced — shared, since they come from the shared goal and active minutes —
   and total prompts, the side's own. Everything below the header is the side's
   own too, chord stats included.
+- **By hand** (Scales only, once a run has been played): a card per hand, RH
+  beside LH — how many of that hand's runs grade D or better out of how many it
+  has played, and the first-try share of their recent reps. Side by side is the
+  point: the gap between the hands is what a player can't see from one list of
+  combos, and what the Scale hand setting's *Both* is there to close (§3.6).
+  `block` has no hand and isn't counted.
 - Accuracy over time and time-to-correct trend (30 days), the goal/streak
   calendar (12 weeks), most-improved / needs-work chords, goal history, and the
   lifetime **best combo streak** (the longest run of consecutive first-try
@@ -1496,8 +1537,8 @@ all sessions, for the side Home is switched to (§7.1), titled *Chord progress* 
   goal minutes, daily practice length 5 / 10 / 15 / 20 min (§5.3's cap) and the
   daily split between its chord and scale legs,
   circle-of-fifths unlock order on/off (§5.1), new unlocks wait
-  for the next session on/off (§5.1, default on), scale fingering
-  hand Off / RH / LH (§6.6; also in the session sheet). (Mode sub-settings —
+  for the next session on/off (§5.1, default on), scale hand RH / LH / Both and
+  show scale fingering on/off (§6.6; both also in the session sheet). (Mode sub-settings —
   worst-chords-only, the learn set, Song's tempo / chords-per-progression /
   show-example — live in the session sheet, §7.2, not the settings panel; the
   session length lives there too.) Doubling and strict extra notes are chord
@@ -1559,6 +1600,17 @@ Scales (10.0.0) extend these without a migration:
   one becomes the chord side's), and the best combo streak becomes per side (the
   existing integer becomes the chord side's).
 
+Hands (10.14.0) extend them again without a migration:
+
+- **Left-hand scale stats** take a `:lh` suffix (`s:<root>:<scaleType>:<shape>:lh`).
+  A right-hand run keeps the unsuffixed key, so every run recorded before hands
+  existed reads as the right hand's — RH was the default fingering hand it was
+  played under — and nothing is rewritten. A `block` key never carries a hand; a
+  suffix on one, or any suffix but `lh`, parses to nothing.
+- **Settings** replace the one `scaleThumbHand` (Off / RH / LH) with `scaleHand`
+  (RH / LH / Both) and `scaleFingeringShown`, derived from it on load when absent
+  (§6.6).
+
 ---
 
 ## 9. Resolved Questions
@@ -1589,3 +1641,12 @@ specified in this document — track it separately (e.g. an issue tracker).
    but not judged, and hands are never checked (§3.6, §6.6). They sit behind a
    top-level Chords | Scales switch rather than mixed into chord screens (§7),
    and a preset is one kind or the other (§4).
+5. **Per-hand progress** — *resolved: the hand is a declared combo axis (§3.6).* A
+   player whose left hand lags needs the app to see it, but MIDI can't tell hands
+   apart, and guessing from register would file some reps under the wrong hand.
+   So the player declares the hand (the Scale hand setting), each hand's runs are
+   their own combos, and the existing machinery does the encouraging: *Both* lets
+   the weighting deal the weaker hand more, the pass waits for both hands, and
+   Progress sets them side by side (§7.5). Scales first; chords are expected to
+   follow on the same axis. This doesn't reopen hand-split drills (§1): a hand
+   says who plays the whole run, not how it is divided.

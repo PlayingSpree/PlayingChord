@@ -439,6 +439,7 @@ describe('lifecycle — block scales (§6.3)', () => {
       root: 0,
       scaleTypeId: 'major',
       shapeId: 'block',
+      hand: null,
     })
   const C_MAJOR = [60, 62, 64, 65, 67, 69, 71]
 

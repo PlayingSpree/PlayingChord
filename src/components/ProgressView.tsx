@@ -17,8 +17,11 @@ import {
   comboKey,
   comboSide,
   comboLabel,
+  handLabel,
+  handStandings,
   rankMostImproved,
   rankWorstCombos,
+  type HandStanding,
 } from '../practice'
 import { voicingLibrary } from '../theory'
 import { useSettings } from '../store/settingsStore'
@@ -106,9 +109,13 @@ export function ProgressView({
       })
     }
 
-    const combos = allComboRows(comboStats, library)
-      .map((row) => row.combo)
-      .filter((combo) => comboSide(combo) === side)
+    const rows = allComboRows(comboStats, library).filter(
+      (row) => comboSide(row.combo) === side,
+    )
+    const combos = rows.map((row) => row.combo)
+    // The two hands side by side (§7.5) — scales only, and only once a run
+    // has been played, so a page with no runs doesn't show two empty cards.
+    const standings = side === 'scales' ? handStandings(rows) : []
     const stats = new PersistedComboStats(appStorage)
     const allRecords = Object.values(dailyRecords)
     return {
@@ -143,6 +150,7 @@ export function ProgressView({
         label: comboLabel(combo, undefined, library),
         metric: `${Math.round((100 * record.firstTrySuccesses) / record.attempts)}% first-try`,
       })),
+      hands: standings.some((s) => s.played > 0) ? standings : null,
       empty: allRecords.length === 0 && combos.length === 0,
     }
   }, [goalMinutes, customRules, side])
@@ -184,6 +192,14 @@ export function ProgressView({
                 value={String(data.totalPrompts)}
               />
             </div>
+
+            {data.hands !== null && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {data.hands.map((standing) => (
+                  <HandCard key={standing.hand} standing={standing} />
+                ))}
+              </div>
+            )}
 
             <div className="grid gap-3 lg:grid-cols-2">
               <TrendChart
@@ -249,6 +265,41 @@ function StatCard({ label, value }: { label: string; value: string }) {
     <Card className="px-4 py-3">
       <SectionLabel className="text-xs">{label}</SectionLabel>
       <div className="text-[26px] font-extrabold">{value}</div>
+    </Card>
+  )
+}
+
+// One hand's scale runs at a glance (§7.5): how many are at the pass bar out
+// of how many played, and the recent first-try share. Two of these side by
+// side are the point — the gap between hands is what the page is showing.
+function HandCard({ standing }: { standing: HandStanding }) {
+  const { hand, played, passing, recentFirstTry } = standing
+  return (
+    <Card className="flex items-center gap-4 px-4 py-3">
+      <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-extrabold text-slate-900">
+        {handLabel(hand)}
+      </span>
+      {played === 0 ? (
+        <span className="text-sm text-ink-muted">No runs played yet</span>
+      ) : (
+        <>
+          <div>
+            <SectionLabel className="text-xs">D or better</SectionLabel>
+            <div className="text-[22px] font-extrabold">
+              {passing}
+              <span className="text-base text-ink-muted"> / {played} runs</span>
+            </div>
+          </div>
+          <div>
+            <SectionLabel className="text-xs">Recent first-try</SectionLabel>
+            <div className="text-[22px] font-extrabold">
+              {recentFirstTry === null
+                ? '—'
+                : `${Math.round(recentFirstTry * 100)}%`}
+            </div>
+          </div>
+        </>
+      )}
     </Card>
   )
 }

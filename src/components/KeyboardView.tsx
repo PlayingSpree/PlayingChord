@@ -104,7 +104,7 @@ export function KeyboardView() {
   const prompt = usePractice((s) => s.prompt)
   const run = usePractice((s) => s.run)
   const songShowExample = useSettings((s) => s.settings.songShowExample)
-  const thumbHand = useSettings((s) => s.settings.scaleThumbHand)
+  const fingeringShown = useSettings((s) => s.settings.scaleFingeringShown)
 
   // A run is judged in the octave its first note picked but drawn in the one
   // it was shown in (§7.3), so the keyboard never jumps mid-rep: everything
@@ -155,12 +155,13 @@ export function KeyboardView() {
     const thumbs =
       prompt?.kind === 'scale' &&
       prompt.shape.kind === 'run' &&
-      thumbHand !== 'off'
+      prompt.hand !== null &&
+      fingeringShown
         ? new Set(
             [
               ...scaleThumbNotes(
                 prompt.scale,
-                thumbHand,
+                prompt.hand,
                 prompt.shape.octaves,
                 runNotes,
               ),

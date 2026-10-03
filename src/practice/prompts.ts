@@ -10,6 +10,7 @@ import {
   spellRoot,
   spellScaleTonic,
   type Chord,
+  type Hand,
   type NoteSpelling,
   type Scale,
   type ScaleShape,
@@ -37,13 +38,15 @@ export interface ChordPrompt {
   example: number[]
 }
 
-// A scale prompt (§3.6): the scale, the shape it is played in, and the same
-// name / example pair — the example being the full run from a root near
-// middle C (for `block`, the one octave).
+// A scale prompt (§3.6): the scale, the shape it is played in, the hand a run
+// is declared for (null for `block`), and the same name / example pair — the
+// example being the full run from a root near middle C (for `block`, the one
+// octave).
 export interface ScalePrompt {
   kind: 'scale'
   scale: Scale
   shape: ScaleShape
+  hand: Hand | null
   displayName: string
   rootSpelling: NoteSpelling
   example: number[]
@@ -105,6 +108,7 @@ function createScalePrompt(combo: ScaleCombo): ScalePrompt {
     kind: 'scale',
     scale,
     shape,
+    hand: combo.hand,
     displayName: scaleDisplayName(scale),
     rootSpelling: spellScaleTonic(scale),
     example: realizeScale(scale, shape),
@@ -115,9 +119,15 @@ function scaleOf(combo: ScaleCombo): Scale {
   return { root: combo.root, type: getScaleType(combo.scaleTypeId) }
 }
 
+// How a hand reads wherever a scale combo is labelled (§7.3).
+export function handLabel(hand: Hand): string {
+  return hand.toUpperCase()
+}
+
 // Compact display label for a combo outside a live prompt (stats bar, the
 // Phase 7 review lists): the name plus the voicing or shape — omitted for
-// the `any` rule and the `up-1` shape, same as the prompt area (§7.3).
+// the `any` rule and the `up-1` shape, same as the prompt area (§7.3) — and
+// a run's hand, which is never omitted: it is half of what was drilled.
 export function comboLabel(
   combo: Combo,
   rootSpelling?: NoteSpelling,
@@ -137,8 +147,11 @@ export function comboLabelParts(
 ): { name: string; variant: string | null } {
   if (isScaleCombo(combo)) {
     const name = scaleDisplayName(scaleOf(combo))
-    if (combo.shapeId === 'up-1') return { name, variant: null }
-    return { name, variant: getScaleShape(combo.shapeId).name }
+    const parts = [
+      combo.shapeId === 'up-1' ? null : getScaleShape(combo.shapeId).name,
+      combo.hand === null ? null : handLabel(combo.hand),
+    ].filter((part) => part !== null)
+    return { name, variant: parts.length === 0 ? null : parts.join(' · ') }
   }
   const chord: Chord = { root: combo.root, type: getChordType(combo.typeId) }
   const name = chordDisplayName(chord, rootSpelling ?? spellRoot(combo.root))

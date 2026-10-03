@@ -71,6 +71,7 @@ import type { ReportChord } from './report'
 import type { SessionEvent } from './session'
 import {
   spellRoot,
+  type Hand,
   type NoteSpelling,
   type PitchClass,
   type VoicingLibrary,
@@ -452,13 +453,16 @@ export class Pool {
 // What resolution needs from the layers around it: the preset list for a key
 // (built-ins plus the custom library), the voicing library those presets
 // reference, the stored §5.1 progress, the unlock-order setting, and the
-// persisted per-combo records the grades and the worst-only narrow read.
+// persisted per-combo records the grades and the worst-only narrow read, and
+// the hands a scale pool's runs are dealt for (§3.6) — the right hand's alone
+// when absent.
 export interface PoolSources {
   presets: (diatonicKey: PitchClass) => readonly Preset[]
   voicings: () => VoicingLibrary
   storedProgress: (presetId: string) => PresetProgressRecord | null
   unlockByFifths: () => boolean
   stats: ComboStatsSource
+  scaleHands?: () => readonly Hand[]
 }
 
 // A preset's unlock order (§5.1), from its expansion. Circle-of-fifths order
@@ -510,14 +514,15 @@ export function createPoolResolver(sources: PoolSources): PoolResolver {
     const first = list[0]
     if (!first) throw new Error('No presets defined')
     const voicings = sources.voicings()
+    const hands = sources.scaleHands?.()
     let preset = list.find((p) => p.id === presetId) ?? first
-    let expansion = expandPreset(preset, voicings)
+    let expansion = expandPreset(preset, voicings, hands)
     // A custom preset can expand to nothing (its rules were edited under it, or
     // persisted junk); fall back to the first preset — built-ins always have
     // satisfiable combos.
     if (expansion.combos.length === 0 && preset !== first) {
       preset = first
-      expansion = expandPreset(preset, voicings)
+      expansion = expandPreset(preset, voicings, hands)
     }
 
     const chordOrder = unlockOrderOf(

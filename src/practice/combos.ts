@@ -1,9 +1,11 @@
 import {
   BUILT_IN_VOICING_LIBRARY,
   CHORD_TYPES,
+  getScaleShape,
   isScaleShapeId,
   isScaleTypeId,
   type ChordTypeId,
+  type Hand,
   type PitchClass,
   type ScaleShapeId,
   type ScaleTypeId,
@@ -24,11 +26,15 @@ export interface ChordCombo {
   voicingId: string
 }
 
+// `hand` is the hand the player declared for a run (§3.6) — declared, never
+// checked, since MIDI can't see hands. A `block` shape is every note at once,
+// which no one hand can hold, so it has none.
 export interface ScaleCombo {
   kind: 'scale'
   root: PitchClass
   scaleTypeId: ScaleTypeId
   shapeId: ScaleShapeId
+  hand: Hand | null
 }
 
 export type Combo = ChordCombo | ScaleCombo
@@ -51,11 +57,21 @@ export function comboKeySide(key: string): Side {
   return key.startsWith('s:') ? 'scales' : 'chords'
 }
 
+// The hand a shape is played with, given the one declared: a run takes it,
+// `block` takes none (§3.6).
+export function shapeHand(shapeId: ScaleShapeId, hand: Hand): Hand | null {
+  return getScaleShape(shapeId).kind === 'run' ? hand : null
+}
+
 // Scale keys carry a prefix so every chord key — and the stats persisted
-// under it — is byte-identical to what it was before scales (§8).
+// under it — is byte-identical to what it was before scales (§8). A
+// right-hand run keeps the key every run had before hands were declared, so
+// that history reads as the right hand's — the default hand it was played
+// under; only a left-hand run adds a suffix.
 export function comboKey(combo: Combo): string {
   if (isScaleCombo(combo)) {
-    return `s:${combo.root}:${combo.scaleTypeId}:${combo.shapeId}`
+    const base = `s:${combo.root}:${combo.scaleTypeId}:${combo.shapeId}`
+    return combo.hand === 'lh' ? `${base}:lh` : base
   }
   return `${combo.root}:${combo.typeId}:${combo.voicingId}`
 }
@@ -79,7 +95,7 @@ export function parseComboKey(
   voicings: VoicingLibrary = BUILT_IN_VOICING_LIBRARY,
 ): Combo | null {
   if (key.startsWith('s:')) {
-    const [, rootPart, scaleTypeId, shapeId, ...rest] = key.split(':')
+    const [, rootPart, scaleTypeId, shapeId, handPart, ...rest] = key.split(':')
     const root = parseRoot(rootPart)
     if (
       root === null ||
@@ -91,7 +107,12 @@ export function parseComboKey(
     ) {
       return null
     }
-    return { kind: 'scale', root, scaleTypeId, shapeId }
+    // Only a run takes a hand, and only the left hand is spelled out.
+    const hand = shapeHand(shapeId, handPart === 'lh' ? 'lh' : 'rh')
+    if (handPart !== undefined && (handPart !== 'lh' || hand === null)) {
+      return null
+    }
+    return { kind: 'scale', root, scaleTypeId, shapeId, hand }
   }
   const [rootPart, typeId, ...voicingParts] = key.split(':')
   const voicingId = voicingParts.join(':')

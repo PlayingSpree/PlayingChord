@@ -1,4 +1,4 @@
-import type { MatchSettings } from '../theory'
+import type { Hand, MatchSettings } from '../theory'
 
 // Chord-name display size (§7 prompt area): discrete steps rather than a
 // free px value, so every size stays legible and the settings UI is a
@@ -6,11 +6,16 @@ import type { MatchSettings } from '../theory'
 export const CHORD_NAME_SIZES = ['sm', 'md', 'lg', 'xl'] as const
 export type ChordNameSize = (typeof CHORD_NAME_SIZES)[number]
 
-// Fingering hand (§6.6): whose fingering the prompt shows and whose thumb the
-// keyboard marks on a shown scale run — the two hands' thumbs land on
-// different keys, and hands are never checked, so it's a pick.
-export const SCALE_THUMB_HANDS = ['off', 'rh', 'lh'] as const
-export type ScaleThumbHand = (typeof SCALE_THUMB_HANDS)[number]
+// Scale hand (§3.6, §6.6): which hand scale runs are dealt for. Hands are
+// declared, never checked — MIDI can't see them — so it's a pick, and each
+// hand's runs are combos of their own. `both` deals every run once per hand,
+// so the weighted draw leans on whichever hand is weaker (§5).
+export const SCALE_HAND_PICKS = ['rh', 'lh', 'both'] as const
+export type ScaleHandPick = (typeof SCALE_HAND_PICKS)[number]
+
+export function scaleHandsOf(pick: ScaleHandPick): readonly Hand[] {
+  return pick === 'both' ? ['rh', 'lh'] : [pick]
+}
 
 // Tunable practice behavior (DESIGN.md §6.2, §6.3): the two matcher toggles
 // plus the two lifecycle delays. Lives in practice/ so the lifecycle machine
@@ -60,8 +65,12 @@ export interface PracticeSettings extends MatchSettings {
   songTempoBpm: number
   songChordCount: number // 2–4 chords per progression
   songShowExample: boolean // overlay each bar's example voicing, Learn-style
-  // Fingering hand (§6.6) — set in the session sheet as well as Settings.
-  scaleThumbHand: ScaleThumbHand
+  // Scale hand (§6.6) — set in the session sheet as well as Settings.
+  scaleHand: ScaleHandPick
+  // Shows the run's fingering (§6.6, §7.3): the prompt's fingering line —
+  // which names each note under its finger — and the keyboard's thumb marks.
+  // Off keeps a run pure recall.
+  scaleFingeringShown: boolean
 }
 
 export const DEFAULT_PRACTICE_SETTINGS: PracticeSettings = {
@@ -82,7 +91,8 @@ export const DEFAULT_PRACTICE_SETTINGS: PracticeSettings = {
   songTempoBpm: 60,
   songChordCount: 4,
   songShowExample: true,
-  scaleThumbHand: 'rh',
+  scaleHand: 'rh',
+  scaleFingeringShown: true,
 }
 
 export const MAX_DELAY_MS = 10_000
@@ -137,13 +147,21 @@ function asChordNameSize(
     : fallback
 }
 
-function asScaleThumbHand(
-  value: unknown,
-  fallback: ScaleThumbHand,
-): ScaleThumbHand {
-  return SCALE_THUMB_HANDS.includes(value as ScaleThumbHand)
-    ? (value as ScaleThumbHand)
+function asScaleHand(value: unknown, fallback: ScaleHandPick): ScaleHandPick {
+  return SCALE_HAND_PICKS.includes(value as ScaleHandPick)
+    ? (value as ScaleHandPick)
     : fallback
+}
+
+// Settings written before 10.14.0 carry one `scaleThumbHand` (off / rh / lh)
+// that was both the fingering's hand and its on/off: `lh` becomes the left
+// hand, `off` the fingering hidden.
+function legacyScaleHand(raw: Record<string, unknown>): ScaleHandPick {
+  return raw.scaleThumbHand === 'lh' ? 'lh' : 'rh'
+}
+
+function legacyFingeringShown(raw: Record<string, unknown>): boolean {
+  return raw.scaleThumbHand !== 'off'
 }
 
 export function sanitizeSongTempoBpm(value: unknown): number {
@@ -203,9 +221,10 @@ export function sanitizeSettings(value: unknown): PracticeSettings {
       defaults.songChordCount,
     ),
     songShowExample: asBoolean(raw.songShowExample, defaults.songShowExample),
-    scaleThumbHand: asScaleThumbHand(
-      raw.scaleThumbHand,
-      defaults.scaleThumbHand,
+    scaleHand: asScaleHand(raw.scaleHand, legacyScaleHand(raw)),
+    scaleFingeringShown: asBoolean(
+      raw.scaleFingeringShown,
+      legacyFingeringShown(raw),
     ),
   }
 }

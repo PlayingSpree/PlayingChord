@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { ALL_PITCH_CLASSES, type ScaleTypeId } from '../theory'
-import type { Combo } from './combos'
+import { shapeHand, type Combo } from './combos'
 import { PASS_MIN_GRADE } from './stats'
 import {
   activeChordCount,
@@ -79,6 +79,7 @@ describe('chordOrderOf (§5 unlock order)', () => {
         root: 3,
         scaleTypeId: 'major',
         shapeId: 'updown-2',
+        hand: 'rh',
       }),
     ).toBe('s:3:major')
   })
@@ -90,6 +91,7 @@ describe('chordOrderOf (§5 unlock order)', () => {
         root,
         scaleTypeId,
         shapeId: 'up-1',
+        hand: 'rh',
       }))
     const roots = (order: string[]) => order.map((key) => key.split(':')[1])
     // C G F D B♭ A E♭ E A♭ B D♭ F♯
@@ -132,6 +134,7 @@ describe('chordOrderOf (§5 unlock order)', () => {
           root,
           scaleTypeId,
           shapeId,
+          hand: shapeHand(shapeId, 'rh'),
         })),
       ),
     )

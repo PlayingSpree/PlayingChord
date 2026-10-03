@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { matches, spellMajorScaleDegree, type ScaleShapeId } from '../theory'
-import type { ScaleCombo } from './combos'
+import {
+  matches,
+  spellMajorScaleDegree,
+  type Hand,
+  type ScaleShapeId,
+} from '../theory'
+import { shapeHand, type ScaleCombo } from './combos'
 import { comboLabel, comboLabelParts, createPrompt } from './prompts'
 
 describe('createPrompt', () => {
@@ -43,6 +48,7 @@ describe('scale prompts (§3.4, §3.6)', () => {
       root: 3,
       scaleTypeId: 'natural-minor',
       shapeId: 'up-1',
+      hand: 'rh',
     })
     expect(prompt.kind).toBe('scale')
     expect(prompt.displayName).toBe('E♭ natural minor')
@@ -56,37 +62,43 @@ describe('scale prompts (§3.4, §3.6)', () => {
       root: 8,
       scaleTypeId: 'harmonic-minor',
       shapeId: 'up-1',
+      hand: 'rh',
     })
     expect(prompt.displayName).toBe('G♯ harmonic minor')
     expect(prompt.rootSpelling.letter).toBe('G')
   })
 
-  it('labels the shape, except up-1 (as `any` is omitted for chords)', () => {
-    const dMajor = (shapeId: ScaleShapeId): ScaleCombo => ({
-      kind: 'scale',
-      root: 2,
-      scaleTypeId: 'major',
-      shapeId,
-    })
-    expect(comboLabel(dMajor('up-1'))).toBe('D major')
-    expect(comboLabel(dMajor('updown-2'))).toBe('D major — 2 octaves ↕')
+  const dMajor = (shapeId: ScaleShapeId, hand: Hand = 'rh'): ScaleCombo => ({
+    kind: 'scale',
+    root: 2,
+    scaleTypeId: 'major',
+    shapeId,
+    hand: shapeHand(shapeId, hand),
+  })
+
+  it('labels the shape, except up-1, and always a run’s hand', () => {
+    expect(comboLabel(dMajor('up-1'))).toBe('D major — RH')
+    expect(comboLabel(dMajor('up-1', 'lh'))).toBe('D major — LH')
+    expect(comboLabel(dMajor('updown-2', 'lh'))).toBe(
+      'D major — 2 octaves ↕ · LH',
+    )
+    // A block has no hand to name.
     expect(comboLabel(dMajor('block'))).toBe('D major — block')
   })
 
   it('splits the label into name and shape for the upcoming preview', () => {
-    const dMajor = (shapeId: ScaleShapeId): ScaleCombo => ({
-      kind: 'scale',
-      root: 2,
-      scaleTypeId: 'major',
-      shapeId,
-    })
     expect(comboLabelParts(dMajor('up-1'))).toEqual({
       name: 'D major',
-      variant: null,
+      variant: 'RH',
     })
     expect(comboLabelParts(dMajor('updown-2'))).toEqual({
       name: 'D major',
-      variant: '2 octaves ↕',
+      variant: '2 octaves ↕ · RH',
     })
+  })
+
+  it('carries the combo’s hand onto the prompt', () => {
+    expect(createPrompt(dMajor('up-2', 'lh')).hand).toBe('lh')
+    expect(createPrompt(dMajor('block')).hand).toBeNull()
   })
 })

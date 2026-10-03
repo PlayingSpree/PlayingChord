@@ -27,6 +27,7 @@ import {
   romanNumeral,
   carryProgressAcrossEdit,
   sanitizeSessionLength,
+  scaleHandsOf,
   DEFAULT_SESSION_LENGTH,
   SessionRun,
   SongEngine,
@@ -341,6 +342,9 @@ export interface PracticeStoreState {
   // Re-derive the active preset's unlock order after the §5.1 order setting
   // changes; the unlocked count carries over onto the new order.
   refreshUnlockOrder(): void
+  // Re-expand the scale pool after the Scale hand setting changes (§3.6):
+  // which hands' runs are dealt, graded and passed on moves with it.
+  refreshScaleHand(): void
   // Every pool chord in unlock order with its locked/unlocked/passed status
   // and display label — the unlock chip's per-chord drill-down (§7).
   chordPassStatus(): readonly PoolPassEntry[]
@@ -486,6 +490,7 @@ export function createPracticeStore({
         storedProgress: (id: string) => progressStore.get(id),
         unlockByFifths: () => settings().unlockByFifths,
         stats,
+        scaleHands: () => scaleHandsOf(settings().scaleHand),
       })
     const resolvers: Record<Side, ReturnType<typeof resolverFor>> = {
       chords: resolverFor('chords'),
@@ -1380,6 +1385,23 @@ export function createPracticeStore({
         if (get().mode !== 'song' && get().prompt !== null) nextPrompt()
       },
 
+      refreshScaleHand() {
+        invalidateDaily() // the scale leg deals the chosen hands' runs too
+        if (side !== 'scales') return
+        // The items and their order don't move — a hand is a combo, not an
+        // item — so the record stands; the combos under it re-expand.
+        pool = resolvePool(get().presetId, get().diatonicKey)
+        dealer.narrowed()
+        // A new snapshot, so Home's In play row re-folds its grades over
+        // the hands now dealt.
+        set({ progress: pool.progress })
+        // Set from the sheet or Settings, so usually with no prompt up; a
+        // live one redeals so its hand is one the setting deals.
+        if (sessionLive && get().mode !== 'song' && get().prompt !== null) {
+          nextPrompt()
+        }
+      },
+
       chordPassStatus() {
         return pool.passList()
       },
@@ -1484,6 +1506,7 @@ export const resolveAppPool = createPoolResolver({
   storedProgress: (presetId) => appProgress.get(presetId),
   unlockByFifths: () => settingsStore.getState().settings.unlockByFifths,
   stats: new PersistedComboStats(appStorage),
+  scaleHands: () => scaleHandsOf(settingsStore.getState().settings.scaleHand),
 })
 
 // An edit can move a custom preset's items around its unlock order, so each

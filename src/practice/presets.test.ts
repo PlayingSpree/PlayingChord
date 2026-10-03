@@ -3,6 +3,7 @@ import {
   matches,
   pitchClass,
   voicingLibrary,
+  type Hand,
   type VoicingRule,
 } from '../theory'
 import { comboKey } from './combos'
@@ -235,8 +236,27 @@ describe('scale presets (§4)', () => {
       root: 0,
       scaleTypeId: 'major',
       shapeId: 'up-1',
+      hand: 'rh',
     })
     expect(rootSpellings.size).toBe(0)
+  })
+
+  it('expands each run once per hand dealt, a block once (§3.6)', () => {
+    const preset: ScalePreset = {
+      kind: 'scale',
+      id: 'test',
+      name: 'Test',
+      pool: { kind: 'product', roots: [0], scaleTypes: ['major'] },
+      shapeIds: ['up-1', 'block'],
+    }
+    const keys = (hands: readonly Hand[]) =>
+      expandPreset(preset, undefined, hands).combos.map(comboKey)
+    expect(keys(['lh'])).toEqual(['s:0:major:up-1:lh', 's:0:major:block'])
+    expect(keys(['rh', 'lh'])).toEqual([
+      's:0:major:up-1',
+      's:0:major:up-1:lh',
+      's:0:major:block',
+    ])
   })
 
   it('ships presets 8–15, all 12 roots, in the spec’s shapes', () => {

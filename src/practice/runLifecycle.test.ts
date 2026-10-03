@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ScaleShapeId } from '../theory'
 import type { LifecycleState } from './lifecycle'
+import { shapeHand } from './combos'
 import { createPrompt } from './prompts'
 import { RunLifecycle } from './runLifecycle'
 import { DEFAULT_PRACTICE_SETTINGS } from './settings'
@@ -10,7 +11,13 @@ const C_UP = [60, 62, 64, 65, 67, 69, 71, 72]
 const ADVANCE = DEFAULT_PRACTICE_SETTINGS.autoAdvanceMs
 
 const cMajor = (shapeId: ScaleShapeId) =>
-  createPrompt({ kind: 'scale', root: 0, scaleTypeId: 'major', shapeId })
+  createPrompt({
+    kind: 'scale',
+    root: 0,
+    scaleTypeId: 'major',
+    shapeId,
+    hand: shapeHand(shapeId, 'rh'),
+  })
 
 function setup(revealOnMisses?: () => boolean) {
   const advances: number[] = []

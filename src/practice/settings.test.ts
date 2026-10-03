@@ -6,6 +6,7 @@ import {
   MAX_SONG_TEMPO_BPM,
   MIN_SONG_TEMPO_BPM,
   sanitizeSettings,
+  scaleHandsOf,
 } from './settings'
 
 describe('sanitizeSettings', () => {
@@ -94,7 +95,8 @@ describe('sanitizeSettings', () => {
       songTempoBpm: 90,
       songChordCount: 3,
       songShowExample: false,
-      scaleThumbHand: 'lh',
+      scaleHand: 'both',
+      scaleFingeringShown: false,
     }
     expect(sanitizeSettings(valid)).toEqual(valid)
   })
@@ -180,15 +182,42 @@ describe('sanitizeSettings', () => {
     expect(sanitizeSettings({ chordNameSize: 3 }).chordNameSize).toBe('lg')
   })
 
-  it('defaults the scale thumb marks to the right hand', () => {
-    expect(sanitizeSettings({}).scaleThumbHand).toBe('rh')
-    for (const hand of ['off', 'rh', 'lh']) {
-      expect(sanitizeSettings({ scaleThumbHand: hand }).scaleThumbHand).toBe(
-        hand,
-      )
+  it('defaults scales to the right hand with fingering shown', () => {
+    expect(sanitizeSettings({})).toMatchObject({
+      scaleHand: 'rh',
+      scaleFingeringShown: true,
+    })
+    for (const hand of ['rh', 'lh', 'both']) {
+      expect(sanitizeSettings({ scaleHand: hand }).scaleHand).toBe(hand)
     }
-    expect(sanitizeSettings({ scaleThumbHand: 'both' }).scaleThumbHand).toBe(
-      'rh',
-    )
+    expect(sanitizeSettings({ scaleHand: 'off' }).scaleHand).toBe('rh')
+    expect(
+      sanitizeSettings({ scaleFingeringShown: 'no' }).scaleFingeringShown,
+    ).toBe(true)
+  })
+
+  it('splits the old fingering hand into a hand and a fingering toggle', () => {
+    expect(sanitizeSettings({ scaleThumbHand: 'lh' })).toMatchObject({
+      scaleHand: 'lh',
+      scaleFingeringShown: true,
+    })
+    expect(sanitizeSettings({ scaleThumbHand: 'off' })).toMatchObject({
+      scaleHand: 'rh',
+      scaleFingeringShown: false,
+    })
+    // The new fields win once written; the old one is dropped.
+    const next = sanitizeSettings({
+      scaleThumbHand: 'off',
+      scaleHand: 'both',
+      scaleFingeringShown: true,
+    })
+    expect(next).toMatchObject({ scaleHand: 'both', scaleFingeringShown: true })
+    expect(next).not.toHaveProperty('scaleThumbHand')
+  })
+
+  it('deals one hand, or both', () => {
+    expect(scaleHandsOf('rh')).toEqual(['rh'])
+    expect(scaleHandsOf('lh')).toEqual(['lh'])
+    expect(scaleHandsOf('both')).toEqual(['rh', 'lh'])
   })
 })

@@ -38,6 +38,7 @@ const C_SCALE: Combo = {
   root: 0,
   scaleTypeId: 'major',
   shapeId: 'block',
+  hand: null,
 }
 
 const poolWith = (

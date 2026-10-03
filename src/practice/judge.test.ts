@@ -14,6 +14,7 @@ const run = () =>
     root: 0,
     scaleTypeId: 'major',
     shapeId: 'up-1',
+    hand: 'rh',
   })
 const block = () =>
   createPrompt({
@@ -21,6 +22,7 @@ const block = () =>
     root: 0,
     scaleTypeId: 'major',
     shapeId: 'block',
+    hand: null,
   })
 
 function setup() {

@@ -60,9 +60,32 @@ describe('scale combo keys (§8)', () => {
       root: 3,
       scaleTypeId: 'harmonic-minor',
       shapeId: 'updown-2',
+      hand: 'rh',
     }
     expect(comboKey(combo)).toBe('s:3:harmonic-minor:updown-2')
     expect(parseComboKey(comboKey(combo))).toEqual(combo)
+  })
+
+  it('keeps a right-hand run on the pre-hands key; suffixes the left (§8)', () => {
+    const run: ScaleCombo = {
+      kind: 'scale',
+      root: 0,
+      scaleTypeId: 'major',
+      shapeId: 'up-1',
+      hand: 'lh',
+    }
+    expect(comboKey(run)).toBe('s:0:major:up-1:lh')
+    expect(parseComboKey('s:0:major:up-1:lh')).toEqual(run)
+    // History written before hands reads as the right hand's.
+    expect(parseComboKey('s:0:major:up-1')).toEqual({ ...run, hand: 'rh' })
+    // A block has no hand, and can't be given one.
+    expect(parseComboKey('s:0:major:block')).toEqual({
+      ...run,
+      shapeId: 'block',
+      hand: null,
+    })
+    expect(parseComboKey('s:0:major:block:lh')).toBeNull()
+    expect(parseComboKey('s:0:major:up-1:rh')).toBeNull()
   })
 
   it('parses stale or malformed scale keys to null', () => {
@@ -91,6 +114,7 @@ describe('comboKeySide (§8)', () => {
         root: 0,
         scaleTypeId: 'major',
         shapeId: 'up-1',
+        hand: 'rh',
       }),
     ).toBe('scales')
   })

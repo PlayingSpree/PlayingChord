@@ -3,6 +3,7 @@ import { usePractice, type UpcomingChord } from '../store/practiceStore'
 import { useSettings } from '../store/settingsStore'
 import {
   FIRST_TRY_STREAK_DISPLAY_MIN,
+  handLabel,
   MODE_POLICY,
   type ChordNameSize,
   type Hint,
@@ -124,13 +125,20 @@ export function PromptCard() {
           <p className="text-xl text-ink-muted">{chordPrompt.voicing.name}</p>
         )}
 
-      {/* The tag rides the shape's line rather than the name, so the name
-          row stays name + preview; for `up-1` it stands alone there. */}
+      {/* The tags ride the shape's line rather than the name, so the name
+          row stays name + preview; for `up-1` they stand alone there. A run
+          names its hand whether or not its fingering shows — with both
+          hands dealt, it is the other half of the prompt (§7.3). */}
       {scalePrompt !== null && (
         <p className="flex items-center gap-3 text-xl text-ink-muted">
           <span className="rounded-full border-2 border-info-border px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide text-info-light">
             scale
           </span>
+          {scalePrompt.hand !== null && (
+            <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-extrabold tracking-wide text-slate-900">
+              {handLabel(scalePrompt.hand)}
+            </span>
+          )}
           {scalePrompt.shape.id !== 'up-1' && scalePrompt.shape.name}
         </p>
       )}
@@ -479,24 +487,22 @@ function learnLine(prompt: Prompt | null): string {
     : 'notes shown below — hold them all at once'
 }
 
-// The standard fingering (§3.6, §7.3) for the fingering hand (§6.6):
-// shown, never judged, and absent for `block`, which has none, or with the
-// setting off. The run's ascending fingers — the descent plays them back in
+// The standard fingering (§3.6, §7.3) for the run's hand (§6.6): shown,
+// never judged, and absent for `block`, which has none, or with Show
+// fingering off. The run's ascending fingers — the descent plays them back in
 // reverse — each over the note it plays, with the thumb's 1 filled like the
-// keyboard's thumb mark.
+// keyboard's thumb mark. The hand itself is tagged on the line above.
 function FingeringLine({ prompt }: { prompt: ScalePrompt }) {
-  const hand = useSettings((s) => s.settings.scaleThumbHand)
-  if (prompt.shape.kind !== 'run' || hand === 'off') return null
+  const shown = useSettings((s) => s.settings.scaleFingeringShown)
+  const hand = prompt.hand
+  if (prompt.shape.kind !== 'run' || hand === null || !shown) return null
   const fingers = scaleFingering(prompt.scale, hand, prompt.shape.octaves)
   const names = spellScale(prompt.scale).map(formatSpelling)
   return (
     <div
-      aria-label={`${hand.toUpperCase()} ${fingers.join(' ')}`}
+      aria-label={`${handLabel(hand)} ${fingers.join(' ')}`}
       className="flex flex-wrap justify-center font-mono text-lg text-ink-soft"
     >
-      <span aria-hidden="true" className="mr-1 w-8 text-left leading-6">
-        {hand.toUpperCase()}
-      </span>
       {fingers.map((finger, i) => (
         <span
           key={i}

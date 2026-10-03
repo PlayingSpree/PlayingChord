@@ -22,7 +22,7 @@ import { practiceStore } from '../store/practiceStore'
 import { DevicePicker } from './DevicePicker'
 import { VoicingBuilder } from './VoicingBuilder'
 import { PresetEditor } from './PresetEditor'
-import { ThumbHandChips } from './ThumbHandChips'
+import { FingeringToggle, ScaleHandChips } from './ScaleHandControls'
 import { Card, Chip, RaisedButton, Stepper, Toggle } from './ui'
 import { cx } from './cx'
 import { formatMinutes } from './daily'
@@ -185,8 +185,11 @@ function NotationSection() {
           ))}
         </div>
       </Row>
-      <Row label="Scale fingering hand">
-        <ThumbHandChips />
+      <Row label="Scale hand">
+        <ScaleHandChips />
+      </Row>
+      <Row label="Show scale fingering">
+        <FingeringToggle />
       </Row>
     </SettingsCard>
   )

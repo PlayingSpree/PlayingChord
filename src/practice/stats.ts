@@ -4,7 +4,7 @@
 // storage/ behind the same interface.
 
 import { comboKey, isScaleCombo, parseComboKey, type Combo } from './combos'
-import { getScaleShape, type VoicingLibrary } from '../theory'
+import { getScaleShape, type Hand, type VoicingLibrary } from '../theory'
 
 export type PromptOutcome = 'first-try' | 'missed'
 
@@ -490,6 +490,41 @@ export function allComboRows(
   return Object.entries(comboStats).flatMap(([key, record]) => {
     const combo = parseComboKey(key, library)
     return combo === null ? [] : [{ key, combo, record }]
+  })
+}
+
+// One hand's standing across every scale run it has played (§7.5): how many
+// runs, how many of them grade D or better — the pass bar — and the share of
+// their recent reps that were first-try (null with none). What lets the
+// Progress page set the two hands side by side, so a lagging one shows.
+export interface HandStanding {
+  hand: Hand
+  played: number
+  passing: number
+  recentFirstTry: number | null
+}
+
+export function handStandings(rows: readonly ComboRow[]): HandStanding[] {
+  return (['rh', 'lh'] as const).map((hand) => {
+    let played = 0
+    let passing = 0
+    let recentReps = 0
+    let recentFirstTries = 0
+    for (const { key, combo, record } of rows) {
+      if (!isScaleCombo(combo) || combo.hand !== hand) continue
+      const recent = recentHistoryOf(record, gradeScaleOf(key))
+      if (recent === null) continue
+      played++
+      if (isPassingGrade(comboGrade(comboScore(recent)))) passing++
+      recentReps += recent.total
+      recentFirstTries += recent.total - recent.misses
+    }
+    return {
+      hand,
+      played,
+      passing,
+      recentFirstTry: recentReps === 0 ? null : recentFirstTries / recentReps,
+    }
   })
 }
 

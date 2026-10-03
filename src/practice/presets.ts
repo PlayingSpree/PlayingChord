@@ -7,13 +7,20 @@ import {
   realizeVoicing,
   spellMajorScaleDegree,
   type ChordTypeId,
+  type Hand,
   type NoteSpelling,
   type PitchClass,
   type ScaleShapeId,
   type ScaleTypeId,
   type VoicingLibrary,
 } from '../theory'
-import type { ChordCombo, Combo, ScaleCombo, Side } from './combos'
+import {
+  shapeHand,
+  type ChordCombo,
+  type Combo,
+  type ScaleCombo,
+  type Side,
+} from './combos'
 
 // A preset defines the pool the generator draws from (DESIGN.md §4). Pools
 // have variants because some (diatonic) are root+quality *pairs*, not a
@@ -109,7 +116,7 @@ export function poolChords(pool: ChordPool): PoolChord[] {
 }
 
 export interface ExpandedPreset {
-  // One combo per (chord × voicing rule), or (scale × shape) — the §5
+  // One combo per (chord × voicing rule), or (scale × shape × hand) — the §5
   // generation/stats unit.
   combos: readonly Combo[]
   // Display-only: the diatonic pool spells roots from its key (§3.5). Roots
@@ -117,21 +124,31 @@ export interface ExpandedPreset {
   rootSpellings: ReadonlyMap<PitchClass, NoteSpelling>
 }
 
+// `hands` are the scale hands being dealt (§3.6, the Scale hand setting):
+// each run shape expands once per hand, `block` once whatever they are. A
+// chord preset ignores them.
 export function expandPreset(
   preset: Preset,
   voicings: VoicingLibrary = BUILT_IN_VOICING_LIBRARY,
+  hands: readonly Hand[] = ['rh'],
 ): ExpandedPreset {
   if (isScalePreset(preset)) {
     // Every scale plays in every shape — nothing to drop. A scale spells
     // itself from its own key (§3.6), so there's no pool spelling either.
     const combos: ScaleCombo[] = poolScales(preset.pool).flatMap(
       ({ root, scaleTypeId }) =>
-        preset.shapeIds.map((shapeId) => ({
-          kind: 'scale' as const,
-          root,
-          scaleTypeId,
-          shapeId,
-        })),
+        preset.shapeIds.flatMap((shapeId) => {
+          const shapeHands = new Set(
+            hands.map((hand) => shapeHand(shapeId, hand)),
+          )
+          return [...shapeHands].map((hand) => ({
+            kind: 'scale' as const,
+            root,
+            scaleTypeId,
+            shapeId,
+            hand,
+          }))
+        }),
     )
     return { combos, rootSpellings: new Map() }
   }

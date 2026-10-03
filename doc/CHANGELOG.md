@@ -15,6 +15,22 @@ artifact and are not recoverable.
 
 ---
 
+## 10.14.0 — 2026-09-27
+
+**Each hand's scales on their own record.** A scale run's hand is now part of its
+combo — `(root, scaleType, shape, hand)` — declared by the player, never checked
+(§3.6). The one *Fingering hand* setting (Off / RH / LH) splits in two: **Scale
+hand** (RH / LH / Both) chooses which hands' runs are dealt, and **Show
+fingering** hides the fingering line and thumb marks, which name the notes (§6.6).
+*Both* deals every run once per hand, so the weighting favors the weaker hand and
+a scale passes only once both hands reach D (§5, §5.1). The prompt tags its hand
+(§7.3), scale labels carry it, and Scale progress sets RH beside LH (§7.5).
+`block` has no hand. Existing run history becomes the right hand's without a
+migration, and `LH` / `Off` carry over from the old setting (§8). The non-goal on
+hands is restated: hands are declared, never verified (§1, §9).
+
+---
+
 ## 10.13.0 — 2026-09-27
 
 **Home grades what the pass grades.** A chord's letter on Home's In play row is

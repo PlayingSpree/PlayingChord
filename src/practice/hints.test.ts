@@ -177,6 +177,7 @@ describe('computeHint — block scales (§6.3, §6.4)', () => {
     root: 0,
     scaleTypeId: 'major',
     shapeId: 'block',
+    hand: null,
   })
   const blockHint = (notes: number[]) =>
     computeHint(1, new Set(notes), block, DEFAULT_MATCH_SETTINGS)

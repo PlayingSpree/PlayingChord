@@ -21,6 +21,7 @@ import {
   type ChordPreset,
   type ChordPrompt,
   type Prompt,
+  type ScaleHandPick,
 } from '../practice'
 import {
   InMemoryBestStreak,
@@ -2704,6 +2705,39 @@ describe('practiceStore — sides (§7.1)', () => {
     }
     expect(bestStreak.best('scales')).toBe(1)
     expect(bestStreak.best()).toBe(0)
+  })
+
+  it('deals the Scale hand setting’s runs, and follows it when it changes', () => {
+    let scaleHand: ScaleHandPick = 'lh'
+    const stats = new InMemoryComboStats()
+    const { store, press, release } = setup(
+      {
+        stats,
+        settings: () => ({ ...DEFAULT_PRACTICE_SETTINGS, scaleHand }),
+      },
+      false,
+    )
+    store.getState().setSide('scales')
+    store.getState().start()
+    store.getState().ready()
+    const prompt = store.getState().prompt
+    if (prompt?.kind !== 'scale') throw new Error('Expected a scale prompt')
+    expect(prompt.hand).toBe('lh')
+    const run = store.getState().run
+    if (run === null) throw new Error('Expected a run')
+    for (const note of run.notes) {
+      press(note)
+      release(note)
+    }
+    // Recorded under the left hand's own key.
+    const lhKey = `s:${prompt.scale.root}:major:up-1:lh`
+    expect(stats.get(lhKey)?.attempts).toBe(1)
+
+    scaleHand = 'rh'
+    store.getState().refreshScaleHand()
+    const next = store.getState().prompt
+    if (next?.kind !== 'scale') throw new Error('Expected a scale prompt')
+    expect(next.hand).toBe('rh')
   })
 
   it('counts passed chords for Daily on the switched-to side only', () => {

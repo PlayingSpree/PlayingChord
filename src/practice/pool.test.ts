@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BUILT_IN_VOICING_LIBRARY, type PitchClass } from '../theory'
+import { BUILT_IN_VOICING_LIBRARY, type Hand, type PitchClass } from '../theory'
 import {
   carryProgressAcrossEdit,
   createPoolResolver,
@@ -119,9 +119,9 @@ describe('pool resolution (§4/§5.1)', () => {
       ])
       // In play keeps pool order; which three are open is the unlock order's.
       expect(pool.inPlay.map((combo) => pool.comboLabel(combo))).toEqual([
-        'C major',
-        'F major',
-        'G major',
+        'C major — RH',
+        'F major — RH',
+        'G major — RH',
       ])
     }
   })
@@ -267,6 +267,28 @@ describe('pool grades (§5.1/§7.5)', () => {
     const pool = resolve('triads', 0)
     expect(pool.chordGrade('0:maj')).not.toBeNull()
     expect(pool.chordGrade('0:maj', session)).toBeNull()
+  })
+
+  it('grades a scale over the hands being dealt (§3.6, §5.1)', () => {
+    const scales = (hands: readonly Hand[]) =>
+      setup({
+        presets: () => builtInScalePresets(),
+        scaleHands: () => hands,
+      })
+    const rh = scales(['rh'])
+    reps(rh.stats, 's:0:major:up-1', 0) // a clean right hand…
+    reps(rh.stats, 's:0:major:up-1:lh', 10) // …and a failing left
+    expect(rh.resolve('major-scales', 0).chordGrade('s:0:major')).toBe('S')
+
+    const both = scales(['rh', 'lh'])
+    reps(both.stats, 's:0:major:up-1', 0)
+    reps(both.stats, 's:0:major:up-1:lh', 10)
+    const pool = both.resolve('major-scales', 0)
+    // Both hands dealt: the left hand holds the scale back from its pass…
+    expect(pool.chordGrade('s:0:major')).toBe('F')
+    // …and the unlock queue is still one item per scale, not per hand.
+    expect(pool.chordOrder.slice(0, 2)).toEqual(['s:0:major', 's:7:major'])
+    expect(pool.inPlay).toHaveLength(6)
   })
 })
 

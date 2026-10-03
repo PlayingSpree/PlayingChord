@@ -20,7 +20,7 @@ import {
 import { ALL_PITCH_CLASSES, keyDisplayName, type PitchClass } from '../theory'
 import { Chip, RaisedButton, SectionLabel, Toggle } from './ui'
 import { MODE_LABELS } from './modes'
-import { ThumbHandChips } from './ThumbHandChips'
+import { FingeringToggle, ScaleHandChips } from './ScaleHandControls'
 import { counted, noun, Noun, presetModeOf, presetModes } from './sides'
 import { cx } from './cx'
 
@@ -234,12 +234,18 @@ export function SessionSheet({
             />
           )}
           {draft.mode === 'song' && <SongSettings />}
-          {/* Every scale mode: the prompt's fingering line, and the thumb
-              marks on a shown run (§6.6, §7.3). */}
+          {/* Every scale mode: the hand runs are dealt for, and whether the
+              prompt's fingering line and a shown run's thumb marks show
+              (§6.6, §7.3). */}
           {side === 'scales' && (
-            <SettingRow label="Fingering hand">
-              <ThumbHandChips />
-            </SettingRow>
+            <>
+              <SettingRow label="Hand">
+                <ScaleHandChips />
+              </SettingRow>
+              <SettingRow label="Show fingering">
+                <FingeringToggle />
+              </SettingRow>
+            </>
           )}
         </div>
 
