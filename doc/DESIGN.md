@@ -91,8 +91,9 @@ sequencing (what gets implemented first) is intentionally left outside this docu
 ### Non-goals
 
 - No user accounts or server-side storage — everything (presets, custom voicing rules,
-  stats history, goals/streaks) runs client-side, persisted in `localStorage` with JSON
-  import/export for portability.
+  stats history, goals/streaks) runs client-side, persisted in `localStorage`. Moving
+  it between browsers is a manual JSON file: a library export for presets (§4) and a
+  full backup for everything (§8). There is no automatic sync.
 - No audio playback of the target chord — practice stays visual/notation-based, not ear
   training.
 - No melody or ear training — chords and scales only, and scales as *recall* (knowing
@@ -446,8 +447,10 @@ of the preset's voicing rules (e.g. 5+-tone extended chords vs. `closed`'s span 
 referencing built-in or user-defined voicing rules. A new preset picks its kind first;
 a scale preset is roots × scale types × shapes, with no voicing references.
 **Import/export**: presets and any custom voicing rules they depend on serialize to
-JSON for backup/transfer across browsers or machines. A preset exported before scales
-existed carries no kind and loads as a chord preset.
+JSON for backup/transfer across browsers or machines. Importing **merges**: new items
+are added, and on an id collision the local version wins, so it is safe to repeat. A
+preset exported before scales existed carries no kind and loads as a chord preset. To
+move *everything*, stats included, use the full backup instead (§8).
 
 ---
 
@@ -1641,6 +1644,19 @@ Hands (10.14.0) extend them again without a migration:
 - **Settings** replace the one `scaleThumbHand` (Off / RH / LH) with `scaleHand`
   (RH / LH / Both) and `scaleFingeringShown`, derived from it on load when absent
   (§6.6).
+
+**Backup and restore** (Settings, beside the library import/export). *Back up
+everything* saves the whole persisted state as one JSON file. *Restore backup* shows
+what the file holds and asks first, because a restore **replaces** this browser's
+state outright rather than merging it like the library import (§4). Two stats
+histories have no meaningful union, and a backup that gets merged would no longer
+be a backup. The one exception is the last MIDI device: it stays this machine's own,
+since a device id from another computer means nothing here. The file goes through
+the same migration and cleanup as a `localStorage` load, so an older backup
+restores fine. A backup from a *newer* schema is refused. Silently resetting to
+defaults is the right answer for a stale blob in storage, but not for a file the
+user just picked. After a restore the page reloads, because the stores took their
+copies of the state at startup.
 
 ---
 

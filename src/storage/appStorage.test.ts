@@ -77,4 +77,14 @@ describe('AppStorage', () => {
     const second = new AppStorage(kv)
     expect(second.state.settings.judgmentDelayMs).toBe(900)
   })
+
+  it('replace() swaps the whole state and reports whether it landed', () => {
+    const kv = fakeKV()
+    const restored = { ...defaultState(), bestComboStreak: 42 }
+    expect(new AppStorage(kv).replace(restored)).toBe(true)
+    expect(new AppStorage(kv).state).toEqual(restored)
+
+    const failing = new AppStorage(fakeKV({}, { failWrites: true }))
+    expect(failing.replace(restored)).toBe(false)
+  })
 })

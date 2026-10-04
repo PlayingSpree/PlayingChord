@@ -50,6 +50,14 @@ export class AppStorage {
     this.persist()
   }
 
+  // Swaps in a whole new state (a backup restore, §8). Returns whether the
+  // write landed — the caller reloads only then, since the Zustand stores
+  // hold copies taken at startup.
+  replace(state: PersistedState): boolean {
+    this.current = state
+    return this.persist()
+  }
+
   private persist(): boolean {
     return this.kv.set(STATE_STORAGE_KEY, JSON.stringify(this.current))
   }

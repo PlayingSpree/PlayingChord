@@ -15,7 +15,16 @@ import {
   poolScales,
   type Preset,
 } from '../practice'
-import type { ImportResult } from '../storage'
+import {
+  appStorage,
+  exportBackupJson,
+  localDateKey,
+  parseBackup,
+  restoredState,
+  type BackupParseResult,
+  type ImportResult,
+  type PersistedState,
+} from '../storage'
 import { useSettings } from '../store/settingsStore'
 import { useLibrary } from '../store/libraryStore'
 import { practiceStore } from '../store/practiceStore'
@@ -538,23 +547,36 @@ function PresetsSection({
   )
 }
 
+// Hands the browser a JSON file to save.
+function downloadJson(json: string, filename: string) {
+  const blob = new Blob([json], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
+
 function ImportExportSection() {
+  return (
+    <SettingsCard
+      title="Import / export"
+      hint="library merges into this browser (§4) · backup replaces everything (§8)"
+    >
+      <LibraryTransferRow />
+      <BackupRow />
+    </SettingsCard>
+  )
+}
+
+function LibraryTransferRow() {
   const customRules = useLibrary((s) => s.customRules)
   const customPresets = useLibrary((s) => s.customPresets)
   const exportJson = useLibrary((s) => s.exportJson)
   const importJson = useLibrary((s) => s.importJson)
   const fileInput = useRef<HTMLInputElement>(null)
   const [result, setResult] = useState<ImportResult | null>(null)
-
-  const download = () => {
-    const blob = new Blob([exportJson()], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const anchor = document.createElement('a')
-    anchor.href = url
-    anchor.download = 'playingchord-library.json'
-    anchor.click()
-    URL.revokeObjectURL(url)
-  }
 
   const onFile = async (file: File | undefined) => {
     if (!file) return
@@ -564,13 +586,13 @@ function ImportExportSection() {
   const empty = customRules.length === 0 && customPresets.length === 0
 
   return (
-    <SettingsCard
-      title="Import / export"
-      hint="custom presets + voicing rules as JSON (§4)"
-    >
+    <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
+        <span className="w-16 text-sm text-ink-soft">Library</span>
         <SmallButton
-          onClick={download}
+          onClick={() =>
+            downloadJson(exportJson(), 'playingchord-library.json')
+          }
           title={empty ? 'Nothing custom to export yet' : undefined}
         >
           Export library
@@ -591,8 +613,95 @@ function ImportExportSection() {
         />
       </div>
       {result && <ImportReport result={result} />}
-    </SettingsCard>
+    </div>
   )
+}
+
+// A restore is two steps: picking a file shows what it holds, and only the
+// explicit Replace overwrites this browser's progress — then the page reloads,
+// since every store took its copy of the state at startup.
+function BackupRow() {
+  const fileInput = useRef<HTMLInputElement>(null)
+  const [parsed, setParsed] = useState<BackupParseResult | null>(null)
+  const [writeFailed, setWriteFailed] = useState(false)
+
+  const backUp = () => {
+    const now = new Date()
+    downloadJson(
+      exportBackupJson(appStorage.state, now),
+      `playingchord-backup-${localDateKey(now)}.json`,
+    )
+  }
+
+  const onFile = async (file: File | undefined) => {
+    if (!file) return
+    setWriteFailed(false)
+    setParsed(parseBackup(await file.text()))
+  }
+
+  const restore = (state: PersistedState) => {
+    if (appStorage.replace(restoredState(state, appStorage.state))) {
+      window.location.reload()
+    } else {
+      setWriteFailed(true)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-2">
+        <span className="w-16 text-sm text-ink-soft">Backup</span>
+        <SmallButton onClick={backUp}>Back up everything</SmallButton>
+        <SmallButton onClick={() => fileInput.current?.click()}>
+          Restore backup…
+        </SmallButton>
+        <input
+          ref={fileInput}
+          type="file"
+          accept=".json,application/json"
+          className="hidden"
+          aria-label="Restore backup file"
+          onChange={(e) => {
+            void onFile(e.target.files?.[0])
+            e.target.value = ''
+          }}
+        />
+      </div>
+      {parsed && !parsed.ok && (
+        <p className="text-sm text-danger">✘ {parsed.error}</p>
+      )}
+      {parsed?.ok && (
+        <div className="flex flex-col gap-2 text-sm">
+          <p className="text-ink-soft">
+            {describeBackup(parsed.state, parsed.exportedAt)}
+          </p>
+          <p className="text-info-light">
+            ⚠ Restoring replaces all progress, settings and custom presets on
+            this browser.
+          </p>
+          <div className="flex items-center gap-2">
+            <SmallButton onClick={() => restore(parsed.state)}>
+              Replace &amp; reload
+            </SmallButton>
+            <SmallButton onClick={() => setParsed(null)}>Cancel</SmallButton>
+          </div>
+          {writeFailed && (
+            <p className="text-danger">
+              ✘ Couldn’t save to this browser’s storage — nothing was changed.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function describeBackup(state: PersistedState, exportedAt: string | null) {
+  const days = Object.keys(state.dailyRecords).length
+  const presets = state.customPresets.length
+  const when =
+    exportedAt === null ? '' : ` from ${new Date(exportedAt).toLocaleString()}`
+  return `Backup${when}: ${days} practice day${days === 1 ? '' : 's'}, ${presets} custom preset${presets === 1 ? '' : 's'}.`
 }
 
 function ImportReport({ result }: { result: ImportResult }) {

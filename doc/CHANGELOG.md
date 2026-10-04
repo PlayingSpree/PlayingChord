@@ -15,6 +15,19 @@ artifact and are not recoverable.
 
 ---
 
+## 10.16.0 — 2026-10-04
+
+**Full backup.** Settings → Import / export has a second row: *Back up everything*
+saves all of the app's data (stats, daily records, streaks, unlock progress,
+settings, the custom library and the active presets) as one JSON file. *Restore
+backup* shows what the file holds and then replaces this browser's data with it,
+keeping only the machine's own last MIDI device, and reloads the page (§8). Older
+backups are migrated; one from a newer schema is refused. The library export is
+unchanged and still merges (§4). §1's non-goals now say that moving data is a
+manual file, not a sync.
+
+---
+
 ## 10.15.0 — 2026-10-03
 
 **Arpeggios.** Major and minor triad arpeggios are two new scale types on the Scales
