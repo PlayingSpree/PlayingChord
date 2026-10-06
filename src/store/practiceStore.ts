@@ -170,6 +170,9 @@ export interface UnlockProgress {
   // a set-aside — which moves neither of the counts above — still changes
   // this object, and Home's In play row re-derives from it.
   setAside: number
+  // Passes still needed before the next item opens (§5.1); 0 once all are
+  // open.
+  toNextUnlock: number
 }
 
 // One chord of the learn loop's set (§5.4) as the Stage and sheet read it: its
@@ -294,7 +297,7 @@ export interface PracticeStoreState {
   upcoming: readonly UpcomingChord[]
   goal: GoalProgress
   // The active preset's §5 unlock state, plus a transient celebration flag
-  // set for JUST_UNLOCKED_FLASH_MS when a batch unlocks — with the newly
+  // set for JUST_UNLOCKED_FLASH_MS when an unlock lands — with the newly
   // opened chords' labels for the unlock toast.
   progress: UnlockProgress
   justUnlocked: boolean
@@ -342,6 +345,9 @@ export interface PracticeStoreState {
   // Re-derive the active preset's unlock order after the §5.1 order setting
   // changes; the unlocked count carries over onto the new order.
   refreshUnlockOrder(): void
+  // Re-settle the active preset's unlocks after the §5.1 learning-window
+  // setting changes: raising it opens items at once, lowering it closes none.
+  refreshLearningWindow(): void
   // Re-expand the scale pool after the Scale hand setting changes (§3.6):
   // which hands' runs are dealt, graded and passed on moves with it.
   refreshScaleHand(): void
@@ -489,6 +495,7 @@ export function createPracticeStore({
         voicings,
         storedProgress: (id: string) => progressStore.get(id),
         unlockByFifths: () => settings().unlockByFifths,
+        learningAtOnce: () => settings().learningAtOnce,
         stats,
         scaleHands: () => scaleHandsOf(settings().scaleHand),
       })
@@ -1312,8 +1319,8 @@ export function createPracticeStore({
         persistReconciliation()
         invalidateDaily() // a custom preset's passed chords can move with it
         if (pool.presetId === current.presetId) {
-          // A pool grown under a finished record opens its next batch on the
-          // spot (§5.1) — an unlock like a pass's, held like one. The preview
+          // A pool grown under a fully passed record fills the learning window
+          // on the spot (§5.1) — an unlock like a pass's, held like one. The preview
           // goes either way: an edit can change rules or spellings even when
           // the preset itself is unchanged.
           dealer.unlocked(pool.openedSince(before))
@@ -1385,6 +1392,24 @@ export function createPracticeStore({
         if (get().mode !== 'song' && get().prompt !== null) nextPrompt()
       },
 
+      refreshLearningWindow() {
+        // The window feeds resolution, whose reconcile settles the record
+        // against it — so re-resolving opens whatever a raise made room for.
+        const before = pool
+        pool = resolvePool(get().presetId, get().diatonicKey)
+        const opened = pool.openedSince(before)
+        // Written whether or not a record was stored: a fresh preset has none
+        // to reconcile, but what opened is progress like a pass's.
+        if (opened.length > 0) {
+          progressStore.set(pool.presetId, pool.progressRecord)
+        }
+        // Held for the next session like any other unlock (§5.1), and the
+        // learn set picks the new items up.
+        dealer.unlocked(opened)
+        set({ progress: pool.progress })
+        if (opened.length > 0) resetLearnSelection()
+      },
+
       refreshScaleHand() {
         invalidateDaily() // the scale leg deals the chosen hands' runs too
         if (side !== 'scales') return
@@ -1408,9 +1433,9 @@ export function createPracticeStore({
 
       setChordAside(chordKey: string) {
         const next = pool.setAside(chordKey)
-        // Setting aside the last item still waiting opens the next batch
+        // Setting aside an item still waiting opens the next in its place
         // (§5.2). That is an unlock like a pass's, so a session paused under
-        // it holds the batch for the next one (§5.1) — a new session starts
+        // it holds it for the next one (§5.1) — a new session starts
         // with nothing held anyway.
         dealer.unlocked(next.openedSince(pool))
         applyManualProgress(next)
@@ -1505,6 +1530,7 @@ export const resolveAppPool = createPoolResolver({
   voicings: appVoicings,
   storedProgress: (presetId) => appProgress.get(presetId),
   unlockByFifths: () => settingsStore.getState().settings.unlockByFifths,
+  learningAtOnce: () => settingsStore.getState().settings.learningAtOnce,
   stats: new PersistedComboStats(appStorage),
   scaleHands: () => scaleHandsOf(settingsStore.getState().settings.scaleHand),
 })
@@ -1519,7 +1545,7 @@ function carryCustomProgress(
   const rulesEdited = next.customRules !== prev.customRules
   const before = voicingLibrary(prev.customRules)
   const after = voicingLibrary(next.customRules)
-  const unlockByFifths = settingsStore.getState().settings.unlockByFifths
+  const { unlockByFifths, learningAtOnce } = settingsStore.getState().settings
   for (const preset of next.customPresets) {
     const old = prev.customPresets.find((p) => p.id === preset.id)
     const record = appProgress.get(preset.id)
@@ -1530,6 +1556,7 @@ function carryCustomProgress(
       { preset, voicings: after },
       record,
       unlockByFifths,
+      learningAtOnce,
     )
     if (JSON.stringify(carried) !== JSON.stringify(record)) {
       appProgress.set(preset.id, carried)

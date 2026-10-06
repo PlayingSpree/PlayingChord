@@ -6,7 +6,7 @@ import { cx } from './cx'
 import { noun } from './sides'
 
 // The transient in-session notice (DESIGN.md §7.3): the §5 unlock toast naming
-// the chords a fresh batch opened. Hidden in Song mode, which isn't
+// the chords an unlock just opened. Hidden in Song mode, which isn't
 // unlock-gated (§6.5). The grade-up notice used to share this slot on a timer
 // of its own; it now rides the ✔ flash under the feedback pill (§7.3), where
 // the rep that earned it is still on screen.

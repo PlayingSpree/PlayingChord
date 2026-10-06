@@ -15,6 +15,22 @@ artifact and are not recoverable.
 
 ---
 
+## 10.17.0 — 2026-10-06
+
+**Each pass unlocks the next.** The unlock gate is a rolling **learning window**
+instead of a batch: whenever fewer unlocked items than the window are waiting on
+their pass, the next ones open, so in the steady state every pass unlocks one item
+on the spot, and one stubborn item no longer holds the whole queue (§5.1). Settings
+→ *New items at once* (1–5, default 3) sets the window; raising it opens items
+at once, lowering it closes none. Setting aside an item still waiting refills the
+window too (§5.2). Home's unlock line reads `pass N more to unlock the next` (§7.1).
+New unlocks still wait for the next session by default. With that setting off, the
+part of the upcoming preview already on screen now stays when an item unlocks on
+the ✔, so the next prompt is the one the flash showed; new items follow right after
+it.
+
+---
+
 ## 10.16.0 — 2026-10-04
 
 **Full backup.** Settings → Import / export has a second row: *Back up everything*

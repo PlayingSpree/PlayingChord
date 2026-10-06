@@ -33,6 +33,7 @@ import {
   initialProgress,
   notPassedChordKeys,
   openChord,
+  passesToNextUnlock,
   poolChordKey,
   reconcileProgress,
   recordChordAttempt,
@@ -86,6 +87,8 @@ export interface PoolProgress {
   // set-aside — which moves neither of the counts above — still changes this
   // object, and Home's In play row re-derives from it.
   setAside: number
+  // Passes still needed before the next item opens; 0 once all are open.
+  toNextUnlock: number
 }
 
 // One chord's status in the unlock drill-down (§7), with its display label
@@ -110,6 +113,8 @@ export interface PoolParts {
   // The caller persists the self-heal so it happens once rather than on every
   // load — and only for the pool it actually switched to, never for a draft.
   reconciled: boolean
+  // The §5.1 learning window the record is settled against.
+  learning: number
   voicings: VoicingLibrary
   stats: ComboStatsSource
 }
@@ -120,6 +125,7 @@ export class Pool {
   readonly chordOrder: readonly string[]
   readonly progressRecord: PresetProgressRecord
   readonly reconciled: boolean
+  readonly learning: number
   readonly #rootSpellings: ReadonlyMap<PitchClass, NoteSpelling>
   readonly #voicings: VoicingLibrary
   readonly #stats: ComboStatsSource
@@ -133,6 +139,7 @@ export class Pool {
     this.chordOrder = parts.chordOrder
     this.progressRecord = parts.progressRecord
     this.reconciled = parts.reconciled
+    this.learning = parts.learning
     this.#rootSpellings = parts.rootSpellings
     this.#voicings = parts.voicings
     this.#stats = parts.stats
@@ -142,7 +149,7 @@ export class Pool {
     return this.preset.id
   }
 
-  // The same pool under a moved progress record (§5.1): a chord passed, a batch
+  // The same pool under a moved progress record (§5.1): a chord passed, the next
   // unlocked, one set aside by hand. Everything derived from the record —
   // in-play, the pass list, the learn choices — comes out of the new value, so
   // none of it can be left behind.
@@ -154,6 +161,7 @@ export class Pool {
       chordOrder: this.chordOrder,
       progressRecord: next,
       reconciled: false, // a deliberate move is not a reconciliation
+      learning: this.learning,
       voicings: this.#voicings,
       stats: this.#stats,
     })
@@ -161,24 +169,30 @@ export class Pool {
 
   // The same pool after a rep of this chord (§5.1): passed, if its grade on
   // `source` — this rep included — has reached the bar while it is unlocked
-  // and not yet passed; itself otherwise. Passing the last one outstanding
-  // opens the next batch, which openedSince reads back.
+  // and not yet passed; itself otherwise. The pass opens the next item in its
+  // place, which openedSince reads back.
   pass(chordKey: string, source: ComboStatsSource = this.#stats): Pool {
     const update = recordChordAttempt(
       this.chordOrder,
       this.progressRecord,
       chordKey,
       this.chordGrade(chordKey, source),
+      this.learning,
     )
     return this.#moved(update.record)
   }
 
   // The same pool with a chord set aside by hand (§5.2), or itself when it
-  // may not be. Setting aside the last item still waiting opens the next
-  // batch; openedSince reads it back.
+  // may not be. Setting aside an item still waiting opens the next one in
+  // its place; openedSince reads it back.
   setAside(chordKey: string): Pool {
     return this.#moved(
-      setAsideChord(this.chordOrder, this.progressRecord, chordKey),
+      setAsideChord(
+        this.chordOrder,
+        this.progressRecord,
+        chordKey,
+        this.learning,
+      ),
     )
   }
 
@@ -191,8 +205,8 @@ export class Pool {
   }
 
   // The chords behind this pool's unlock frontier that were not behind
-  // `before`'s (§5.1) — a batch a move opened, or one a library edit did by
-  // growing a finished record. Keyed, so it holds across a reshaped order.
+  // `before`'s (§5.1) — what a move opened, or what a library edit or a
+  // raised learning window did. Keyed, so it holds across a reshaped order.
   openedSince(before: Pool): string[] {
     const was = new Set(
       before.chordOrder.slice(0, before.progressRecord.unlockedCount),
@@ -221,6 +235,11 @@ export class Pool {
       passed: this.progressRecord.masteredIndices.length,
       total: this.chordOrder.length,
       setAside: this.progressRecord.setAsideIndices.length,
+      toNextUnlock: passesToNextUnlock(
+        this.chordOrder,
+        this.progressRecord,
+        this.learning,
+      ),
     }
   }
 
@@ -452,7 +471,8 @@ export class Pool {
 
 // What resolution needs from the layers around it: the preset list for a key
 // (built-ins plus the custom library), the voicing library those presets
-// reference, the stored §5.1 progress, the unlock-order setting, and the
+// reference, the stored §5.1 progress, the unlock-order and learning-window
+// settings, and the
 // persisted per-combo records the grades and the worst-only narrow read, and
 // the hands a scale pool's runs are dealt for (§3.6) — the right hand's alone
 // when absent.
@@ -461,6 +481,7 @@ export interface PoolSources {
   voicings: () => VoicingLibrary
   storedProgress: (presetId: string) => PresetProgressRecord | null
   unlockByFifths: () => boolean
+  learningAtOnce: () => number
   stats: ComboStatsSource
   scaleHands?: () => readonly Hand[]
 }
@@ -494,6 +515,7 @@ export function carryProgressAcrossEdit(
   after: { preset: Preset; voicings: VoicingLibrary },
   record: PresetProgressRecord,
   unlockByFifths: boolean,
+  learning: number,
 ): PresetProgressRecord {
   if (
     before.preset.pool.kind === 'diatonic' &&
@@ -503,7 +525,7 @@ export function carryProgressAcrossEdit(
   }
   const orderOf = ({ preset, voicings }: typeof before) =>
     unlockOrderOf(preset, expandPreset(preset, voicings).combos, unlockByFifths)
-  return remapProgress(orderOf(before), orderOf(after), record)
+  return remapProgress(orderOf(before), orderOf(after), record, learning)
 }
 
 export type PoolResolver = (presetId: string, diatonicKey: PitchClass) => Pool
@@ -533,9 +555,11 @@ export function createPoolResolver(sources: PoolSources): PoolResolver {
     // A custom pool can shrink under its saved progress, so what was stored is
     // reconciled against the real size before anything reads it.
     const stored = sources.storedProgress(preset.id)
+    const learning = sources.learningAtOnce()
     const progressRecord = reconcileProgress(
       stored ?? initialProgress(chordOrder.length),
       chordOrder.length,
+      learning,
     )
     const reconciled =
       stored !== null &&
@@ -548,6 +572,7 @@ export function createPoolResolver(sources: PoolSources): PoolResolver {
       chordOrder,
       progressRecord,
       reconciled,
+      learning,
       voicings,
       stats: sources.stats,
     })

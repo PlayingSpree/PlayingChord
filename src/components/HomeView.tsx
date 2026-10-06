@@ -115,7 +115,7 @@ export function HomeView({
       .filter((chord) => chord.unlocked && chord.setAside)
       .map(withGrade)
     // Locked chords keep their unlock order (§5.1) — the list reads as
-    // "what's coming next", so the head of it is the next batch.
+    // "what's coming next", so the head of it opens next.
     const locked = entries
       .filter((chord) => !chord.unlocked)
       .map((chord) => ({
@@ -203,10 +203,9 @@ export function HomeView({
     if (prepareDaily()) onStart()
   }
 
-  // The next batch opens once every chord in play has passed (§5.1) — so the
-  // line says how many are still waiting, not "on the next pass".
-  const nextBatch = Math.min(2, progress.total - progress.unlocked)
-  const waiting = inPlay.chips.filter((chip) => !chip.passed).length
+  // Each pass opens the next item (§5.1), so this is usually one — more only
+  // while items opened by hand crowd the learning window.
+  const toNextUnlock = progress.toNextUnlock
   const unlockPct =
     progress.total > 0
       ? Math.round((100 * progress.unlocked) / progress.total)
@@ -305,10 +304,8 @@ export function HomeView({
                   style={{ width: `${unlockPct}%` }}
                 />
               </div>
-              {nextBatch > 0 && waiting > 0 && (
-                <span>
-                  pass {waiting} more to unlock {nextBatch}
-                </span>
+              {toNextUnlock > 0 && (
+                <span>pass {toNextUnlock} more to unlock the next</span>
               )}
             </div>
 

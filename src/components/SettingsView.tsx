@@ -6,6 +6,7 @@ import {
   CHORD_NAME_SIZES,
   DAILY_CAP_MINUTES,
   DAILY_CHORD_SHARES,
+  LEARNING_AT_ONCE,
   describeVoicingRule,
   MAX_DAILY_GOAL_MINUTES,
   MAX_DELAY_MS,
@@ -339,6 +340,27 @@ function GoalSection() {
           settings.dailyCapMinutes * (1 - settings.dailyChordShare),
         )}{' '}
         min — a side with nothing passed yet hands its time to the other
+      </p>
+      <Row label="New items at once">
+        <div className="flex gap-1.5">
+          {LEARNING_AT_ONCE.map((count) => (
+            <Chip
+              key={count}
+              selected={settings.learningAtOnce === count}
+              onClick={() => {
+                update({ learningAtOnce: count })
+                practiceStore.getState().refreshLearningWindow()
+              }}
+              className="px-2.5 py-1 text-[13px]"
+            >
+              {count}
+            </Chip>
+          ))}
+        </div>
+      </Row>
+      <p className="text-xs text-ink-muted">
+        How many unlocked items wait on their pass at once — each pass unlocks
+        the next
       </p>
       <Row label="Unlock in circle-of-fifths order">
         <Toggle

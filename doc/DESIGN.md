@@ -4,7 +4,7 @@ A web app for practicing piano chords and scales with a MIDI keyboard. The app s
 random chord or scale from a chosen preset, the user plays it on their connected MIDI
 keyboard, and the app validates the input and moves on to the next one.
 
-Spec version: **10.15.0** (2026-10-03) — chords, scales and arpeggios. Revision history lives in
+Spec version: **10.17.0** (2026-10-06) — chords, scales and arpeggios. Revision history lives in
 [CHANGELOG.md](CHANGELOG.md); this document describes only what the app *is* today.
 Both previously open questions are resolved (see [§9](#9-resolved-questions)). Build
 sequencing (what gets implemented first) is intentionally left outside this document.
@@ -37,8 +37,8 @@ sequencing (what gets implemented first) is intentionally left outside this docu
   **worst chords only** toggle (replacing the old review mode) — plus subtle
   miss-weighting always.
 - **Chord unlocking**: flashcard-style progression per preset — start with 3 chords,
-  pass them all (grade D or better, §5.1) to unlock 2 more, repeating until the pool
-  is open (§5). Gates Learn and free-practice generation only; Song uses the full
+  and each pass (grade D or better, §5.1) unlocks the next, so a set number of
+  chords is always being learned until the pool is open (§5). Gates Learn and free-practice generation only; Song uses the full
   pool and daily practice draws its own (§5.3).
 - **Goals & streaks**: a daily practice-*time* goal with streak tracking, persisted
   locally alongside the existing stats history.
@@ -418,7 +418,7 @@ preset using it (`practice/presets.ts`).
 both. Its pool is a product of roots × scale types, and where a chord preset lists
 voicing-rule ids a scale preset lists **shape** ids (§3.6), each pool scale expanding
 to one combo per shape. Mixing kinds was rejected: one unlock queue holding chords
-and scales makes "pass them all to unlock two more" mean nothing, and the Home
+and scales makes "pass one to unlock the next" mean nothing, and the Home
 switch (§7.1) keeps the two apart everywhere else anyway. Built-in scale presets,
 all 12 roots:
 
@@ -528,8 +528,8 @@ move *everything*, stats included, use the full backup instead (§8).
 
 ### 5.1 Unlocking (flashcard progression)
 
-Every preset tracks its own **unlock progress**, so learning proceeds in small
-flashcard-style batches instead of the whole pool at once:
+Every preset tracks its own **unlock progress**, so learning proceeds a few
+items at a time, flashcard-style, instead of the whole pool at once:
 
 - **Unlock order** is the pool's own order: chromatic-root order for `product` pools,
   scale-degree order (I → vii°) for `diatonic`, declared order for `explicit`/custom.
@@ -550,7 +550,8 @@ flashcard-style batches instead of the whole pool at once:
   the true circle would hold F major (one flat) back behind six-sharp F♯, and
   chromatic order would make the second scale C♯/D♭. The setting stays a chord
   setting.
-- A fresh preset starts with the **first 3** items unlocked (clamped to the pool).
+- A fresh preset starts with the **first 3** items unlocked (clamped to the pool),
+  or as many as the learning window below, if that is wider.
 - An item is **passed** by a free-practice attempt after which its **grade is D or
   better** (§7.5) — every letter but F. The pass bar is therefore the grade the
   player already reads everywhere else rather than a private threshold: "passed"
@@ -574,26 +575,36 @@ flashcard-style batches instead of the whole pool at once:
   elsewhere anyway. Learn-mode prompts, Song-mode bars and daily
   practice never pass anything — the first two record no self-paced outcome, and
   the third deals only items that are passed already (§5.3).
-- Once **every** unlocked item is passed, the **next 2** unlock, repeating until
-  the whole pool is open — after which generation behaves exactly as above.
-  Set-aside items don't count (§5.2). The gate is a state, not an event: however
-  the record gets there — a pass, setting aside the last item still waiting
-  (§5.2), a custom preset's pool growing under a finished record — the next
-  batch opens then. Otherwise nothing could open it, since an item already
-  passed never passes again.
+- **Each pass unlocks the next item.** The **learning window** (setting *New
+  items at once*, 1–5, default **3**) is how many unlocked items wait on their
+  pass at once; whenever fewer are waiting, the next items in the unlock order
+  open to fill it, until the whole pool is open — after which generation
+  behaves exactly as above. In the steady state that is one item per pass, the
+  moment it is earned. Set-aside items don't count as waiting (§5.2). The gate
+  is a state, not an event: however the record gets there — a pass, setting
+  aside an item still waiting (§5.2), a custom preset's pool growing under the
+  record, the setting being raised — the window fills then. Otherwise nothing
+  could fill it, since an item already passed never passes again. Lowering the
+  setting closes nothing (the queue is a ratchet); items opened by hand (§5.2)
+  can likewise leave more than the window waiting, and nothing more opens until
+  passes bring it back under.
+  (Until 10.17.0 the gate was a batch: pass *every* unlocked item, then the next
+  2 open. One stubborn item held the whole queue, and new material arrived in
+  lumps; the rolling window keeps the amount being learned constant.)
 - **A mid-session unlock waits for the next session** (setting, default on). The
-  batch is opened, saved, toasted and listed on the Report the moment it is earned,
+  item is opened, saved, toasted and listed on the Report the moment it is earned,
   but nothing deals it until a session starts: the drill in progress keeps the pool
   it started with, and the new items get a session of their own — Home's In play
   row shows them as *new* (§7.1) and Learn's default set picks them up (§5.4) in
-  the meantime. Dropping two unknown items into a drill that is going well
-  changes its difficulty under the player, and the moment a batch opens is the
-  natural break anyway. It holds however the batch opened — a pass, setting
-  aside the last item still waiting (§5.2), a library edit growing the pool —
-  except an item opened by hand (§5.2), which the player asked for now. With
-  the setting off, the upcoming-preview queue is
-  rebuilt at the moment of an unlock (the pool changed, like any other pool
-  change), so new items can appear in the very next preview.
+  the meantime. Dropping unknown items into a drill that is going well
+  changes its difficulty under the player — with an unlock on every pass, it
+  would change on every pass. It holds however the item opened — a pass,
+  setting aside an item still waiting (§5.2), a library edit growing the pool,
+  a raised window — except an item opened by hand (§5.2), which the player
+  asked for now. With the setting off, new items join the upcoming preview as
+  it refills: the part on screen (§7.3) stays, since an unlock lands on the ✔
+  and the flash is showing it as what comes next, and the unseen rest of the
+  queue is redrawn, so new items can follow straight after it.
 - **Scope:** the gate applies to Learn and free-practice generation
   (worst-chords-only, free-only, and the learn set, Learn-only — §5.4 — each
   narrowing *within* the unlocked set; see the §7.2 session sheet). **Song mode is
@@ -632,10 +643,10 @@ player is willing to carry right now — the two controls on Home's In play row
   be passed, so counting it as outstanding would stall the queue permanently —
   the opposite of what benching an item you can't play is for. The debt is
   carried in the open instead, on the In play row, where a set-aside item sits
-  in its own dimmed state with its grade still on it. Setting aside the last
-  item still waiting on its pass therefore completes the batch, and the next
-  one opens on the spot (§5.1) — outside a session, so the next session deals
-  it.
+  in its own dimmed state with its grade still on it. Setting aside an item
+  still waiting on its pass therefore leaves the learning window a place short,
+  and the next item opens on the spot (§5.1) — outside a session, so the next
+  session deals it.
 - **The floor:** setting one aside must leave at least **3** items in play —
   the same number a fresh preset opens with, so a preset can never be whittled
   below its own starting width, and a drill always has something to alternate
@@ -648,8 +659,8 @@ player is willing to carry right now — the two controls on Home's In play row
   the unlock frontier forward to cover it — and with it every item before it,
   because the frontier is a prefix (§5.1) — which the control says on itself
   rather than doing silently. Newly opened items are unlocked and *not* passed,
-  so the next automatic batch now waits on them; passing is never granted by
-  hand.
+  so they take places in the learning window and the next automatic unlock
+  waits on them too; passing is never granted by hand.
 - **Where:** Home and the Report only, both outside a live session. Mid-drill
   re-locking would take the pool out from under the prompt on screen, and the
   Stage has no mouse affordances by design (§7.3). A change made while a session
@@ -707,8 +718,8 @@ because it is today, not because you picked anything (`practice/daily.ts`).
   benched. The bench is a statement about playing the item, not about one
   preset.
 - **Nothing in it can pass, so it never moves the unlock queue.** Every item
-  it deals is passed already and passing is a latch (§5.1) — so no batch can
-  open mid-session, and the mode needs no rule of its own to say so. Learning
+  it deals is passed already and passing is a latch (§5.1) — so nothing can
+  unlock mid-session, and the mode needs no rule of its own to say so. Learning
   stays in Learn and free practice; daily practice is where passed items go
   to stay passing. It records per-combo stats exactly like free practice does,
   which is what makes it maintenance rather than a rehearsal: an item that
@@ -774,7 +785,7 @@ the pass bar (`practice/learnLoop.ts`).
   a coherent goal, and why a set rehearsed yesterday must be rehearsed again
   today. Nothing reaches the persisted per-combo records, the weighting, or the
   §7.5 grades.
-- **Rehearsed is not passed.** The loop moves no unlock queue, opens no batch and
+- **Rehearsed is not passed.** The loop moves no unlock queue, opens nothing and
   adds nothing to the daily pool (§5.3) — it is the one mode where the answer is
   on screen from the first rep, so a pass won here would be worth less than one
   won in Practice, and letting it ratchet the pool open would quietly devalue
@@ -1098,8 +1109,9 @@ The entry screen — the app boots here, not into practice. The no-device gate
   side, the sheet stays on it, and changing side means going back Home.
 - **Continue card** (primary): the active preset's name with a **Change**
   control (the preset picker, incl. the diatonic key picker); unlock progress —
-  `N/total chords unlocked`, a bar, and what the next batch waits on —
-  `pass 2 more to unlock 2`, counting the in-play chords not yet passed (§5.1);
+  `N/total chords unlocked`, a bar, and what the next unlock waits on —
+  `pass 1 more to unlock the next`: one pass in the steady state, more while
+  items opened by hand crowd the learning window (§5.1);
   an **In play** chip row — every unlocked chord with its letter grade (chord
   score §5 → S–F, or `pending` where the evidence floor hasn't been reached, §7.5),
   folded over the active preset's own combos only — the pass's figure (§5.1), so
@@ -1433,7 +1445,7 @@ count as prompts, a hit being a first-try success (§6.5).
   against scale days, never against a chord average it could not be compared
   with; **Total time** is shared, like the goal it feeds.
 - **Unlock banner**: when the session unlocked chords — names them and shows
-  pool progress toward the next batch (§5.1).
+  pool progress toward the next unlock (§5.1).
 - **Chords passed** this session (§5.1 passes) and **Still shaky** — chords
   missed this session, with miss counts. **Learn shows neither**: it passes
   nothing and records no misses. In their place it lists **Rehearsed** and
@@ -1570,6 +1582,7 @@ all sessions, for the side Home is switched to (§7.1), titled *Chord progress* 
   piano sound on key press on/off (§9), judgment delay, auto-advance delay, daily
   goal minutes, daily practice length 5 / 10 / 15 / 20 min (§5.3's cap) and the
   daily split between its chord and scale legs,
+  new items at once 1–5 (§5.1's learning window, default 3),
   circle-of-fifths unlock order on/off (§5.1), new unlocks wait
   for the next session on/off (§5.1, default on), scale hand RH / LH / Both and
   show scale fingering on/off (§6.6; both also in the session sheet). (Mode sub-settings —

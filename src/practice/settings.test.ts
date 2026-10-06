@@ -91,6 +91,7 @@ describe('sanitizeSettings', () => {
       pianoSoundEnabled: false,
       chordNameSize: 'sm',
       unlockByFifths: true,
+      learningAtOnce: 5,
       holdNewUnlocks: false,
       songTempoBpm: 90,
       songChordCount: 3,
@@ -163,6 +164,14 @@ describe('sanitizeSettings', () => {
       false,
     )
     expect(sanitizeSettings({ unlockByFifths: true }).unlockByFifths).toBe(true)
+  })
+
+  it('keeps the learning window on its chips, else three (§5.1)', () => {
+    expect(sanitizeSettings({}).learningAtOnce).toBe(3)
+    for (const junk of [0, 6, 2.5, '2']) {
+      expect(sanitizeSettings({ learningAtOnce: junk }).learningAtOnce).toBe(3)
+    }
+    expect(sanitizeSettings({ learningAtOnce: 1 }).learningAtOnce).toBe(1)
   })
 
   it('defaults holding mid-session unlocks on and coerces junk', () => {

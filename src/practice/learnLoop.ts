@@ -5,7 +5,7 @@
 //
 // Two things it deliberately does not do. It never writes progress: a chord
 // brought up here is **rehearsed**, not passed (§5.1), so nothing it does opens
-// the next unlock batch or joins the daily pool. And it grades only what the
+// the next unlock or joins the daily pool. And it grades only what the
 // player chose — the filler chords below are dealt for company, never for credit.
 
 import { isPassingGrade, type ComboGrade } from './stats'

@@ -51,6 +51,7 @@ const poolWith = (
     voicings: () => BUILT_IN_VOICING_LIBRARY,
     storedProgress: () => null,
     unlockByFifths: () => false,
+    learningAtOnce: () => 3,
     stats,
   })(preset.id, 0)
   return progress === undefined
@@ -141,17 +142,18 @@ describe('completeRep — the pass (§5.1/§7.3)', () => {
     const result = completeRep(clean, C, context())
     expect(result.progress?.passed).toBe('0:maj')
     expect(result.progress?.pool.progressRecord.masteredIndices).toEqual([0])
-    expect(result.progress?.opened).toEqual([])
+    // Its place in the learning window goes to F, the next in the order.
+    expect(result.progress?.opened).toEqual(['5:maj'])
     expect(result.justPassed).toBe(true)
   })
 
-  it('opens the next batch when the rep passes the last unlocked chord', () => {
+  it('refills the window when the rep passes the last chord waiting', () => {
     const stats = new InMemoryComboStats()
     const pool = poolWith(stats, { masteredIndices: [1, 2] })
     const result = completeRep(clean, C, context({ stats, pool }))
-    // F and G, the next two in the unlock order.
-    expect(result.progress?.opened).toEqual(['5:maj', '7:maj'])
-    expect(result.progress?.pool.progressRecord.unlockedCount).toBe(5)
+    // F, G and A, the next three in the unlock order.
+    expect(result.progress?.opened).toEqual(['5:maj', '7:maj', '9:maj'])
+    expect(result.progress?.pool.progressRecord.unlockedCount).toBe(6)
   })
 
   it('passes nothing when the rep does not reach the bar', () => {

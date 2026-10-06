@@ -15,7 +15,6 @@ import {
   INITIAL_UNLOCK_COUNT,
   InMemoryComboStats,
   MAX_TIME_TO_CORRECT_MS,
-  UNLOCK_BATCH_SIZE,
   type ChordPool,
   type Preset,
   type ChordPreset,
@@ -544,6 +543,7 @@ describe('practiceStore — unlock progress (§5)', () => {
       passed: 0,
       total: 6,
       setAside: 0,
+      toNextUnlock: 1,
     })
     expect(s.store.getState().justUnlocked).toBe(false)
   })
@@ -563,12 +563,12 @@ describe('practiceStore — unlock progress (§5)', () => {
     expect(s.store.getState().progress.unlocked).toBe(INITIAL_UNLOCK_COUNT)
   })
 
-  it('passing every unlocked chord unlocks the next batch', () => {
+  it('a pass unlocks the next chord (§5.1)', () => {
     const progress = new InMemoryPresetProgress()
     const s = setup({ presets: sixRoots, progress })
 
-    // Every prompt is a fast first-try; the three unlocked chords are all
-    // passed within a handful of prompts.
+    // Every prompt is a fast first-try, so a chord passes within a handful of
+    // prompts.
     let advances = 0
     while (
       s.store.getState().progress.unlocked === INITIAL_UNLOCK_COUNT &&
@@ -579,15 +579,14 @@ describe('practiceStore — unlock progress (§5)', () => {
     }
 
     expect(s.store.getState().progress).toEqual({
-      unlocked: INITIAL_UNLOCK_COUNT + UNLOCK_BATCH_SIZE,
-      passed: INITIAL_UNLOCK_COUNT,
+      unlocked: INITIAL_UNLOCK_COUNT + 1,
+      passed: 1,
       total: 6,
       setAside: 0,
+      toNextUnlock: 1,
     })
     expect(s.store.getState().justUnlocked).toBe(true)
-    expect(progress.get('test')?.unlockedCount).toBe(
-      INITIAL_UNLOCK_COUNT + UNLOCK_BATCH_SIZE,
-    )
+    expect(progress.get('test')?.unlockedCount).toBe(INITIAL_UNLOCK_COUNT + 1)
 
     vi.advanceTimersByTime(JUST_UNLOCKED_FLASH_MS)
     expect(s.store.getState().justUnlocked).toBe(false)
@@ -603,8 +602,8 @@ describe('practiceStore — unlock progress (§5)', () => {
       advances++
     }
 
-    // The batch after roots 0–2 is roots 3 and 4: E♭ and E major.
-    expect(s.store.getState().justUnlockedLabels).toEqual(['E♭', 'E'])
+    // The first pass opens the chord after roots 0–2: E♭ major.
+    expect(s.store.getState().justUnlockedLabels).toEqual(['E♭'])
     vi.advanceTimersByTime(JUST_UNLOCKED_FLASH_MS)
     expect(s.store.getState().justUnlockedLabels).toEqual([])
   })
@@ -673,11 +672,11 @@ describe('practiceStore — unlock progress (§5)', () => {
       progress,
     })
     // Edited from Settings over the paused session: the pool grows under the
-    // finished record, which opens the next batch on the spot (§5.1).
+    // finished record, which fills the learning window on the spot (§5.1).
     s.store.getState().pause()
     roots = [0, 1, 2, 3, 4, 5]
     s.store.getState().refreshLibrary()
-    expect(s.store.getState().progress.unlocked).toBe(5)
+    expect(s.store.getState().progress.unlocked).toBe(6)
 
     enterStage(s)
     const seen = new Set<number>()
@@ -689,6 +688,25 @@ describe('practiceStore — unlock progress (§5)', () => {
       playSlowAndAdvance(s, chordOf(s.store.getState().prompt))
     }
     expect([...seen].sort()).toEqual([0, 1, 2])
+  })
+
+  it('raising the learning window opens chords at once; lowering closes none (§5.1)', () => {
+    const settings = { ...DEFAULT_PRACTICE_SETTINGS, learningAtOnce: 3 }
+    const progress = new InMemoryPresetProgress()
+    const s = setup({ presets: sixRoots, progress, settings: () => settings })
+    expect(s.store.getState().progress.unlocked).toBe(INITIAL_UNLOCK_COUNT)
+
+    settings.learningAtOnce = 5
+    s.store.getState().refreshLearningWindow()
+    expect(s.store.getState().progress.unlocked).toBe(5)
+    expect(progress.get('test')?.unlockedCount).toBe(5)
+
+    settings.learningAtOnce = 1
+    s.store.getState().refreshLearningWindow()
+    expect(s.store.getState().progress).toMatchObject({
+      unlocked: 5,
+      toNextUnlock: 5, // five waiting against a window of one
+    })
   })
 
   it('unlockByFifths reorders a product pool’s unlock order (§5.1)', () => {
@@ -761,9 +779,7 @@ describe('practiceStore — unlock progress (§5)', () => {
       playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
       advances++
     }
-    expect(s.store.getState().progress.unlocked).toBe(
-      INITIAL_UNLOCK_COUNT + UNLOCK_BATCH_SIZE,
-    )
+    expect(s.store.getState().progress.unlocked).toBe(INITIAL_UNLOCK_COUNT + 1)
   })
 
   it('passes the chord on the ✔ that learns it, and flags that rep (§6.2/§7.3)', () => {
@@ -844,6 +860,7 @@ describe('practiceStore — unlock progress (§5)', () => {
       passed: 1,
       total: 6,
       setAside: 0,
+      toNextUnlock: 2, // four waiting against a window of three
     })
   })
 
@@ -860,6 +877,7 @@ describe('practiceStore — unlock progress (§5)', () => {
       passed: 1,
       total: 6,
       setAside: 0,
+      toNextUnlock: 0,
     })
     expect(progress.get('test')).toEqual({
       unlockedCount: 6,
@@ -879,6 +897,7 @@ describe('practiceStore — unlock progress (§5)', () => {
       passed: 0,
       total: 6,
       setAside: 0,
+      toNextUnlock: 1,
     })
     // The live prompt was redealt from the narrowed pool.
     expect([0, 1, 2]).toContain(chordOf(s.store.getState().prompt).chord.root)
@@ -921,6 +940,7 @@ describe('practiceStore — unlock progress (§5)', () => {
       passed: 1,
       total: 7,
       setAside: 0,
+      toNextUnlock: 2,
     })
 
     store.getState().setDiatonicKey(7) // G major
@@ -929,6 +949,7 @@ describe('practiceStore — unlock progress (§5)', () => {
       passed: 1,
       total: 7,
       setAside: 0,
+      toNextUnlock: 2,
     })
     expect(progress.get('test-diatonic')?.masteredIndices).toEqual([1])
   })
@@ -982,8 +1003,9 @@ describe('practiceStore — unlock progress (§5)', () => {
       playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
       advances++
     }
-    // The three chords left in play passed; the benched one never blocked.
-    expect(s.store.getState().progress.unlocked).toBe(4 + UNLOCK_BATCH_SIZE)
+    // One pass leaves two waiting, so the next opens; the benched chord never
+    // counted as waiting.
+    expect(s.store.getState().progress.unlocked).toBe(5)
     expect(s.store.getState().progress.setAside).toBe(1)
   })
 
@@ -1445,8 +1467,10 @@ describe('practiceStore — the learn loop (§5.4)', () => {
     for (let i = 0; i < 10 && !s.store.getState().justUnlocked; i++) {
       playCorrectAndAdvance(s, chordOf(s.store.getState().prompt))
     }
-    // Roots 0–2 passed, which opened 3 and 4: those are what's waiting now.
-    expect(s.store.getState().learnSelection).toEqual(['3:maj', '4:maj'])
+    // One of roots 0–2 passed and opened 3: the set is what's waiting now.
+    const selection = s.store.getState().learnSelection
+    expect(selection).toHaveLength(3)
+    expect(selection).toContain('3:maj')
   })
 
   it('re-derives the set when the preset changes under it', () => {

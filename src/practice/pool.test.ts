@@ -43,6 +43,7 @@ const setup = (overrides: Partial<PoolSources> = {}) => {
     voicings: () => BUILT_IN_VOICING_LIBRARY,
     storedProgress: (id) => stored.get(id) ?? null,
     unlockByFifths: () => false,
+    learningAtOnce: () => 3,
     stats,
     ...overrides,
   })
@@ -132,6 +133,7 @@ describe('pool resolution (§4/§5.1)', () => {
       voicings: () => BUILT_IN_VOICING_LIBRARY,
       storedProgress: () => null,
       unlockByFifths: () => false,
+      learningAtOnce: () => 3,
       stats: new InMemoryComboStats(),
     })
     // F major's diatonic chords include B♭, which the default spelling calls A♯.
@@ -167,6 +169,7 @@ describe('carryProgressAcrossEdit (§5.1)', () => {
         { preset: explicit([0, 4, 5]), voicings: lib },
         record,
         false,
+        3,
       ),
     ).toEqual({ unlockedCount: 3, masteredIndices: [1], setAsideIndices: [] })
   })
@@ -189,6 +192,7 @@ describe('carryProgressAcrossEdit (§5.1)', () => {
         { preset: diatonic(7), voicings: lib },
         record,
         false,
+        3,
       ),
     ).toBe(record)
   })
@@ -374,6 +378,7 @@ describe('pool narrowings (§5/§5.4)', () => {
             }
           : null,
       unlockByFifths: () => false,
+      learningAtOnce: () => 3,
       stats,
     })
     expect(resolve('triads', 0).worstOnly()).toEqual([])
@@ -449,7 +454,7 @@ describe('pool progress questions (§5.1/§5.2)', () => {
     expect(pool.passList()[0]?.grade).not.toBeNull()
   })
 
-  it('passes a chord whose grade reaches the bar, and opens the batch it completes', () => {
+  it('passes a chord whose grade reaches the bar, and opens the next in its place', () => {
     const { resolve, stats } = setup()
     const pool = resolve('triads', 0)
     // Not a pass without a grade.
@@ -459,10 +464,10 @@ describe('pool progress questions (§5.1/§5.2)', () => {
     }
     const once = pool.pass('0:maj').pass('2:maj')
     expect(once.progressRecord.masteredIndices).toEqual([0, 1])
-    expect(once.openedSince(pool)).toEqual([])
+    expect(once.openedSince(pool)).toEqual(['5:maj', '7:maj'])
     // Already passed: nothing moves.
     expect(once.pass('0:maj')).toBe(once)
-    expect(once.pass('4:maj').openedSince(once)).toEqual(['5:maj', '7:maj'])
+    expect(once.pass('4:maj').openedSince(once)).toEqual(['9:maj'])
   })
 
   it('grades a pass on the records it is given (§5.4)', () => {

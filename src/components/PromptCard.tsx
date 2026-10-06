@@ -5,6 +5,7 @@ import {
   FIRST_TRY_STREAK_DISPLAY_MIN,
   handLabel,
   MODE_POLICY,
+  PREVIEW_SHOWN,
   type ChordNameSize,
   type Hint,
   type Prompt,
@@ -88,7 +89,7 @@ export function PromptCard() {
   const chordPrompt = prompt.kind === 'chord' ? prompt : null
   const keySignature =
     staffKeyEnabled && chordPrompt !== null ? chordPrompt.chord.root : null
-  const next2 = upcoming.slice(0, 2)
+  const next2 = upcoming.slice(0, PREVIEW_SHOWN)
 
   return (
     <section className="flex flex-col items-center gap-4 text-center">

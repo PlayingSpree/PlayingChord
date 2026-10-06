@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { ALL_PITCH_CLASSES } from '../theory'
 import { comboKey, type Combo } from './combos'
 import { Dealer } from './dealer'
-import { RECENT_WINDOW, UPCOMING_COUNT } from './generator'
+import { PREVIEW_SHOWN, RECENT_WINDOW, UPCOMING_COUNT } from './generator'
 import { poolChordKey } from './progress'
 import { NO_HISTORY } from './stats'
 
@@ -82,7 +82,7 @@ describe('Dealer — held unlocks (§5.1)', () => {
     }
   })
 
-  it('lets them in at once when the setting is off, preview included', () => {
+  it('lets them in as the preview refills when the setting is off', () => {
     const { dealer } = dealerWith(false)
     const pool = poolOf(2)
     const [a, b] = pool as [Combo, Combo]
@@ -91,8 +91,20 @@ describe('Dealer — held unlocks (§5.1)', () => {
     dealer.unlocked([chordOf(b)])
     const dealt = [dealer.deal([pool])]
     for (let i = 0; i < 10; i++) dealt.push(dealer.deal([pool]))
-    // The stale all-`a` preview was dropped, so `b` shows up.
     expect(dealt.flatMap((d) => [d.combo, ...d.upcoming])).toContainEqual(b)
+  })
+
+  it('keeps the preview on screen when items open with the setting off', () => {
+    const { dealer } = dealerWith(false)
+    const pool = poolOf(12)
+    const shown = dealer.deal([pool.slice(0, 6)])
+    dealer.unlocked(pool.slice(6).map(chordOf))
+    // The ✔ flash showed the head of `shown.upcoming` as what comes next,
+    // and it does; the unseen rest was redrawn so the new items can come in.
+    const onScreen = shown.upcoming.slice(0, PREVIEW_SHOWN)
+    const next = dealer.deal([pool])
+    expect(next.combo).toEqual(onScreen[0])
+    expect(next.upcoming.slice(0, PREVIEW_SHOWN - 1)).toEqual(onScreen.slice(1))
   })
 
   it('reads the setting on every deal', () => {

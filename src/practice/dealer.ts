@@ -2,13 +2,19 @@
 // history it is drawn against, and the chords a mid-session unlock holds back
 // until the next session (§5.1). Pure TS.
 //
-// The caller never resets any of that by hand. It says what happened — a
-// batch opened, what is dealable narrowed, the pool was replaced — and the
+// The caller never resets any of that by hand. It says what happened — items
+// unlocked, what is dealable narrowed, the pool was replaced — and the
 // dealer decides what each one invalidates. A session starts with a fresh
 // dealer, which is what makes last session's unlocks this one's pool.
 
 import { comboKey, type Combo } from './combos'
-import { fillQueue, RECENT_WINDOW, UPCOMING_COUNT, type Rng } from './generator'
+import {
+  fillQueue,
+  PREVIEW_SHOWN,
+  RECENT_WINDOW,
+  UPCOMING_COUNT,
+  type Rng,
+} from './generator'
 import { poolChordKey } from './progress'
 import type { RecentStatsSource } from './stats'
 
@@ -64,13 +70,17 @@ export class Dealer {
     return { combo, upcoming: [...this.#queue] }
   }
 
-  // A batch opened mid-session (§5.1): its chords are held back while the
-  // setting is on — they can't be in the preview then — or the preview is
-  // dropped so they can enter the very next refill.
+  // Items opened mid-session (§5.1): held back while the setting is on — they
+  // can't be in the preview then. Off, they join the queue behind the part
+  // of the preview on screen: an unlock lands on the ✔, and dropping that
+  // part would make the next prompt something other than what the flash was
+  // showing. The unseen rest goes, so the new items arrive right after it.
   unlocked(chordKeys: readonly string[]): void {
     if (chordKeys.length === 0) return
     this.#held = new Set([...this.#held, ...chordKeys])
-    if (!this.#deps.holdNewUnlocks()) this.#queue = []
+    if (!this.#deps.holdNewUnlocks()) {
+      this.#queue = this.#queue.slice(0, PREVIEW_SHOWN)
+    }
   }
 
   // What is dealable changed within the same pool — a mode, worst only, the

@@ -85,8 +85,7 @@ export class SessionRun {
     if (!this.#passedLabels.includes(label)) this.#passedLabels.push(label)
   }
 
-  // The chords a batch just opened (§5.1) — a batch at a time, since that is
-  // how the frontier moves.
+  // The chords an unlock just opened (§5.1), usually one per pass.
   noteUnlocked(labels: readonly string[]): void {
     for (const label of labels) {
       if (!this.#unlockedLabels.includes(label))

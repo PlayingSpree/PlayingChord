@@ -42,7 +42,7 @@ export interface ReportBaseline {
 }
 
 // The unlock banner (§7.4): the chords opened this session and the pool's
-// progress toward the next batch.
+// progress toward the next unlock.
 export interface ReportUnlock {
   labels: string[]
   unlocked: number

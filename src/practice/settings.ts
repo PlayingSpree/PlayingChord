@@ -56,7 +56,10 @@ export interface PracticeSettings extends MatchSettings {
   // circle of fifths (C → G → D …) instead of chromatically. Diatonic and
   // explicit pools keep their own deliberate order either way.
   unlockByFifths: boolean
-  // Unlocks mid-session (§5.1): items a batch opens during a session wait for
+  // The learning window (§5.1): how many unlocked items wait on their pass at
+  // once. Each pass opens the next item, so the window stays this full.
+  learningAtOnce: number
+  // Unlocks mid-session (§5.1): items an unlock opens during a session wait for
   // the next one instead of joining the drill at once — the session keeps the
   // pool it started with, and the new items open a fresh session of their own.
   holdNewUnlocks: boolean
@@ -87,6 +90,7 @@ export const DEFAULT_PRACTICE_SETTINGS: PracticeSettings = {
   pianoSoundEnabled: true,
   chordNameSize: 'lg',
   unlockByFifths: false,
+  learningAtOnce: 3,
   holdNewUnlocks: true,
   songTempoBpm: 60,
   songChordCount: 4,
@@ -117,6 +121,15 @@ export function sanitizeDailyChordShare(value: unknown): number {
   return DAILY_CHORD_SHARES.includes(value as number)
     ? (value as number)
     : DEFAULT_PRACTICE_SETTINGS.dailyChordShare
+}
+
+// The learning window's choices (§5.1), offered as chips.
+export const LEARNING_AT_ONCE: readonly number[] = [1, 2, 3, 4, 5]
+
+function asLearningAtOnce(value: unknown, fallback: number): number {
+  return LEARNING_AT_ONCE.includes(value as number)
+    ? (value as number)
+    : fallback
 }
 
 // Song-mode tempo bounds (§6.5) and progression-length choices (§7).
@@ -214,6 +227,10 @@ export function sanitizeSettings(value: unknown): PracticeSettings {
     ),
     chordNameSize: asChordNameSize(raw.chordNameSize, defaults.chordNameSize),
     unlockByFifths: asBoolean(raw.unlockByFifths, defaults.unlockByFifths),
+    learningAtOnce: asLearningAtOnce(
+      raw.learningAtOnce,
+      defaults.learningAtOnce,
+    ),
     holdNewUnlocks: asBoolean(raw.holdNewUnlocks, defaults.holdNewUnlocks),
     songTempoBpm: sanitizeSongTempoBpm(raw.songTempoBpm),
     songChordCount: asSongChordCount(

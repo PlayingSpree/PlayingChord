@@ -79,8 +79,8 @@ export interface RepProgress {
   pool: Pool
   // The item this rep passed.
   passed: string
-  // Items the pass opened by completing the unlocked batch, in unlock order;
-  // empty when others in the batch are still outstanding.
+  // Items the pass opened to refill the learning window, in unlock order;
+  // empty when items opened by hand still crowd it, or the pool is all open.
   opened: readonly string[]
 }
 

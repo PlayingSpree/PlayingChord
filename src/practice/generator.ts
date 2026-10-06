@@ -75,8 +75,11 @@ export function pickCombo(
   return pickWeightedCombo(pool, recentKeys, NO_HISTORY, rng)
 }
 
-// How many upcoming combos the §7 preview shows.
+// How many upcoming combos the dealer keeps queued (§5's upcoming preview).
 export const UPCOMING_COUNT = 4
+
+// How many of them the §7.3 prompt area shows.
+export const PREVIEW_SHOWN = 2
 
 // Extends `queue` up to `count` combos (§5's upcoming preview), appending
 // picks against then-current weights — later slots are dealt with with
